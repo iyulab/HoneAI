@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Phase 0 declares contracts only (no implementation deps yet).
+         L3 LLM is consumed via Microsoft.Extensions.AI.Abstractions (IChatClient,
+         provider-neutral) when Phase 1 implements the router — declared here so the
+         contract surface can reference it without re-abstracting providers (§2.3). -->
+    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.6.0" />
+    <!-- Test stack (matches agent submodule) -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+</Project>

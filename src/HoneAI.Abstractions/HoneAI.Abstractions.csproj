@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>HoneAI.Abstractions</PackageId>
+    <Description>Contract surface for HoneAI — reasoning routing, prediction provenance, HITL, MLoop client, and lifecycle interfaces. Zero dependencies by design: "a prediction without provenance must not compile."</Description>
+  </PropertyGroup>
+  <!-- INVARIANT (enforced by HoneAI.Tests/ImportBoundaryTests):
+       this project must carry ZERO package/project dependencies. It is the
+       contract floor every consumer adapter and every assembly layer references. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="HoneAI.Tests" />
+  </ItemGroup>
+</Project>

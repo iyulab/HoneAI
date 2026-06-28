@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>HoneAI.Core</PackageId>
+    <Description>Assembly layer for HoneAI — composes MLoop (L2 AutoML, over HTTP/MCP transport) and an IChatClient (L3 frontier) behind the HoneAI.Abstractions contracts. Phase 0: scaffold only; implementations land in Phase 1.</Description>
+  </PropertyGroup>
+  <!-- IMPORT BOUNDARY (§2.1, §6.1): HoneAI references downward only
+       (HoneAI -> MLoop/agent), never the reverse. MLoop is consumed over
+       transport (HTTP/MCP) per the consumer back-derivation, NOT duplicated.
+       Phase 0 depends on Abstractions alone; the MLoop/IChatClient bindings
+       arrive with the Phase 1 primitive extractions. -->
+  <ItemGroup>
+    <ProjectReference Include="../HoneAI.Abstractions/HoneAI.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="HoneAI.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/HoneAI.Abstractions/HoneAI.Abstractions.csproj" />
+  <Project Path="src/HoneAI.Core/HoneAI.Core.csproj" />
+  <Project Path="tests/HoneAI.Tests/HoneAI.Tests.csproj" />
+</Solution>
