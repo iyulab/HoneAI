@@ -97,6 +97,27 @@ public class DualCheckRouterTests
     }
 
     [Fact]
+    public async Task Escalation_PreservesEscalatingRoleInProvenance()
+    {
+        // 역할 플레이 ①: escalate 레이어가 스탬프한 provenance.Role이 router 재구성을 살아남아야 한다.
+        var higher = new TracedPrediction<string>("NG",
+            new PredictionProvenance
+            {
+                SourceLayer = ReasoningLayer.Frontier,
+                Role = AgentRole.DomainExpert,
+                Confidence = 0.95,
+            });
+        var router = new DualCheckRouter<string, string>(
+            Lower(Pred("OK", ReasoningLayer.AutoMl, 0.40)),
+            (_, _, _) => Task.FromResult<ITracedPrediction<string>>(higher),
+            confidenceThreshold: 0.7);
+
+        var result = await router.RouteAsync("q");
+
+        Assert.Equal(AgentRole.DomainExpert, result.Provenance.Role);
+    }
+
+    [Fact]
     public void Ctor_RejectsOutOfRangeThreshold()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new DualCheckRouter<string, string>(

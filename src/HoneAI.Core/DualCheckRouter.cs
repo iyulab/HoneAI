@@ -63,6 +63,7 @@ public sealed class DualCheckRouter<TQuery, TResult> : IReasoningRouter<TQuery, 
         var provenance = new PredictionProvenance
         {
             SourceLayer = higher.Provenance.SourceLayer,
+            Role = higher.Provenance.Role,   // 어느 역할이 escalate 판정했는지 보존(역할 플레이 ①)
             Confidence = higher.Provenance.Confidence,
             Agreement = agreement,
             RequiresReview = requiresReview,

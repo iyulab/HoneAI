@@ -16,6 +16,14 @@ public sealed record PredictionProvenance
     /// <summary>Which reasoning layer produced the answer.</summary>
     public required ReasoningLayer SourceLayer { get; init; }
 
+    /// <summary>
+    /// Which trust-loop role produced the answer, stamped alongside
+    /// <see cref="SourceLayer"/> ("어느 레이어의 어느 역할이 판정"). Role is a HoneAI
+    /// first-class concept, not domain-specific (design spec §3). <see langword="null"/>
+    /// when a single layer ran with no role binding.
+    /// </summary>
+    public AgentRole? Role { get; init; }
+
     /// <summary>Confidence reported by the source layer, in [0.0, 1.0].</summary>
     public required double Confidence { get; init; }
 
