@@ -204,9 +204,18 @@ public sealed class HttpMLoopClient : IMLoopClient
     };
 
     /// <summary>
-    /// Conservative confidence from a prediction row: max class probability, else the
-    /// score, else 0 — clamped to a finite [0,1] (trust boundary on external model output,
-    /// mirroring U-Vision's <c>ConfidenceOf</c>).
+    /// Conservative confidence from a prediction row, clamped to a finite [0,1] (trust
+    /// boundary on external model output, mirroring U-Vision's <c>ConfidenceOf</c>):
+    /// <list type="bullet">
+    /// <item>classification → max class probability;</item>
+    /// <item>anomaly detection → distance from the decision boundary, <c>|anomalyScore - 0.5| * 2</c>
+    /// (RandomizedPca <c>Score ∈ [0,1]</c> with default threshold 0.5 — Microsoft.ML docs). Confidence
+    /// is in the anomaly/normal DECISION, so a strong anomaly and a strong inlier are both confident;
+    /// only boundary scores are uncertain. Mapping the score directly would wrongly read a confident
+    /// inlier (low score) as low-confidence and escalate every normal row;</item>
+    /// <item>regression / other scalar score → the score itself;</item>
+    /// <item>otherwise → 0.</item>
+    /// </list>
     /// </summary>
     private static double ConfidenceOf(JsonElement row)
     {
@@ -221,6 +230,11 @@ public sealed class HttpMLoopClient : IMLoopClient
                         max = v;
                 if (!double.IsNegativeInfinity(max))
                     raw = max;
+            }
+            else if (TryGetProperty(row, "anomalyScore", out var anomaly)
+                     && anomaly.ValueKind == JsonValueKind.Number && anomaly.TryGetDouble(out var a))
+            {
+                raw = Math.Abs(a - 0.5) * 2.0;
             }
             else if (TryGetProperty(row, "score", out var score)
                      && score.ValueKind == JsonValueKind.Number && score.TryGetDouble(out var s))

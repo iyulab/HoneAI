@@ -62,6 +62,29 @@ public class HttpMLoopClientTests
         Assert.Equal(0.4, pred.Provenance.Confidence, precision: 6);
     }
 
+    [Theory]
+    // Anomaly confidence is distance from the 0.5 decision boundary, normalized: |score-0.5|*2
+    // (RandomizedPca Score ∈ [0,1], threshold 0.5 — Microsoft.ML docs). Confidence is in the
+    // anomaly/normal DECISION, not P(anomaly): a strong anomaly AND a strong inlier are both
+    // high-confidence; only boundary scores are low-confidence. D10 — before the fix ConfidenceOf
+    // read only `probabilities`/`score`, ignored `anomalyScore`, so every anomaly row scored 0.
+    [InlineData(0.986, 0.972)]  // strong anomaly  → trusted
+    [InlineData(0.197, 0.606)]  // borderline normal
+    [InlineData(0.05, 0.90)]    // strong inlier   → trusted (NOT low-confidence)
+    [InlineData(0.5, 0.0)]      // exactly on the boundary → no confidence
+    [InlineData(1.0, 1.0)]      // most anomalous
+    public async Task Predict_AnomalyScore_MapsToBoundaryDistanceConfidence(double anomalyScore, double expected)
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, $$"""
+            { "task": "anomaly-detection", "predictions": [ { "isAnomaly": true, "anomalyScore": {{anomalyScore.ToString(System.Globalization.CultureInfo.InvariantCulture)}} } ] }
+            """));
+
+        var pred = await Client(handler).PredictAsync(
+            new MLoopPredictionRequest(new Dictionary<string, object?>()));
+
+        Assert.Equal(expected, pred.Provenance.Confidence, precision: 3);
+    }
+
     [Fact]
     public async Task Predict_ThrowsMLoopClientExceptionOnServerError()
     {
