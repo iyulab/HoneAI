@@ -204,8 +204,11 @@ public sealed class HttpMLoopClient : IMLoopClient
     };
 
     /// <summary>
-    /// Conservative confidence from a prediction row, clamped to a finite [0,1] (trust
-    /// boundary on external model output, mirroring U-Vision's <c>ConfidenceOf</c>):
+    /// Conservative confidence from a prediction row, clamped to a finite [0,1] (trust boundary on external
+    /// model output). MLoop now owns the normalized confidence rule (<c>ConfidencePolicy</c>) and returns it
+    /// as a per-row <c>confidence</c> field, so this prefers that field and only falls back to deriving it
+    /// locally for an older server that doesn't send it — the derivation below is transitional and can be
+    /// dropped once the minimum MLoop version is enforced. Fallback rules (mirroring what MLoop computes):
     /// <list type="bullet">
     /// <item>classification → max class probability;</item>
     /// <item>anomaly detection → distance from the decision boundary, <c>|anomalyScore - 0.5| * 2</c>
@@ -228,6 +231,13 @@ public sealed class HttpMLoopClient : IMLoopClient
         double raw = 0.0;
         if (row.ValueKind == JsonValueKind.Object)
         {
+            // Prefer MLoop's normalized confidence (single authority) when the server provides it.
+            if (TryGetProperty(row, "confidence", out var conf)
+                && conf.ValueKind == JsonValueKind.Number && conf.TryGetDouble(out var c))
+            {
+                return double.IsFinite(c) ? Math.Clamp(c, 0.0, 1.0) : 0.0;
+            }
+
             if (TryGetProperty(row, "probabilities", out var probs) && probs.ValueKind == JsonValueKind.Object)
             {
                 var max = double.NegativeInfinity;

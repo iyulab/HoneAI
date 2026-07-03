@@ -63,6 +63,22 @@ public class HttpMLoopClientTests
         Assert.Equal(0.4, pred.Provenance.Confidence, precision: 6);
     }
 
+    [Fact]
+    public async Task Predict_PrefersServerConfidence_OverLocalDerivation()
+    {
+        // MLoop owns the confidence rule (ConfidencePolicy) and sends it as a `confidence` field. When
+        // present it wins, even if the raw probabilities would derive a different value locally.
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "task": "binary-classification", "predictions": [
+                { "predictedLabel": "NG", "confidence": 0.42, "probabilities": { "NG": 0.95, "OK": 0.05 } } ] }
+            """));
+
+        var pred = await Client(handler).PredictAsync(
+            new MLoopPredictionRequest(new Dictionary<string, object?>()));
+
+        Assert.Equal(0.42, pred.Provenance.Confidence, precision: 6); // server value, not max-prob 0.95
+    }
+
     [Theory]
     // D17 — regression confidence from the conformal band width, not the raw Score. confidence =
     // 1 − min(halfWidth / |Score|, 1): a narrow band (certain) is high-confidence, a wide band (the
