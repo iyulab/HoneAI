@@ -213,7 +213,13 @@ public sealed class HttpMLoopClient : IMLoopClient
     /// is in the anomaly/normal DECISION, so a strong anomaly and a strong inlier are both confident;
     /// only boundary scores are uncertain. Mapping the score directly would wrongly read a confident
     /// inlier (low score) as low-confidence and escalate every normal row;</item>
-    /// <item>regression / other scalar score → the score itself;</item>
+    /// <item>regression with a conformal band → <c>1 − min(halfWidth / |Score|, 1)</c>: a narrow band
+    /// (model certain) is high-confidence, a wide band (uncertain) low. This is the regression analogue
+    /// of D10 — the raw <c>Score</c> is the predicted target value, not a confidence, and clamping it to
+    /// [0,1] was meaningless (a predicted 12.5 read as confidence 1.0). The heteroscedastic per-row band
+    /// width now drives escalation. Width is taken relative to the prediction magnitude so the mapping is
+    /// dataset-scale-agnostic (the <c>|Score|</c> normalizer is a heuristic — R-7 proposal to refine);</item>
+    /// <item>other scalar score (ranking/recommendation, no band) → the score itself;</item>
     /// <item>otherwise → 0.</item>
     /// </list>
     /// </summary>
@@ -235,6 +241,20 @@ public sealed class HttpMLoopClient : IMLoopClient
                      && anomaly.ValueKind == JsonValueKind.Number && anomaly.TryGetDouble(out var a))
             {
                 raw = Math.Abs(a - 0.5) * 2.0;
+            }
+            else if (TryGetProperty(row, "scoreUpperBound", out var upperEl)
+                     && upperEl.ValueKind == JsonValueKind.Number && upperEl.TryGetDouble(out var upper)
+                     && TryGetProperty(row, "scoreLowerBound", out var lowerEl)
+                     && lowerEl.ValueKind == JsonValueKind.Number && lowerEl.TryGetDouble(out var lower))
+            {
+                // ② regression wave (D17): confidence from the conformal band width, not the raw Score.
+                double half = Math.Abs(upper - lower) / 2.0;
+                double point = TryGetProperty(row, "score", out var sc)
+                               && sc.ValueKind == JsonValueKind.Number && sc.TryGetDouble(out var sv)
+                    ? sv
+                    : (upper + lower) / 2.0;
+                double denom = Math.Max(Math.Abs(point), 1e-9);
+                raw = 1.0 - Math.Min(half / denom, 1.0);
             }
             else if (TryGetProperty(row, "score", out var score)
                      && score.ValueKind == JsonValueKind.Number && score.TryGetDouble(out var s))

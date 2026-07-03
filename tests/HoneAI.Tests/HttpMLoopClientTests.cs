@@ -52,6 +52,7 @@ public class HttpMLoopClientTests
     [Fact]
     public async Task Predict_FallsBackToScoreWhenNoProbabilities()
     {
+        // Regression with no conformal band (old model / bare point estimate) → the scalar score itself.
         var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
             { "task": "regression", "predictions": [ { "score": 0.4 } ] }
             """));
@@ -60,6 +61,26 @@ public class HttpMLoopClientTests
             new MLoopPredictionRequest(new Dictionary<string, object?>()));
 
         Assert.Equal(0.4, pred.Provenance.Confidence, precision: 6);
+    }
+
+    [Theory]
+    // D17 — regression confidence from the conformal band width, not the raw Score. confidence =
+    // 1 − min(halfWidth / |Score|, 1): a narrow band (certain) is high-confidence, a wide band (the
+    // heteroscedastic σ-model flags an uncertain row) low. Before the fix ConfidenceOf clamped the raw
+    // Score (a predicted target value, e.g. 15) to [0,1] → meaningless confidence 1.0 for every row.
+    [InlineData(15.0, 14.0, 16.0, 0.9333)]  // narrow band (half=1)  → trusted
+    [InlineData(15.0, 12.0, 18.0, 0.8000)]  // moderate band (half=3)
+    [InlineData(15.0, 8.0, 22.0, 0.5333)]   // wide band (half=7)     → escalate-worthy
+    public async Task Predict_RegressionBand_MapsWidthToConfidence(double score, double lower, double upper, double expected)
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, $$"""
+            { "task": "regression", "predictions": [ { "score": {{score.ToString(System.Globalization.CultureInfo.InvariantCulture)}}, "scoreLowerBound": {{lower.ToString(System.Globalization.CultureInfo.InvariantCulture)}}, "scoreUpperBound": {{upper.ToString(System.Globalization.CultureInfo.InvariantCulture)}}, "intervalConfidence": 0.9 } ] }
+            """));
+
+        var pred = await Client(handler).PredictAsync(
+            new MLoopPredictionRequest(new Dictionary<string, object?>()));
+
+        Assert.Equal(expected, pred.Provenance.Confidence, precision: 3);
     }
 
     [Theory]
