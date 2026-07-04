@@ -35,7 +35,6 @@ public class RolePersonaTests
     }
 
     [Theory]
-    [InlineData(AgentRole.Orchestrator)]
     [InlineData(AgentRole.Translator)]
     [InlineData(AgentRole.Operator)]
     [InlineData(AgentRole.Inspector)]
@@ -51,5 +50,42 @@ public class RolePersonaTests
     public void BuildInstructions_NullContext_Throws()
     {
         Assert.Throws<ArgumentNullException>(() => RolePersona.BuildInstructions(null!));
+    }
+
+    [Fact]
+    public void Orchestrator_BakesSixRuleFePolicy()
+    {
+        var instructions = RolePersona.BuildInstructions(
+            new RoleContext { Role = AgentRole.Orchestrator, Domain = "전해탈지 공정", TaskType = "anomaly" });
+
+        // 6규칙 FE 정책 마커(mloop-agent MlopsPrompt에서 재배치 — 회귀-가드)
+        Assert.Contains("다중공선성", instructions);
+        Assert.Contains("|r|≥0.95", instructions);
+        Assert.Contains("정규화 금지", instructions);
+        Assert.Contains("likely-index", instructions);
+        Assert.Contains("method=structural", instructions);
+        Assert.Contains("무차별 억제", instructions);
+    }
+
+    [Fact]
+    public void Orchestrator_EnforcesHitlTrainingBoundary()
+    {
+        var instructions = RolePersona.BuildInstructions(
+            new RoleContext { Role = AgentRole.Orchestrator, Domain = "용접" });
+
+        Assert.Contains("스스로 실행하지 마세요", instructions);
+    }
+
+    [Fact]
+    public void Orchestrator_InjectsDomainAndAdaptsToTask()
+    {
+        var withTask = RolePersona.BuildInstructions(
+            new RoleContext { Role = AgentRole.Orchestrator, Domain = "전해탈지 공정", TaskType = "anomaly" });
+        var withoutTask = RolePersona.BuildInstructions(
+            new RoleContext { Role = AgentRole.Orchestrator, Domain = "전해탈지 공정" });
+
+        Assert.Contains("전해탈지 공정", withTask);
+        Assert.Contains("anomaly", withTask);
+        Assert.DoesNotContain("대상 task:", withoutTask);
     }
 }
