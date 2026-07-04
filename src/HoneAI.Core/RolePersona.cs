@@ -13,8 +13,8 @@ namespace HoneAI;
 /// <remarks>
 /// The output is exactly what later becomes an ironhive <c>IAgent.Instructions</c> (stage ①
 /// Core binding), so role execution is delegated, not re-invented (§1 "★ 재발명 금지").
-/// Stage ① ships <see cref="AgentRole.DomainExpert"/> only; other roles' skeletons arrive
-/// with their stages — Orchestrator/Translator/Operator ②, Inspector/Arbiter ③
+/// Stage ① ships <see cref="AgentRole.DomainExpert"/>; stage ②a adds <see cref="AgentRole.Orchestrator"/>.
+/// Translator/Operator (②b) and Inspector/Arbiter (③) remain unstaged
 /// (demand-driven, no speculative skeletons).
 /// </remarks>
 public static class RolePersona
