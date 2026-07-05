@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>HoneAI.Agents</PackageId>
+    <Description>MLOps agent engine wiring for HoneAI — hosts IronHive.Agent's AgentLoop over mloop-mcp tools, driven by a system prompt (persona) the consumer supplies from HoneAI.Core RolePersona. Persona-neutral: HoneAI.Agents owns the engine/tool wiring, not the persona. Relocated from mloop-agent (역할 플레이 ②a 승격).</Description>
+    <!-- IronHive.Agent 전이 CVE-2025-6965(NU1903, SQLitePCLRaw, 패치 없음)가 상위 Directory.Build.props의
+         TreatWarningsAsErrors로 빌드를 깨지 않게 함. honeai-sim/agent 선례(direct-only 감사). -->
+    <NuGetAuditMode>direct</NuGetAuditMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="IronHive.Agent" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="HoneAI.Tests" />
+  </ItemGroup>
+</Project>
