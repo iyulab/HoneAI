@@ -5,7 +5,19 @@
     <!-- IronHive.Agent 전이 CVE-2025-6965(NU1903, SQLitePCLRaw, 패치 없음)가 상위 Directory.Build.props의
          TreatWarningsAsErrors로 빌드를 깨지 않게 함. honeai-sim/agent 선례(direct-only 감사). -->
     <NuGetAuditMode>direct</NuGetAuditMode>
+    <!-- NuGet 배포(HoneAI에서 유일하게 packable — Core/Abstractions는 미배포). release.yml이 이 프로젝트만 pack. -->
+    <IsPackable>true</IsPackable>
+    <Company>iyulab</Company>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/iyulab/HoneAI</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/iyulab/HoneAI</RepositoryUrl>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>mlops;automl;ai-agent;mloop;ironhive;llm;mcp</PackageTags>
   </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="IronHive.Agent" />
     <PackageReference Include="Microsoft.Extensions.AI" />

@@ -1,0 +1,88 @@
+name: Release
+
+# HoneAI.Agents 를 nuget.org 에 배포한다. HoneAI.Core/Abstractions 는 미배포(packable=false).
+# 트리거: Directory.Build.props 의 <Version> 변경(버전 상승) 또는 수동(workflow_dispatch).
+# 전제: 리포 시크릿 NUGET_API_KEY 필요. 없으면 push 단계에서 인증 실패.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Directory.Build.props'
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # 릴리스 태그 push
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract version from Directory.Build.props
+        id: version
+        run: |
+          VERSION=$(grep -oP '<Version>\K[^<]+' Directory.Build.props)
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not extract version from Directory.Build.props"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "tag_exists=true" >> $GITHUB_OUTPUT
+            echo "Tag v$VERSION already exists — skipping release."
+          else
+            echo "tag_exists=false" >> $GITHUB_OUTPUT
+          fi
+          echo "Version: $VERSION"
+
+      - name: Cache NuGet packages
+        if: steps.version.outputs.tag_exists == 'false'
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore
+        if: steps.version.outputs.tag_exists == 'false'
+        run: dotnet restore HoneAI.slnx
+
+      - name: Build
+        if: steps.version.outputs.tag_exists == 'false'
+        run: dotnet build HoneAI.slnx --configuration Release --no-restore
+
+      - name: Test
+        if: steps.version.outputs.tag_exists == 'false'
+        run: dotnet test HoneAI.slnx --configuration Release --no-build --verbosity normal
+
+      - name: Pack HoneAI.Agents
+        if: steps.version.outputs.tag_exists == 'false'
+        run: dotnet pack src/HoneAI.Agents/HoneAI.Agents.csproj --configuration Release --no-build -o ./nupkg
+
+      - name: Push to NuGet.org
+        if: steps.version.outputs.tag_exists == 'false'
+        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Tag release
+        if: steps.version.outputs.tag_exists == 'false'
+        run: |
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
