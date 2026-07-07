@@ -231,6 +231,70 @@ public class HttpMLoopClientTests
         Assert.Null(await Client(handler).GetJobAsync("ghost"));
     }
 
+    [Fact]
+    public async Task Forecast_MapsPointsWithBandsAndSendsHorizonObjectBody()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            {
+              "task": "forecasting",
+              "count": 3,
+              "predictions": [
+                { "score": 10.0, "scoreLowerBound": 9.0,  "scoreUpperBound": 11.0, "intervalConfidence": 0.95, "confidence": 0.9 },
+                { "score": 10.5, "scoreLowerBound": 9.0,  "scoreUpperBound": 12.0, "intervalConfidence": 0.95, "confidence": 0.8 },
+                { "score": 11.0, "scoreLowerBound": 8.5,  "scoreUpperBound": 13.5, "intervalConfidence": 0.95, "confidence": 0.7 }
+              ]
+            }
+            """));
+        var client = Client(handler);
+
+        var forecast = await client.ForecastAsync(new MLoopForecastRequest(Horizon: 3, Model: "demand"));
+
+        Assert.Equal(3, forecast.Value.Points.Count);
+        Assert.Equal(10.0, forecast.Value.Points[0].Value);
+        Assert.Equal(9.0, forecast.Value.Points[0].LowerBound);
+        Assert.Equal(13.5, forecast.Value.Points[2].UpperBound);
+        Assert.Equal(0.95, forecast.Value.Points[1].IntervalConfidence);
+
+        Assert.Equal(ReasoningLayer.AutoMl, forecast.Provenance.SourceLayer);
+        // A forecast's confidence is its weakest step's.
+        Assert.Equal(0.7, forecast.Provenance.Confidence, precision: 6);
+        Assert.Equal("mloop:forecasting", forecast.Provenance.Rationale);
+
+        // Request shape: a JSON *object* {"horizon":3} — not the row-array every other task posts.
+        Assert.Contains("predict?name=demand", handler.LastUri);
+        Assert.Contains("\"horizon\":3", handler.LastBody);
+        Assert.StartsWith("{", handler.LastBody!.TrimStart());
+    }
+
+    [Fact]
+    public async Task Forecast_NullHorizon_SendsEmptyObjectBody()
+    {
+        // {} = "use the model's trained horizon"; /predict always requires a JSON body.
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "task": "forecasting", "count": 1, "predictions": [ { "score": 5.0 } ] }
+            """));
+
+        var forecast = await Client(handler).ForecastAsync(new MLoopForecastRequest());
+
+        Assert.Single(forecast.Value.Points);
+        Assert.Equal(5.0, forecast.Value.Points[0].Value);
+        Assert.Null(forecast.Value.Points[0].LowerBound);
+        Assert.Equal("{}", handler.LastBody!.Trim());
+    }
+
+    [Fact]
+    public async Task Forecast_MismatchedHorizon_SurfacesServerError()
+    {
+        // MLoop fails fast with an actionable 400 naming the trained horizon — that must
+        // propagate, not be swallowed into an empty forecast.
+        var handler = new StubHandler(_ => Json(HttpStatusCode.BadRequest,
+            """{ "error": "this forecasting model was trained with a fixed horizon of 5" }"""));
+
+        var ex = await Assert.ThrowsAsync<MLoopClientException>(
+            () => Client(handler).ForecastAsync(new MLoopForecastRequest(Horizon: 99)));
+        Assert.Contains("fixed horizon of 5", ex.Message);
+    }
+
     private static HttpResponseMessage Json(HttpStatusCode status, string body)
         => new(status) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") };
 

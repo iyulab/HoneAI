@@ -6,6 +6,14 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- ④ `IMLoopClient.ForecastAsync` + `HttpMLoopClient` implementation — horizon-based forecasting
+  over MLoop 0.20+'s `POST /predict` forecasting contract (`{"horizon":N}` object body, `{}` =
+  trained horizon). Returns `MLoopForecastResult` (ordered points with native SSA confidence
+  bands) wrapped in `ITracedPrediction` with `ReasoningLayer.AutoMl` provenance; the forecast's
+  confidence is its weakest step's (later steps widen their band). A mismatched horizon surfaces
+  MLoop's actionable 400 as `MLoopClientException` instead of an empty forecast.
+
 ### Added — Phase 0 (boundary + scaffold)
 
 - Solution scaffold: `HoneAI.Abstractions` (contracts, zero dependencies),

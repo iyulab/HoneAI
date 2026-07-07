@@ -127,6 +127,9 @@ public class ModelLifecycleTests
         public Task<MLoopJob> TrainAsync(MLoopTrainRequest request, CancellationToken ct = default)
             => Task.FromResult(new MLoopJob("job-1", "running"));
 
+        public Task<ITracedPrediction<MLoopForecastResult>> ForecastAsync(MLoopForecastRequest request, CancellationToken ct = default)
+            => throw new NotSupportedException("lifecycle tests never forecast");
+
         public Task<MLoopJob?> GetJobAsync(string jobId, CancellationToken ct = default)
             => Task.FromResult<MLoopJob?>(new MLoopJob(jobId, FinalStatus, CompletedExperimentId,
                 new Dictionary<string, double> { ["auc"] = 0.9 }));

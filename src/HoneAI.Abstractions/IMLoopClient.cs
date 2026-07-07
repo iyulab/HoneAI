@@ -19,6 +19,13 @@ public interface IMLoopClient
     /// </summary>
     Task<ITracedPrediction<MLoopPredictionResult>> PredictAsync(MLoopPredictionRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Run a horizon-based forecast against a promoted forecasting model (MLoop 0.20+
+    /// <c>POST /predict</c> forecasting contract). The result is wrapped in
+    /// <see cref="ITracedPrediction{T}"/> with <see cref="ReasoningLayer.AutoMl"/> provenance.
+    /// </summary>
+    Task<ITracedPrediction<MLoopForecastResult>> ForecastAsync(MLoopForecastRequest request, CancellationToken cancellationToken = default);
+
     /// <summary>Start a training run; returns the job handle (poll it with <see cref="GetJobAsync"/>).</summary>
     Task<MLoopJob> TrainAsync(MLoopTrainRequest request, CancellationToken cancellationToken = default);
 

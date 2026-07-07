@@ -70,6 +70,57 @@ public sealed class HttpMLoopClient : IMLoopClient
     }
 
     /// <inheritdoc />
+    public async Task<ITracedPrediction<MLoopForecastResult>> ForecastAsync(
+        MLoopForecastRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        // Forecasting is horizon-based (MLoop 0.20+ D21-A contract): a JSON *object* body
+        // ({} = the model's trained horizon), unlike every other task's row-array body.
+        var body = request.Horizon is { } horizon
+            ? new Dictionary<string, object?> { ["horizon"] = horizon }
+            : new Dictionary<string, object?>();
+        var uri = "predict" + NameQuery(request.Model);
+
+        using var response = await _http.PostAsJsonAsync(uri, body, JsonOptions, cancellationToken)
+            .ConfigureAwait(false);
+        await EnsureSuccess(response, "predict", cancellationToken).ConfigureAwait(false);
+
+        using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        var root = doc.RootElement;
+
+        if (!root.TryGetProperty("predictions", out var preds)
+            || preds.ValueKind != JsonValueKind.Array
+            || preds.GetArrayLength() == 0)
+        {
+            throw new InvalidOperationException("MLoop /predict response carried no forecast points.");
+        }
+
+        var points = new List<MLoopForecastPoint>(preds.GetArrayLength());
+        var minConfidence = 1.0;
+        foreach (var row in preds.EnumerateArray())
+        {
+            points.Add(new MLoopForecastPoint(
+                Value: NumberOf(row, "score") ?? 0.0,
+                LowerBound: NumberOf(row, "scoreLowerBound"),
+                UpperBound: NumberOf(row, "scoreUpperBound"),
+                IntervalConfidence: NumberOf(row, "intervalConfidence")));
+            minConfidence = Math.Min(minConfidence, ConfidenceOf(row));
+        }
+
+        var provenance = new PredictionProvenance
+        {
+            SourceLayer = ReasoningLayer.AutoMl,
+            // A forecast is one multi-step answer; its confidence is its weakest step's —
+            // later steps widen their band, and the chain is only as strong as that.
+            Confidence = minConfidence,
+            Rationale = "mloop:forecasting",
+        };
+
+        return new TracedPrediction<MLoopForecastResult>(new MLoopForecastResult(points), provenance);
+    }
+
+    /// <inheritdoc />
     public async Task<MLoopJob> TrainAsync(MLoopTrainRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -274,6 +325,16 @@ public sealed class HttpMLoopClient : IMLoopClient
         }
         return double.IsFinite(raw) ? Math.Clamp(raw, 0.0, 1.0) : 0.0;
     }
+
+    /// <summary>Case-insensitive numeric property read; null when absent or non-numeric.</summary>
+    private static double? NumberOf(JsonElement obj, string name)
+        => obj.ValueKind == JsonValueKind.Object
+           && TryGetProperty(obj, name, out var el)
+           && el.ValueKind == JsonValueKind.Number
+           && el.TryGetDouble(out var v)
+           && double.IsFinite(v)
+            ? v
+            : null;
 
     private static bool TryGetProperty(JsonElement obj, string name, out JsonElement value)
     {
