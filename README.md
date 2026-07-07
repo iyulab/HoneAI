@@ -1,60 +1,101 @@
 # HoneAI
 
-> **Honing AI** — "정확성은 검증 ML이, 통역은 LLM이." 출처 있는 예측·해석을 *쓸수록 정확하게*
-> 만드는 제조 AI 미들웨어.
+> Provenance-first predictions for .NET — combine verified ML models with LLM
+> reasoning, and make every answer carry its source.
 
-> **이름**: *hone(연마) = 쓸수록 날카로워진다* — HITL(사람 교정)→데이터 축적→MLOps 재학습→ML↑→LLM 개입↓
-> 의 자가개선 순환 메타포. 표시명 **Honing AI** / repo·패키지 **HoneAI**. `hone~honest` 공명(출처 정직)은
-> 덤. (구 "Reliable AI"는 Responsible/Trustworthy AI류 업계 일반어와 충돌·막연한 약속 어감으로 폐기.)
+HoneAI is a small .NET library for building prediction pipelines that pair
+machine-learning models with LLMs **without losing track of which one answered,
+how confident it was, and whether a human should review it**. It is aimed at
+value-prediction workloads such as demand forecasting, predictive maintenance,
+and quality inspection.
 
-HoneAI is the **③ middle middleware** of the iyulab product stack. It is **not a new
-engine** — it *assembles* MLoop (AutoML) and an LLM (via a provider-neutral `IChatClient`)
-behind a small contract surface and adds three things on top:
+It is built on three ideas:
 
-1. **L0~L3 routing** — route a query cheap→costly: `theory(L0) → statistics(L1) →
-   AutoML(L2, MLoop) → frontier(L3, LLM)`, climbing only as far as confidence requires.
-2. **theory-traceability** — every prediction carries `PredictionProvenance`: which layer
-   answered, how confident, on what grounds. *A prediction without provenance must not compile.*
-3. **HITL** — human-approval gates for low-confidence or disagreeing answers.
+1. **Layered reasoning, cheap-first** — route a query up a ladder of reasoning
+   layers, `Theory (L0) → Statistics (L1) → AutoML (L2) → LLM (L3)`, escalating
+   to a costlier layer only when the cheaper one is not confident enough.
+2. **Prediction provenance** — every prediction carries a
+   `PredictionProvenance` stamp: which layer answered, with what confidence, on
+   what grounds, and whether layers disagreed. *A prediction without provenance
+   must not compile* — the `ITracedPrediction<T>` type makes the stamp
+   structurally required.
+3. **Human-in-the-loop gates** — low-confidence or disagreeing answers are
+   flagged `RequiresReview` and can be parked at an async approval gate until a
+   human releases them.
 
-## What HoneAI is — and is not
+## Packages
 
-| HoneAI **is** | HoneAI is **not** |
-|---|---|
-| **value prediction** (demand forecast, predictive maintenance) | structure/ontology derivation (that is ② Formbase) |
-| **manufacturing-flavoured** — "manufacturing AI" | "general-purpose AI" (the domain colour is named, not hidden) |
-| an *assembly* of MLoop/agent (NuGet/transport **reference**) | a *re-implementation* of MLoop/agent (duplication is forbidden) |
-| an agent **product** (consumer-facing trust surface) | an agent **runtime** (that is ⑤ ironhive-host) |
+| Package | What it contains | Dependencies |
+|---|---|---|
+| `HoneAI.Abstractions` | Contracts only: `ReasoningLayer`, `PredictionProvenance`, `ITracedPrediction<T>`, `IReasoningRouter<,>`, `IMLoopClient`, `IProvenanceSink`, `IHitlGate`, `IModelLifecycle`, `AgentRole` | none |
+| `HoneAI.Core` | Reference implementations: `DualCheckRouter<,>`, `HttpMLoopClient`, `JsonlProvenanceSink`, `InMemoryHitlGate`, `ModelLifecycle`, `RolePersona` | none (third-party-free) |
+| `HoneAI.Agents` | An MLOps agent loop that drives the [MLoop](https://github.com/iyulab/MLoop) CLI through [mloop-mcp](https://github.com/iyulab/mloop-mcp) tools, using any `Microsoft.Extensions.AI` `IChatClient` | IronHive.Agent, ModelContextProtocol |
 
-See [`docs/CHARTER.md`](docs/CHARTER.md) for the full charter, boundary, and phase plan.
+`HoneAI.Core` reaches ML backends over transport (HTTP), never as an SDK
+reference — swapping the model server does not change your dependency graph.
 
-## Status — Phase 1 (rule-of-two primitives)
+## Quick start
 
-Phase 0 declared the boundary in code (scaffold + zero-dependency contracts). Phase 1
-extracts the five rule-of-two surfaces from the consumer back-derivation (U-Vision +
-SMI.AIMS) as concrete primitives — depending on **MLoop + `IChatClient` only**. See the
-[CHANGELOG](CHANGELOG.md) for the full list.
+### Confidence-gated escalation (`DualCheckRouter`)
 
+Run the cheap layer first; escalate to the expensive one only when confidence
+falls short; flag disagreement for human review:
+
+```csharp
+using HoneAI;
+
+var router = new DualCheckRouter<SensorWindow, string>(
+    lower:    (query, ct)           => PredictWithMlAsync(query, ct),        // e.g. an AutoML model
+    escalate: (query, mlResult, ct) => JudgeWithLlmAsync(query, mlResult, ct), // e.g. an IChatClient call
+    confidenceThreshold: 0.85);
+
+ITracedPrediction<string> prediction = await router.RouteAsync(window);
+
+Console.WriteLine(prediction.Value);
+Console.WriteLine(prediction.Provenance.SourceLayer);   // AutoMl (no escalation) or Frontier
+Console.WriteLine(prediction.Provenance.Confidence);
+
+if (prediction.Provenance.RequiresReview)
+{
+    // layers disagreed, or confidence stayed low — send to a human
+}
 ```
-HoneAI.Abstractions   contracts only, zero deps     (the "출처 있는 예측" floor)
-  ├─ ReasoningLayer          L0~L3 ladder
-  ├─ PredictionProvenance    traceability stamp (required on every prediction)
-  ├─ ITracedPrediction<T>  value + provenance
-  ├─ IReasoningRouter<,>      ① cheap→costly escalation routing
-  ├─ IMLoopClient            ④ transport-neutral MLoop client (HTTP ∨ MCP)
-  ├─ IProvenanceSink         ② append-only assessment audit trail
-  ├─ IHitlGate               ③ async human-review gate (submit→await→release)
-  └─ IModelLifecycle   ⑤ train→poll→review→promote step machine
-HoneAI.Core           assembly layer — Phase 1 implementations
-  ├─ HttpMLoopClient         ④ over MLoop REST (predict/train/jobs/promote/info)
-  ├─ JsonlProvenanceSink     ② append-only JSONL
-  ├─ DualCheckRouter<,>      ① L2↔L3 confidence-gated escalation
-  ├─ InMemoryHitlGate        ③ TCS review gate
-  └─ ModelLifecycle    ⑤ orchestrator composing the above
-```
 
-`HoneAI.Core` carries no third-party dependencies; MLoop is reached over transport
-(HTTP), never referenced as an SDK. The MCP transport for ④ is deferred to a later cycle.
+Both layers are plain delegates, so the router depends on neither an ML SDK nor
+an LLM SDK — wire in whatever backends you use.
+
+### Talking to an MLoop model server (`HttpMLoopClient`)
+
+[`MLoop`](https://github.com/iyulab/MLoop) is an open-source AutoML CLI/server
+for ML.NET. `HttpMLoopClient` implements `IMLoopClient` over its REST API
+(`/predict`, `/train`, `/jobs/{id}`, `/promote`, `/info`), returning
+predictions already stamped with `ReasoningLayer.AutoMl` provenance.
+
+### Audit trail (`IProvenanceSink`)
+
+`JsonlProvenanceSink` appends every provenance stamp to a JSONL file — an
+append-only, grep-friendly record of what answered and why.
+
+### Human review gate (`IHitlGate`)
+
+`InMemoryHitlGate` provides an async submit → await → release flow: a pipeline
+submits a flagged prediction and awaits; a reviewer (UI, chat-ops, CLI)
+releases it with an approve/reject decision.
+
+### Model lifecycle (`IModelLifecycle`)
+
+`ModelLifecycle` orchestrates a full retraining pass — train → poll job →
+human review → promote — with step tracking and optional provenance recording,
+composed from the primitives above.
+
+### Agent roles
+
+`AgentRole` names the seats an agent can occupy when reasoning about a
+prediction — `Translator`, `Orchestrator`, `DomainExpert`, `Inspector`,
+`Operator`, `Arbiter` — and is stamped onto provenance alongside the layer, so
+an audit trail records not just *which layer* but *which role* produced an
+answer. `HoneAI.Agents` hosts an agent loop over MLoop's MCP tools; see
+[`src/HoneAI.Agents/README.md`](src/HoneAI.Agents/README.md).
 
 ## Build
 
@@ -63,10 +104,14 @@ dotnet build HoneAI.slnx
 dotnet test HoneAI.slnx
 ```
 
-net10.0 · Central Package Management · warnings-as-errors.
+Targets `net10.0`, uses Central Package Management, and builds with
+warnings-as-errors.
 
-## Roadmap
+## Status
 
-`claudedocs/roadmap/13-honeai-middleware-roadmap.md` (in the mloop-umbrella repo) is the
-canonical phase plan; the back-derivation that justifies it lives at
-`claudedocs/plans/2026-06-29-honeai-consumer-backderivation.md`.
+Early development (0.x). The contract surface in `HoneAI.Abstractions` is
+stabilizing; APIs may still change between minor versions.
+
+## License
+
+[Apache-2.0](LICENSE)
