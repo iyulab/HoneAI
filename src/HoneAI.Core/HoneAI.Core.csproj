@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>HoneAI.Core</PackageId>
+    <!-- NuGet 배포 보류(roadmap/13 R-7 하위 게이트: 소비자 실채택 후 결정). release.yml은 Agents만 pack. -->
+    <IsPackable>false</IsPackable>
     <Description>Assembly layer for HoneAI — composes MLoop (L2 AutoML, over HTTP/MCP transport) and an IChatClient (L3 frontier) behind the HoneAI.Abstractions contracts. Phase 0: scaffold only; implementations land in Phase 1.</Description>
   </PropertyGroup>
   <!-- IMPORT BOUNDARY (§2.1, §6.1): HoneAI references downward only

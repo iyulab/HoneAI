@@ -1,5 +1,10 @@
 # HoneAI
 
+[![CI](https://github.com/iyulab/HoneAI/actions/workflows/ci.yml/badge.svg)](https://github.com/iyulab/HoneAI/actions/workflows/ci.yml)
+[![Release](https://github.com/iyulab/HoneAI/actions/workflows/release.yml/badge.svg)](https://github.com/iyulab/HoneAI/actions/workflows/release.yml)
+[![NuGet](https://img.shields.io/nuget/v/HoneAI.Agents.svg?label=HoneAI.Agents)](https://www.nuget.org/packages/HoneAI.Agents)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 > Provenance-first predictions for .NET — combine verified ML models with LLM
 > reasoning, and make every answer carry its source.
 
@@ -33,6 +38,16 @@ It is built on three ideas:
 
 `HoneAI.Core` reaches ML backends over transport (HTTP), never as an SDK
 reference — swapping the model server does not change your dependency graph.
+
+`HoneAI.Agents` is published on
+[NuGet](https://www.nuget.org/packages/HoneAI.Agents):
+
+```bash
+dotnet add package HoneAI.Agents
+```
+
+`HoneAI.Abstractions` and `HoneAI.Core` are currently consumed from source;
+they will be published to NuGet once the contract surface stabilizes.
 
 ## Quick start
 
