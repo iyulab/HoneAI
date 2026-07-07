@@ -2,7 +2,7 @@ namespace HoneAI;
 
 /// <summary>
 /// The reasoning layer that produced (or escalated) an answer, ordered cheap→costly.
-/// Routing climbs only as far as confidence requires (§0 "싼·확실한 레이어 우선").
+/// Routing climbs only as far as confidence requires — cheaper, more certain layers first.
 /// </summary>
 public enum ReasoningLayer
 {

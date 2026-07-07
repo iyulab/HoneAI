@@ -9,8 +9,7 @@ namespace HoneAI;
 
 /// <summary>
 /// Orchestrates train → (poll) → review (HITL) → promote over an <see cref="IMLoopClient"/>
-/// and an <see cref="IHitlGate"/>, tracking each stage — the generic form of SMI.AIMS's
-/// <c>MLoopPipelineService</c> (back-derivation §3.5 ⑤). Consumer-specific stages (dataset
+/// and an <see cref="IHitlGate"/>, tracking each stage. Consumer-specific stages (dataset
 /// export, init, inspect) stay in the consumer; this capstone starts at training. A
 /// <see cref="IProvenanceSink"/> may be supplied to record each stage outcome.
 /// </summary>

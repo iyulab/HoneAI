@@ -1,15 +1,13 @@
 namespace HoneAI;
 
 /// <summary>
-/// Transport-neutral client for a running MLoop instance — unifies the HTTP
-/// (U-Vision <c>MloopClassifier</c>) and MCP-stdio (SMI.AIMS <c>MLoopMcpService</c>)
-/// transports the two consumers wrote separately (back-derivation §3.5 ④).
+/// Transport-neutral client for a running MLoop instance, unifying the HTTP and
+/// MCP-stdio transports behind one contract.
 /// </summary>
 /// <remarks>
 /// MLoop is consumed over the wire (HTTP ∨ MCP), never duplicated as a compile-time
-/// SDK reference — MLoop's SDK packages are deliberately not published to NuGet, and
-/// the consumer evidence shows transport-based consumption. Phase 0 declares the
-/// contract; Phase 1-④ implements the transport unification.
+/// SDK reference — MLoop's SDK packages are deliberately not published to NuGet, so
+/// transport-based consumption is the supported integration path.
 /// </remarks>
 public interface IMLoopClient
 {

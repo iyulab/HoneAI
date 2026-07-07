@@ -7,8 +7,7 @@ namespace HoneAI;
 
 /// <summary>
 /// In-process <see cref="IHitlGate"/> backed by a <see cref="TaskCompletionSource{TResult}"/>
-/// per open review — the generic form of SMI.AIMS's <c>_reviewGates</c> (back-derivation
-/// §3.5 ③). A producer opens a gate and awaits; a reviewer <see cref="Submit"/>s to release it.
+/// per open review. A producer opens a gate and awaits; a reviewer <see cref="Submit"/>s to release it.
 /// </summary>
 /// <remarks>
 /// Single-process only (the waiter and the submitter share this instance). A cancelled

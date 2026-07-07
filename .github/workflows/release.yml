@@ -1,8 +1,9 @@
 name: Release
 
-# HoneAI.Agents 를 nuget.org 에 배포한다. HoneAI.Core/Abstractions 는 미배포(packable=false).
+# HoneAI.Abstractions / HoneAI.Core / HoneAI.Agents 를 nuget.org 에 배포한다.
 # 트리거: Directory.Build.props 의 <Version> 변경(버전 상승) 또는 수동(workflow_dispatch).
 # 전제: 리포 시크릿 NUGET_API_KEY 필요. 없으면 push 단계에서 인증 실패.
+# 세 패키지는 Directory.Build.props 의 단일 <Version> 을 공유한다(동시 상승).
 
 on:
   push:
@@ -72,6 +73,14 @@ jobs:
       - name: Test
         if: steps.version.outputs.tag_exists == 'false'
         run: dotnet test HoneAI.slnx --configuration Release --no-build --verbosity normal
+
+      - name: Pack HoneAI.Abstractions
+        if: steps.version.outputs.tag_exists == 'false'
+        run: dotnet pack src/HoneAI.Abstractions/HoneAI.Abstractions.csproj --configuration Release --no-build -o ./nupkg
+
+      - name: Pack HoneAI.Core
+        if: steps.version.outputs.tag_exists == 'false'
+        run: dotnet pack src/HoneAI.Core/HoneAI.Core.csproj --configuration Release --no-build -o ./nupkg
 
       - name: Pack HoneAI.Agents
         if: steps.version.outputs.tag_exists == 'false'

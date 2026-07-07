@@ -1,9 +1,8 @@
 namespace HoneAI;
 
 /// <summary>
-/// The stages of a model reliability lifecycle, in order — one-to-one with SMI.AIMS's
-/// pipeline <c>StepType</c> (<c>export|init|info|train|evaluate|review|promote</c>,
-/// back-derivation §3.5 ⑤).
+/// The stages of a model reliability lifecycle, in order:
+/// <c>export | init | info | train | evaluate | review | promote</c>.
 /// </summary>
 public enum LifecycleStage
 {
@@ -49,11 +48,9 @@ public sealed record LifecycleRequest(MLoopTrainRequest Training, string? Review
 
 /// <summary>
 /// Orchestrates a model reliability lifecycle — export→init→inspect→train→evaluate→
-/// review(HITL)→promote — tracking each step. Generalizes SMI.AIMS's
-/// <c>MLoopPipelineService</c> and U-Vision's <c>FileDatasetExporter</c> + activate
-/// (back-derivation §3.5 ⑤). Dataset export format and promote policy stay in the
-/// consumer adapter; the <see cref="LifecycleStage.Review"/> stage composes with
-/// <see cref="IHitlGate"/>.
+/// review(HITL)→promote — tracking each step. Dataset export format and promote policy
+/// stay in the consumer adapter; the <see cref="LifecycleStage.Review"/> stage composes
+/// with <see cref="IHitlGate"/>.
 /// </summary>
 public interface IModelLifecycle
 {

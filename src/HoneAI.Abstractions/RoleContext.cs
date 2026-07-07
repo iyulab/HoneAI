@@ -3,10 +3,10 @@ namespace HoneAI;
 /// <summary>
 /// The domain-colour injection slot for a trust-loop role. The middleware never
 /// <i>interprets</i> <see cref="Domain"/> — it threads it into the role's persona
-/// skeleton (the <c>{Domain}</c> slot of an <c>IAgent.Instructions</c>) exactly the way
+/// skeleton (the <c>{Domain}</c> slot of an agent's instructions) exactly the way
 /// <see cref="PredictionProvenance.Annotations"/> carries consumer-defined fields
-/// opaquely (design spec §3, "Annotations 패턴"). Manufacturing meaning — "전해탈지
-/// 공정 이상탐지", verdict vocabulary — is supplied by the consumer/harness, never baked
+/// opaquely. Domain meaning — e.g. "전해탈지 공정 이상탐지" (a process anomaly-detection
+/// domain) — and verdict vocabulary are supplied by the consumer/harness, never baked
 /// into HoneAI.
 /// </summary>
 public sealed record RoleContext

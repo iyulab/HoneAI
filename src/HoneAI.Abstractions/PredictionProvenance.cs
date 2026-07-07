@@ -6,10 +6,9 @@ namespace HoneAI;
 /// This is the "출처 있는 예측" core of HoneAI.
 /// </summary>
 /// <remarks>
-/// Generic primitive only. Domain-specific provenance — U-Vision's
-/// <c>posture</c>/<c>ml_label</c>, SMI.AIMS's <c>RiskLevel</c>/<c>Category</c>
-/// (back-derivation §3.5 ②) — stays out of the middleware and lives in
-/// <see cref="Annotations"/> or the consumer adapter (§2 "Adapter가 경계").
+/// Generic primitive only. Domain-specific provenance (e.g. a risk level, a category,
+/// a posture label) stays out of the middleware and lives in <see cref="Annotations"/>
+/// or the consumer adapter — the adapter is the domain boundary.
 /// </remarks>
 public sealed record PredictionProvenance
 {
@@ -19,8 +18,8 @@ public sealed record PredictionProvenance
     /// <summary>
     /// Which trust-loop role produced the answer, stamped alongside
     /// <see cref="SourceLayer"/> ("어느 레이어의 어느 역할이 판정"). Role is a HoneAI
-    /// first-class concept, not domain-specific (design spec §3). <see langword="null"/>
-    /// when a single layer ran with no role binding.
+    /// first-class concept, not domain-specific. <see langword="null"/> when a single
+    /// layer ran with no role binding.
     /// </summary>
     public AgentRole? Role { get; init; }
 
@@ -33,13 +32,13 @@ public sealed record PredictionProvenance
     /// <summary>
     /// When more than one layer answered (dual-check), whether they agreed;
     /// <see langword="null"/> when a single layer ran. Grounds
-    /// <see cref="RequiresReview"/> — mirrors U-Vision's <c>agreement</c>.
+    /// <see cref="RequiresReview"/>.
     /// </summary>
     public bool? Agreement { get; init; }
 
     /// <summary>
     /// True when this prediction should be escalated to a human — low confidence
-    /// or layer disagreement. Mirrors the consumers' <c>requires_review</c>.
+    /// or layer disagreement.
     /// </summary>
     public bool RequiresReview { get; init; }
 

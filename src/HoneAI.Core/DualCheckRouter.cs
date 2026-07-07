@@ -8,10 +8,9 @@ namespace HoneAI;
 /// <summary>
 /// A two-layer <see cref="IReasoningRouter{TQuery,TResult}"/> skeleton: try the cheaper
 /// layer first, escalate to the costlier one only when confidence is insufficient, and
-/// flag disagreement or residual low confidence for human review. Generalizes U-Vision's
-/// <c>DualCheckEvaluator</c> (<c>RequiresReview = !agreement || lowConfidence</c>) and
-/// SMI.AIMS's <c>LogAnalysisService</c> (confident ML skips the LLM oracle) —
-/// back-derivation §3.5 ①.
+/// flag disagreement or residual low confidence for human review. Escalation rule:
+/// a confident lower layer is trusted as-is; otherwise the costlier layer runs and
+/// <c>RequiresReview = !agreement || lowConfidence</c>.
 /// </summary>
 /// <remarks>
 /// The two layers are supplied as delegates, so the router depends on neither MLoop nor an
@@ -63,7 +62,7 @@ public sealed class DualCheckRouter<TQuery, TResult> : IReasoningRouter<TQuery, 
         var provenance = new PredictionProvenance
         {
             SourceLayer = higher.Provenance.SourceLayer,
-            Role = higher.Provenance.Role,   // 어느 역할이 escalate 판정했는지 보존(역할 플레이 ①)
+            Role = higher.Provenance.Role,   // 어느 역할이 escalate 판정했는지 보존
             Confidence = higher.Provenance.Confidence,
             Agreement = agreement,
             RequiresReview = requiresReview,

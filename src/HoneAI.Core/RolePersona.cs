@@ -5,17 +5,15 @@ namespace HoneAI;
 
 /// <summary>
 /// Builds the domain-neutral persona <c>Instructions</c> for a trust-loop role from a
-/// <see cref="RoleContext"/> — the HoneAI-unique knowledge that ironhive's <c>IAgent</c>
-/// has no notion of (design spec §1.3 "제조 역할 카탈로그 + 도메인 색 주입"). The skeleton
-/// is domain-neutral with a <c>{Domain}</c> slot the consumer fills via
+/// <see cref="RoleContext"/> — the role knowledge an agent framework has no notion of.
+/// The skeleton is domain-neutral with a <c>{Domain}</c> slot the consumer fills via
 /// <see cref="RoleContext.Domain"/>; verdict vocabulary stays in the consumer/harness.
 /// </summary>
 /// <remarks>
-/// The output is exactly what later becomes an ironhive <c>IAgent.Instructions</c> (stage ①
-/// Core binding), so role execution is delegated, not re-invented (§1 "★ 재발명 금지").
-/// Stage ① ships <see cref="AgentRole.DomainExpert"/>; stage ②a adds <see cref="AgentRole.Orchestrator"/>.
-/// Translator/Operator (②b) and Inspector/Arbiter (③) remain unstaged
-/// (demand-driven, no speculative skeletons).
+/// The output is intended to become an agent framework's system prompt / instructions,
+/// so role execution is delegated, not re-invented. Currently ships
+/// <see cref="AgentRole.DomainExpert"/> and <see cref="AgentRole.Orchestrator"/>;
+/// further roles are added demand-driven, without speculative skeletons.
 /// </remarks>
 public static class RolePersona
 {
@@ -24,7 +22,7 @@ public static class RolePersona
     /// with the domain colour injected.
     /// </summary>
     /// <exception cref="NotSupportedException">
-    /// The role has no persona skeleton yet (lands in a later stage — §2/§5).
+    /// The role has no persona skeleton yet (lands in a later release).
     /// </exception>
     public static string BuildInstructions(RoleContext context)
     {
@@ -34,7 +32,7 @@ public static class RolePersona
             AgentRole.DomainExpert => BuildDomainExpert(context),
             AgentRole.Orchestrator => BuildOrchestrator(context),
             _ => throw new NotSupportedException(
-                $"Role '{context.Role}' has no persona skeleton yet; it lands in a later stage (design spec §2/§5)."),
+                $"Role '{context.Role}' has no persona skeleton yet; it lands in a later release."),
         };
     }
 
@@ -49,10 +47,10 @@ public static class RolePersona
     }
 
     /// <summary>
-    /// Orchestrator persona (stage ②a) — the autonomous FE-loop policy relocated from mloop-agent's
-    /// <c>MlopsPrompt</c> into HoneAI's role seam: domain-neutral, with the consumer's
-    /// <see cref="RoleContext.Domain"/> injected and a runtime projectPath appended by the harness.
-    /// The HITL boundary (stop before train) is prompt-enforced, matching mloop-agent.
+    /// Orchestrator persona — the autonomous feature-engineering loop policy in HoneAI's
+    /// role seam: domain-neutral, with the consumer's <see cref="RoleContext.Domain"/>
+    /// injected and a runtime projectPath appended by the harness.
+    /// The HITL boundary (stop before train) is prompt-enforced.
     /// </summary>
     private static string BuildOrchestrator(RoleContext c)
     {

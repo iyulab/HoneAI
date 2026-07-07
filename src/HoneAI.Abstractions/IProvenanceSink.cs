@@ -13,10 +13,9 @@ public sealed record ProvenanceRecord(
     DateTimeOffset RecordedAt);
 
 /// <summary>
-/// Append-only sink for prediction provenance — the audit trail behind "출처 있는 예측".
-/// Generalizes U-Vision's <c>FileMetricsStore</c> (append-only JSONL) and SMI.AIMS's
-/// <c>OracleAssessment</c> + <c>PipelineStep</c> store (back-derivation §3.5 ②). Records
-/// are never mutated or deleted; the storage backend is the consumer's choice.
+/// Append-only sink for prediction provenance — the audit trail behind "출처 있는 예측"
+/// (provenance-bearing predictions). Records are never mutated or deleted; the storage
+/// backend is the consumer's choice.
 /// </summary>
 public interface IProvenanceSink
 {

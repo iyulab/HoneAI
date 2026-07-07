@@ -11,15 +11,14 @@ using System.Threading.Tasks;
 namespace HoneAI;
 
 /// <summary>
-/// <see cref="IMLoopClient"/> over MLoop's REST API (`mloop serve`) — the HTTP half of
-/// the transport unification (back-derivation §3.5 ④, generalizing U-Vision's
-/// <c>MloopClassifier</c>). MLoop is reached over the wire, never referenced as an SDK.
+/// <see cref="IMLoopClient"/> over MLoop's REST API (`mloop serve`). MLoop is reached
+/// over the wire, never referenced as an SDK.
 /// </summary>
 /// <remarks>
 /// Construct with an <see cref="HttpClient"/> whose <see cref="HttpClient.BaseAddress"/>
 /// points at the MLoop server and whose default headers carry the JWT bearer token
 /// (configure via <c>IHttpClientFactory</c>). The client owns no auth/transport policy —
-/// that stays with the consumer, matching how both consumers wire it today.
+/// that stays with the consumer.
 /// </remarks>
 public sealed class HttpMLoopClient : IMLoopClient
 {
@@ -75,7 +74,7 @@ public sealed class HttpMLoopClient : IMLoopClient
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        // Forecasting is horizon-based (MLoop 0.20+ D21-A contract): a JSON *object* body
+        // Forecasting is horizon-based (MLoop 0.20+ contract): a JSON *object* body
         // ({} = the model's trained horizon), unlike every other task's row-array body.
         var body = request.Horizon is { } horizon
             ? new Dictionary<string, object?> { ["horizon"] = horizon }
@@ -268,11 +267,11 @@ public sealed class HttpMLoopClient : IMLoopClient
     /// only boundary scores are uncertain. Mapping the score directly would wrongly read a confident
     /// inlier (low score) as low-confidence and escalate every normal row;</item>
     /// <item>regression with a conformal band → <c>1 − min(halfWidth / |Score|, 1)</c>: a narrow band
-    /// (model certain) is high-confidence, a wide band (uncertain) low. This is the regression analogue
-    /// of D10 — the raw <c>Score</c> is the predicted target value, not a confidence, and clamping it to
-    /// [0,1] was meaningless (a predicted 12.5 read as confidence 1.0). The heteroscedastic per-row band
-    /// width now drives escalation. Width is taken relative to the prediction magnitude so the mapping is
-    /// dataset-scale-agnostic (the <c>|Score|</c> normalizer is a heuristic — R-7 proposal to refine);</item>
+    /// (model certain) is high-confidence, a wide band (uncertain) low. The raw <c>Score</c> is the
+    /// predicted target value, not a confidence, and clamping it to [0,1] would be meaningless
+    /// (a predicted 12.5 read as confidence 1.0). The heteroscedastic per-row band width drives
+    /// escalation instead. Width is taken relative to the prediction magnitude so the mapping is
+    /// dataset-scale-agnostic (the <c>|Score|</c> normalizer is a heuristic);</item>
     /// <item>other scalar score (ranking/recommendation, no band) → the score itself;</item>
     /// <item>otherwise → 0.</item>
     /// </list>
@@ -308,7 +307,7 @@ public sealed class HttpMLoopClient : IMLoopClient
                      && TryGetProperty(row, "scoreLowerBound", out var lowerEl)
                      && lowerEl.ValueKind == JsonValueKind.Number && lowerEl.TryGetDouble(out var lower))
             {
-                // ② regression wave (D17): confidence from the conformal band width, not the raw Score.
+                // Regression: confidence from the conformal band width, not the raw Score.
                 double half = Math.Abs(upper - lower) / 2.0;
                 double point = TryGetProperty(row, "score", out var sc)
                                && sc.ValueKind == JsonValueKind.Number && sc.TryGetDouble(out var sv)

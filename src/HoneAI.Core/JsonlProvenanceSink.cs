@@ -12,13 +12,12 @@ namespace HoneAI;
 
 /// <summary>
 /// File-backed <see cref="IProvenanceSink"/> that appends each assessment as one JSON
-/// line (JSONL) — the generic form of U-Vision's <c>FileMetricsStore</c>
-/// (back-derivation §3.5 ②). Append-only and Git-friendly; reasoning layers serialize as
-/// readable names for audit.
+/// line (JSONL). Append-only and Git-friendly; reasoning layers serialize as readable
+/// names for audit.
 /// </summary>
 /// <remarks>
 /// Appends are serialized within this process via an async lock; the sink does not
-/// coordinate across processes (one writer per file is assumed, as in the consumers).
+/// coordinate across processes (one writer per file is assumed).
 /// </remarks>
 public sealed class JsonlProvenanceSink : IProvenanceSink
 {
