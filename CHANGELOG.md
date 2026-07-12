@@ -6,6 +6,11 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-08
+
+First version where all three packages (`HoneAI.Abstractions`, `HoneAI.Core`,
+`HoneAI.Agents`) are published to NuGet with a single shared version.
+
 ### Added
 - ④ `IMLoopClient.ForecastAsync` + `HttpMLoopClient` implementation — horizon-based forecasting
   over MLoop 0.20+'s `POST /predict` forecasting contract (`{"horizon":N}` object body, `{}` =
@@ -13,6 +18,20 @@ All notable changes to HoneAI are documented here. The format follows
   bands) wrapped in `ITracedPrediction` with `ReasoningLayer.AutoMl` provenance; the forecast's
   confidence is its weakest step's (later steps widen their band). A mismatched horizon surfaces
   MLoop's actionable 400 as `MLoopClientException` instead of an empty forecast.
+- `HoneAI.Abstractions` and `HoneAI.Core` NuGet publishing gate opened (`IsPackable=true`) —
+  previously consumed from source only.
+
+### Security
+- Known transitive advisory in `HoneAI.Agents`: `IronHive.Agent` pulls
+  `SQLitePCLRaw.lib.e_sqlite3` ≤ 2.1.11 with
+  [CVE-2025-6965](https://github.com/advisories/GHSA-2m69-gcr7-jv3q) (High, NU1903);
+  no patched version exists upstream. Consumers auditing transitive packages should
+  set `NuGetAuditMode=direct` or `NoWarn NU1903` (see package README).
+
+## [0.1.0] - 2026-07-05
+
+First NuGet release — `HoneAI.Agents` only (`MloopAgent` + `McpMloopToolProvider`,
+relocated from the now-deprecated `mloop-agent` package).
 
 ### Added — Phase 0 (boundary + scaffold)
 

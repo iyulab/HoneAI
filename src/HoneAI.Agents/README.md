@@ -40,6 +40,21 @@ await foreach (var chunk in agent.RunStreamingAsync("이 프로젝트의 데이�
 - **`MloopAgentOptions`** — `ChatClient` + required `SystemPrompt` (persona), optional `ModelId`/`Temperature`/`MaxTokens`.
 - **`IMloopToolProvider`** / **`McpMloopToolProvider`** — connects mloop-mcp as an MCP stdio plugin and exposes its tools (fail-fast if zero tools).
 
+## Known transitive advisory (NU1903)
+
+The `IronHive.Agent` dependency transitively pulls `SQLitePCLRaw.lib.e_sqlite3` ≤ 2.1.11, which
+carries [CVE-2025-6965](https://github.com/advisories/GHSA-2m69-gcr7-jv3q) (High) with **no patched
+version available upstream**. If your project audits transitive packages (`NuGetAuditMode=all`, the
+NuGet default) together with warnings-as-errors, restoring this package will fail with NU1903.
+Mitigate until upstream ships a patch:
+
+```xml
+<PropertyGroup>
+  <NuGetAuditMode>direct</NuGetAuditMode>
+  <!-- or, narrower: <NoWarn>$(NoWarn);NU1903</NoWarn> -->
+</PropertyGroup>
+```
+
 ## License
 
 Apache-2.0

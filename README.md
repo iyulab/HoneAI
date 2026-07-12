@@ -39,15 +39,21 @@ It is built on three ideas:
 `HoneAI.Core` reaches ML backends over transport (HTTP), never as an SDK
 reference — swapping the model server does not change your dependency graph.
 
-`HoneAI.Agents` is published on
-[NuGet](https://www.nuget.org/packages/HoneAI.Agents):
+All three packages are published on NuGet (versions move together):
 
 ```bash
+dotnet add package HoneAI.Abstractions
+dotnet add package HoneAI.Core
 dotnet add package HoneAI.Agents
 ```
 
-`HoneAI.Abstractions` and `HoneAI.Core` are currently consumed from source;
-they will be published to NuGet once the contract surface stabilizes.
+> **Security note for `HoneAI.Agents` consumers**: the `IronHive.Agent` dependency
+> transitively pulls `SQLitePCLRaw.lib.e_sqlite3` ≤ 2.1.11, which carries
+> [CVE-2025-6965](https://github.com/advisories/GHSA-2m69-gcr7-jv3q) (High, NU1903)
+> with **no patched version available upstream**. Projects that audit transitive
+> packages (`NuGetAuditMode=all`, the default) with warnings-as-errors will fail to
+> build; mitigate with `<NuGetAuditMode>direct</NuGetAuditMode>` or a targeted
+> `<NoWarn>NU1903</NoWarn>` until upstream ships a patch.
 
 ## Quick start
 
