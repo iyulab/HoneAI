@@ -6,6 +6,13 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Dependency modernization** — `IronHive.Agent` 0.2.16 → 0.3.0, `Microsoft.Extensions.AI` +
+  `Microsoft.Extensions.AI.Abstractions` 10.6.0 → 10.8.0, `Microsoft.Extensions.Logging.Abstractions`
+  10.0.8 → 10.0.10. IronHive.Agent's pre-1.0 minor bump is compatible with the `HoneAI.Agents`
+  engine wiring — verified by clean build and all 80 tests passing, including `ImportBoundaryTests`
+  (HoneAI.Core remains zero-dependency).
+
 ### Added
 - ④ `IMLoopClient.ForecastAsync` + `HttpMLoopClient` implementation — horizon-based forecasting
   over MLoop 0.20+'s `POST /predict` forecasting contract (`{"horizon":N}` object body, `{}` =
