@@ -7,13 +7,13 @@
          L3 LLM is consumed via Microsoft.Extensions.AI.Abstractions (IChatClient,
          provider-neutral) when Phase 1 implements the router — declared here so the
          contract surface can reference it without re-abstracting providers (§2.3). -->
-    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.6.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.8.0" />
     <!-- HoneAI.Agents (역할 플레이 ②a 승격, mloop-agent에서 재배치): IronHive.Agent 엔진 + M.E.AI
          function-invocation + 로깅. HoneAI.Core는 여전히 zero-dep(ImportBoundaryTests 강제) — 이 핀들은
          HoneAI.Agents 어셈블리에만 소비된다. 버전은 agent 서브모듈과 일치. -->
-    <PackageVersion Include="IronHive.Agent" Version="0.2.16" />
-    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.6.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
+    <PackageVersion Include="IronHive.Agent" Version="0.3.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.8.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     <!-- Test stack (matches agent submodule) -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageVersion Include="xunit" Version="2.9.2" />

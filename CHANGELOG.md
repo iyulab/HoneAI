@@ -6,6 +6,15 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-15
+
+### Changed
+- **Dependency modernization** — `IronHive.Agent` 0.2.16 → 0.3.0, `Microsoft.Extensions.AI` +
+  `Microsoft.Extensions.AI.Abstractions` 10.6.0 → 10.8.0, `Microsoft.Extensions.Logging.Abstractions`
+  10.0.8 → 10.0.10. IronHive.Agent's pre-1.0 minor bump is compatible with the `HoneAI.Agents`
+  engine wiring — verified by clean build and all 80 tests passing, including `ImportBoundaryTests`
+  (HoneAI.Core remains zero-dependency).
+
 ## [0.2.0] - 2026-07-08
 
 First version where all three packages (`HoneAI.Abstractions`, `HoneAI.Core`,
