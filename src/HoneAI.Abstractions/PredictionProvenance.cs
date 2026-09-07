@@ -46,5 +46,15 @@ public sealed record PredictionProvenance
     /// Domain-specific provenance fields (extension point). The middleware never
     /// interprets these; the consumer adapter writes and reads them.
     /// </summary>
+    /// <remarks>
+    /// Values are opaque scalar strings, and stay that way: a flat string map is what
+    /// keeps a persisted provenance line greppable and diffable, and it keeps this
+    /// contract free of any serializer type. A structured value (a list of ids, a set of
+    /// per-layer votes) is therefore encoded by the consumer that writes it, in a form
+    /// that is safe for arbitrary content — JSON being the natural choice. Do not join a
+    /// list with a delimiter: annotation values are consumer-supplied and may contain any
+    /// delimiter you pick, so the join reads back wrong the first time one appears. The
+    /// consumer that writes a key owns decoding it on read.
+    /// </remarks>
     public IReadOnlyDictionary<string, string>? Annotations { get; init; }
 }

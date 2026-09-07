@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -58,6 +59,24 @@ public class ContractFloorCompatibilityTests
             Assert.True(isNullable || isBool,
                 $"{property.Name} is optional but neither nullable nor bool — leaving it out would silently mean a real value.");
         }
+    }
+
+    [Fact]
+    public void PredictionProvenance_AnnotationValuesArePinnedToString()
+    {
+        // The extension point is a flat map of opaque scalar strings, and the README says so.
+        // Widening the value type (to object, or to a serializer's node type) would break every
+        // object initializer already written against it, put a serializer into a contract that
+        // has no dependencies, and cost the read side its round-trip: a value written as one
+        // type would come back as whatever the deserializer chose. A structured value is
+        // encoded by the consumer that writes it.
+        var annotations = typeof(PredictionProvenance).GetProperty(nameof(PredictionProvenance.Annotations));
+        Assert.NotNull(annotations);
+
+        var type = annotations!.PropertyType;
+        Assert.True(type.IsGenericType);
+        Assert.Equal(typeof(IReadOnlyDictionary<,>), type.GetGenericTypeDefinition());
+        Assert.Equal(new[] { typeof(string), typeof(string) }, type.GetGenericArguments());
     }
 
     [Fact]

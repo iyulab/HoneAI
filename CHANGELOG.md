@@ -14,6 +14,12 @@ All notable changes to HoneAI are documented here. The format follows
   `ContractFloorCompatibilityTests`, so a consumer that references only the contracts can rely
   on minor releases not breaking existing object initializers, gate implementations, or
   persisted provenance records.
+- **`Annotations` value semantics are now stated in the contract** — `PredictionProvenance.Annotations`
+  carries opaque scalar strings; a structured value is encoded by the consumer that writes it, in a
+  form safe for arbitrary content, and never by joining with a delimiter (annotation values are
+  consumer-supplied and may contain any delimiter). Documented on the property and in the
+  `HoneAI.Abstractions` README (`## Compatibility`), and pinned by `ContractFloorCompatibilityTests`
+  so the value type cannot widen without that being a deliberate, documented change.
 
 ## [0.2.1] - 2026-07-15
 

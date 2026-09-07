@@ -45,10 +45,16 @@ a custom `IHitlGate` implementation, or a switch over `ReasoningLayer` will not 
 minor release. `ContractFloorCompatibilityTests` in the repository enforces the table above;
 a deliberate exception is a documented breaking change with a CHANGELOG migration note.
 
-Two things the floor does **not** promise: `Confidence` is expected in `[0.0, 1.0]` but not
-validated by the contract (the producing layer is responsible), and the in-process
+Three things the floor does **not** promise: `Confidence` is expected in `[0.0, 1.0]` but not
+validated by the contract (the producing layer is responsible); the in-process
 `InMemoryHitlGate` in `HoneAI.Core` is single-process by design — a review that must
-survive a process or request boundary needs an `IHitlGate` over your own store.
+survive a process or request boundary needs an `IHitlGate` over your own store; and
+`PredictionProvenance.Annotations` carries **opaque scalar strings**, which the middleware
+never parses. A structured annotation value is encoded by the consumer that writes it, in a
+form safe for arbitrary content — JSON being the natural choice. Joining a list with a
+delimiter is not: annotation values are consumer-supplied and may contain whichever
+delimiter you pick. The map stays flat so a persisted provenance line stays greppable and
+diffable, and so this contract carries no serializer type.
 
 ## License
 
