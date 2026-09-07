@@ -6,6 +6,15 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Contract-floor compatibility policy** — `ITracedPrediction<T>`, `PredictionProvenance`,
+  `IHitlGate` and `ReasoningLayer` are now declared additive-only within 0.x (no new `required`
+  member, no new abstract interface member, no renumbered enum value). Documented in the
+  `HoneAI.Abstractions` README (`## Compatibility`) and enforced by
+  `ContractFloorCompatibilityTests`, so a consumer that references only the contracts can rely
+  on minor releases not breaking existing object initializers, gate implementations, or
+  persisted provenance records.
+
 ## [0.2.1] - 2026-07-15
 
 ### Changed

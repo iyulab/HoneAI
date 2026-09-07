@@ -130,8 +130,15 @@ warnings-as-errors.
 
 ## Status
 
-Early development (0.x). The contract surface in `HoneAI.Abstractions` is
-stabilizing; APIs may still change between minor versions.
+Early development (0.x). APIs may still change between minor versions, with one
+carve-out: the **contract floor** — `ITracedPrediction<T>`, `PredictionProvenance`,
+`IHitlGate`, `ReasoningLayer` — is **additive-only** within 0.x. Those four types may
+gain a nullable property, an enum value, or a default interface method, but not a new
+`required` member, a new abstract interface member, or a renumbered enum value.
+`ContractFloorCompatibilityTests` enforces this; a deliberate exception ships with a
+CHANGELOG migration note. See the
+[`HoneAI.Abstractions` README](src/HoneAI.Abstractions/README.md#compatibility) for the
+consumer-side view.
 
 ## License
 
