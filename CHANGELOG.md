@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-09
+
 ### Added
 - **Contract-floor compatibility policy** — `ITracedPrediction<T>`, `PredictionProvenance`,
   `IHitlGate` and `ReasoningLayer` are now declared additive-only within 0.x (no new `required`
