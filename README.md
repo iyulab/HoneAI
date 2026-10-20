@@ -8,32 +8,37 @@
 > Provenance-first predictions for .NET — combine verified ML models with LLM
 > reasoning, and make every answer carry its source.
 
-HoneAI is a small .NET library for building prediction pipelines that pair
-machine-learning models with LLMs **without losing track of which one answered,
-how confident it was, and whether a human should review it**. It is aimed at
-value-prediction workloads such as demand forecasting, predictive maintenance,
-and quality inspection.
+HoneAI is a small .NET library for coordinating **tiers of judges** — ML models,
+memories and rules, LLMs and VLMs, people — so that a cheap tier answers what it has
+earned the right to answer, everything else goes up, and **every answer says which
+tier gave it and why**. It is aimed at classification and value-prediction workloads
+such as quality inspection, log triage and predictive maintenance.
 
-It is built on three ideas:
+It is built on four ideas:
 
-1. **Layered reasoning, cheap-first** — route a query up a ladder of reasoning
-   layers, `Theory (L0) → Statistics (L1) → AutoML (L2) → LLM (L3)`, escalating
-   to a costlier layer only when the cheaper one is not confident enough.
-2. **Prediction provenance** — every prediction carries a
-   `PredictionProvenance` stamp: which layer answered, with what confidence, on
-   what grounds, and whether layers disagreed. *A prediction without provenance
-   must not compile* — the `ITracedPrediction<T>` type makes the stamp
+1. **Tiers, cheapest first, trusted per slice** — a decision climbs a ladder of
+   tiers. A lower tier settles only where it has earned that in the input's slice
+   (shadow → active → stable, carried in a policy snapshot), and only with an
+   answer it may settle; answers that must never be missed always go to the top.
+   Confidence is not a licence to settle.
+2. **Blind rechecks with recorded odds** — a share of the decisions a lower tier
+   settles is drawn, deterministically and with its probability π recorded
+   before anyone above answers, to be judged again by a tier above that never sees
+   the lower answer. That is what lets trust be measured instead of assumed.
+3. **Prediction provenance** — every prediction carries a `PredictionProvenance`
+   stamp: which tier answered, in which slice and state, under which policy, what
+   the tiers below it did, and whether it was drawn. *A prediction without
+   provenance must not compile* — `ITracedPrediction<T>` makes the stamp
    structurally required.
-3. **Human-in-the-loop gates** — low-confidence or disagreeing answers are
-   flagged `RequiresReview` and can be parked at an async approval gate until a
-   human releases them.
+4. **People are a tier** — the top of the ladder is usually a person, reached
+   through an async approval gate.
 
 ## Packages
 
 | Package | What it contains | Dependencies |
 |---|---|---|
-| `HoneAI.Abstractions` | Contracts only: `ReasoningLayer`, `PredictionProvenance`, `ITracedPrediction<T>`, `IReasoningRouter<,>`, `IMLoopClient`, `IProvenanceSink`, `IHitlGate`, `IModelLifecycle`, `AgentRole` | none |
-| `HoneAI.Core` | Reference implementations: `DualCheckRouter<,>`, `HttpMLoopClient`, `JsonlProvenanceSink`, `InMemoryHitlGate`, `ModelLifecycle`, `RolePersona` | none (third-party-free) |
+| `HoneAI.Abstractions` | Contracts only: `IJudge<,>`, `Tier`, `JudgeKind`, `ISettlementPolicy<>`, `ISliceKey<>`, `PolicySnapshot`, `PredictionProvenance`, `ITracedPrediction<T>`, `IReasoningRouter<,>`, `IMLoopClient`, `IProvenanceSink`, `IHitlGate`, `IModelLifecycle`, `AgentRole` | none |
+| `HoneAI.Core` | Reference implementations: `TieredRouter<,>`, `RecheckDraw`, `MemoryJudge<,>`, `SettlementPolicy`, `HttpMLoopClient`, `JsonlProvenanceSink`, `InMemoryHitlGate`, `ModelLifecycle`, `RolePersona` | none (third-party-free) |
 | `HoneAI.Agents` | An MLOps agent loop that drives the [MLoop](https://github.com/iyulab/MLoop) CLI through [mloop-mcp](https://github.com/iyulab/mloop-mcp) tools, using any `Microsoft.Extensions.AI` `IChatClient` | IronHive.Agent, ModelContextProtocol |
 
 `HoneAI.Core` reaches ML backends over transport (HTTP), never as an SDK
@@ -57,40 +62,50 @@ dotnet add package HoneAI.Agents
 
 ## Quick start
 
-### Confidence-gated escalation (`DualCheckRouter`)
+### A ladder of tiers (`TieredRouter`)
 
-Run the cheap layer first; escalate to the expensive one only when confidence
-falls short; flag disagreement for human review:
+Wrap each backend as a judge, say which answers a tier may settle, and route:
 
 ```csharp
 using HoneAI;
+using HoneAI.Routing;
 
-var router = new DualCheckRouter<SensorWindow, string>(
-    lower:    (query, ct)           => PredictWithMlAsync(query, ct),        // e.g. an AutoML model
-    escalate: (query, mlResult, ct) => JudgeWithLlmAsync(query, mlResult, ct), // e.g. an IChatClient call
-    confidenceThreshold: 0.85);
+var model    = Judge.From<LogLine, string>(
+    new Tier { Id = "edge-model", Kind = JudgeKind.Ml, Version = "m-14", CostRank = 1 },
+    async (line, ctx, ct) => await ClassifyWithModelAsync(line, ct));   // answer, or Abstain("...")
+var teacher  = Judge.From<LogLine, string>(
+    new Tier { Id = "teacher", Kind = JudgeKind.Llm, Version = "prompt-7", CostRank = 2 },
+    async (line, ctx, ct) => await ClassifyWithLlmAsync(line, ct));
+var reviewer = Judge.From<LogLine, string>(
+    new Tier { Id = "reviewer", Kind = JudgeKind.Human, Version = "1", CostRank = 3 },
+    async (line, ctx, ct) => await AskAPersonAsync(line, ct));
 
-ITracedPrediction<string> prediction = await router.RouteAsync(window);
+var router = new TieredRouter<LogLine, string>(
+    new[] { model, teacher, reviewer },
+    SettlementPolicy.Categorical(settleable: new[] { "normal", "low" }, mustCatch: new[] { "high" }),
+    SliceKey.From<LogLine>("template-v1", line => line.TemplateKey),
+    decisionIdOf: line => line.Id,
+    snapshot: () => currentPolicySnapshot);   // null until a policy is issued: every slice in shadow
+
+ITracedPrediction<string> prediction = await router.RouteAsync(line);
 
 Console.WriteLine(prediction.Value);
-Console.WriteLine(prediction.Provenance.SourceLayer);   // AutoMl (no escalation) or Frontier
-Console.WriteLine(prediction.Provenance.Confidence);
-
-if (prediction.Provenance.RequiresReview)
-{
-    // layers disagreed, or confidence stayed low — send to a human
-}
+Console.WriteLine(prediction.Provenance.TierId);         // which tier settled it
+Console.WriteLine(prediction.Provenance.Sample?.Drawn);  // drawn for a blind recheck?
 ```
 
-Both layers are plain delegates, so the router depends on neither an ML SDK nor
-an LLM SDK — wire in whatever backends you use.
+A tier settles only where the snapshot says it is `Active` or `Stable` for the
+input's slice; in `Shadow` its answer is recorded (`DecideAsync` returns every
+tier's verdict) and the decision goes up. A judge that throws or times out has
+abstained. When the snapshot's hard expiry has passed, lower tiers go up; if
+nothing above answers, the answer is used and marked `Unverified`.
 
 ### Talking to an MLoop model server (`HttpMLoopClient`)
 
 [`MLoop`](https://github.com/iyulab/MLoop) is an open-source AutoML CLI/server
 for ML.NET. `HttpMLoopClient` implements `IMLoopClient` over its REST API
 (`/predict`, `/train`, `/jobs/{id}`, `/promote`, `/info`), returning
-predictions already stamped with `ReasoningLayer.AutoMl` provenance.
+predictions already stamped with `JudgeKind.Ml` provenance — wrap it in a judge to make it a tier.
 
 ### Audit trail (`IProvenanceSink`)
 
@@ -113,8 +128,8 @@ composed from the primitives above.
 
 `AgentRole` names the seats an agent can occupy when reasoning about a
 prediction — `Translator`, `Orchestrator`, `DomainExpert`, `Inspector`,
-`Operator`, `Arbiter` — and is stamped onto provenance alongside the layer, so
-an audit trail records not just *which layer* but *which role* produced an
+`Operator`, `Arbiter` — and is stamped onto provenance alongside the judge kind,
+so an audit trail records not just *which tier* but *which role* produced an
 answer. `HoneAI.Agents` hosts an agent loop over MLoop's MCP tools; see
 [`src/HoneAI.Agents/README.md`](src/HoneAI.Agents/README.md).
 
@@ -132,7 +147,7 @@ warnings-as-errors.
 
 Early development (0.x). APIs may still change between minor versions, with one
 carve-out: the **contract floor** — `ITracedPrediction<T>`, `PredictionProvenance`,
-`IHitlGate`, `ReasoningLayer` — is **additive-only** within 0.x. Those four types may
+`IHitlGate`, `IJudge<,>`, `JudgeKind` — is **additive-only** within 0.x. Those types may
 gain a nullable property, an enum value, or a default interface method, but not a new
 `required` member, a new abstract interface member, or a renumbered enum value.
 `ContractFloorCompatibilityTests` enforces this; a deliberate exception ships with a

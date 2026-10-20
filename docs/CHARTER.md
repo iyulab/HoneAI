@@ -52,9 +52,9 @@ an adapter on the consumer's side or HoneAI's — never by the engine depending 
 
 ## 4. Direction (nearer = more concrete)
 
-- **H1** — judge, tier and kind contracts, provenance v2, N-tier router, deterministic re-check
-  sampler that records probabilities, policy snapshot reader. Replaces the two-tier
-  `DualCheckRouter` and the fixed four-value `ReasoningLayer` (a documented breaking change).
+- **H1** (0.3.0) — judge, tier and kind contracts, provenance v2, N-tier router (`TieredRouter`),
+  deterministic re-check sampler that records probabilities, policy snapshot reader. Replaced the
+  two-tier `DualCheckRouter` and the fixed four-value `ReasoningLayer` (a documented breaking change).
 - **H2** — re-check queue, trust ledger (inverse-probability agreement, conditional must-catch
   miss bounds, recent-window promise), selection by meaning × information, teacher qualification.
 - **H3** — rate controller and tier × slice lifecycle (shadow → active → stable, demotion),

@@ -23,8 +23,23 @@ All notable changes to HoneAI are documented here. The format follows
   drawn), `HadHint`, `Unverified`.
 - **`ReviewDecision` takes a `ReviewerKey`** — a pseudonymous key, so trust can be measured per
   reviewer. Never a name.
-- **`DualCheckRouter` is removed.** Its replacement, a router over any number of tiers, follows in
-  this release.
+- **`DualCheckRouter` is removed**, replaced by **`TieredRouter<TInput, TValue>`** (`HoneAI.Routing`):
+  any number of tiers ordered by cost; a tier below the top settles only where the policy snapshot
+  puts it in `Active` or `Stable` for the input's slice and only an answer the settlement policy
+  lets it settle — confidence is not a licence; must-catch answers always reach the top; a decision
+  that goes up carries no lower answer, and hints travel only to a tier that accepts them; a judge
+  that throws or times out has abstained; after the snapshot's hard expiry lower tiers go up and,
+  if nothing above answers, the held answer is used and marked `Unverified`; a snapshot computed
+  under another slice-key definition does not apply. `DecideAsync` returns every tier's verdict
+  (what a shadow tier would have answered), and `DecisionNotSettledException` carries the path when
+  no tier settles. Migration: wrap the two delegates as judges (`Judge.From`) and express the
+  confidence threshold, if you keep one, as the lower judge abstaining below it.
+- **Recheck draw** (`RecheckDraw`) — every decision a lower tier settles is drawn at π (the largest of
+  the entry's knob rates, never below `TieredRouterOptions.MinimumSampleRate`, default 0.01) from
+  SHA-256 of the decision id and snapshot version, and recorded in `Provenance.Sample` before any
+  tier above answers — deterministic across sites and retries.
+- **Reference judges**: `Judge.From`, `Judge.Constant`, `MemoryJudge<,>` (`System1`). `JudgeVerdict`
+  can carry hints for a tier above.
 - `ModelLifecycle` records the review step as `JudgeKind.Human` (it was recorded as the LLM layer).
 - **Migration**: `ReasoningLayer.AutoMl` → `JudgeKind.Ml`, `Frontier` → `Llm`, `Theory` and
   `Statistics` keep their names (numbers 0–3 unchanged). `new PredictionProvenance { SourceLayer = x,

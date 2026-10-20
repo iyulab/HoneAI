@@ -73,11 +73,18 @@ public sealed record JudgeVerdict<TValue>
     /// <summary>Why — the grounds of the answer, or the reason for abstaining.</summary>
     public string? Rationale { get; private init; }
 
+    /// <summary>
+    /// What this judge can pass up to a tier that accepts hints when the decision goes up — what it
+    /// narrowed the answer to, for instance. Never its answer.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Hints { get; private init; }
+
     /// <summary>An answer.</summary>
-    public static JudgeVerdict<TValue> Answer(TValue value, double? confidence = null, string? rationale = null)
-        => new() { Answered = true, Value = value, Confidence = confidence, Rationale = rationale };
+    public static JudgeVerdict<TValue> Answer(
+        TValue value, double? confidence = null, string? rationale = null, IReadOnlyDictionary<string, string>? hints = null)
+        => new() { Answered = true, Value = value, Confidence = confidence, Rationale = rationale, Hints = hints };
 
     /// <summary>An abstention, with the reason.</summary>
-    public static JudgeVerdict<TValue> Abstain(string reason)
-        => new() { Answered = false, Rationale = reason };
+    public static JudgeVerdict<TValue> Abstain(string reason, IReadOnlyDictionary<string, string>? hints = null)
+        => new() { Answered = false, Rationale = reason, Hints = hints };
 }
