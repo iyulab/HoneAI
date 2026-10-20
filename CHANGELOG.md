@@ -6,6 +6,12 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Charter revised** (`docs/CHARTER.md`) — HoneAI's essence is now stated as coordinating tiers
+  of judges (ML, memory/lightweight judges, LLM/VLM, people) with measured trust and provenance,
+  for values and categories alike, rather than value prediction alone. The direction section lists
+  the stages that will replace `DualCheckRouter` and `ReasoningLayer`; no code changes in this entry.
+
 ## [0.2.2] - 2026-09-09
 
 ### Added
