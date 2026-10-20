@@ -277,3 +277,108 @@ public class RecheckDrawTests
         Assert.InRange(values.Count(v => v < 0.1) / (double)n, 0.093, 0.107);
     }
 }
+
+public class RecheckAndSnapshotTests
+{
+    private sealed record Item(string Id, string Slice);
+
+    private static readonly Tier Ml = new() { Id = "edge-ml", Kind = JudgeKind.Ml, Version = "1", CostRank = 1 };
+    private static readonly Tier Teacher = new() { Id = "teacher", Kind = JudgeKind.Llm, Version = "p-3", CostRank = 2, AcceptsHints = true };
+
+    [Fact]
+    public async Task ARecheck_IsBlind_AndSettlesNothing()
+    {
+        JudgeContext? seen = null;
+        var teacher = Judge.From<Item, string>(Teacher, (_, c, _) => { seen = c; return ValueTask.FromResult(JudgeVerdict<string>.Answer("LOW")); });
+        var lower = Judge.From<Item, string>(Ml, (_, _, _) => ValueTask.FromResult(JudgeVerdict<string>.Abstain("x", new Dictionary<string, string> { ["path"] = "a" })));
+        var router = new TieredRouter<Item, string>(new[] { lower, teacher }, SettlementPolicy.Categorical(new[] { "OK" }, Array.Empty<string>()),
+            SliceKey.From<Item>("k", i => i.Slice), i => i.Id, () => null);
+
+        var result = await router.RecheckAsync(new Item("d1", "s9"), "d1", "teacher");
+
+        Assert.True(seen!.IsRecheck);
+        Assert.Null(seen.Hints);
+        Assert.Null(seen.AbstainQuantile);
+        Assert.Equal("s9", seen.SliceKey);
+        Assert.Equal("LOW", result.Verdict.Value);
+        Assert.Equal("p-3", result.Tier.Version);
+    }
+
+    [Fact]
+    public async Task ARecheckThatFails_IsAResult_NotAnError()
+    {
+        var teacher = Judge.From<Item, string>(Teacher, (_, _, _) => throw new TimeoutException("upstream saturated"));
+        var router = new TieredRouter<Item, string>(new[] { Judge.Constant<Item, string>(Ml, "OK"), teacher },
+            SettlementPolicy.Categorical(new[] { "OK" }, Array.Empty<string>()), SliceKey.Single<Item>(), i => i.Id, () => null);
+
+        var result = await router.RecheckAsync(new Item("d2", "s"), "d2", "teacher");
+
+        Assert.False(result.Verdict.Answered);
+        Assert.Contains("upstream saturated", result.Verdict.Rationale);
+    }
+
+    private static PolicySnapshot Snapshot(params PolicyEntry[] entries) => new()
+    {
+        Version = "snap-4",
+        IssuedAt = new DateTimeOffset(2026, 10, 21, 18, 0, 0, TimeSpan.FromHours(9)),
+        SoftExpiresAt = new DateTimeOffset(2026, 10, 22, 9, 0, 0, TimeSpan.Zero),
+        HardExpiresAt = new DateTimeOffset(2026, 10, 23, 9, 0, 0, TimeSpan.Zero),
+        SliceKeyVersion = "template-v1",
+        Entries = entries,
+    };
+
+    private static readonly PolicyEntry A = new()
+    {
+        TierId = "edge-ml", SliceKey = "t-1", State = TrustState.Active,
+        SampleRates = new Dictionary<string, double> { ["uniform"] = 0.05, ["miss"] = 0.31 },
+        AbstainQuantile = 0.05, RateSetBy = "miss",
+    };
+    private static readonly PolicyEntry B = new() { TierId = "edge-ml", SliceKey = "t-0", State = TrustState.Shadow };
+
+    [Fact]
+    public void TheSnapshotRoundTrips()
+    {
+        var original = Snapshot(A, B);
+
+        var read = PolicySnapshotJson.Deserialize(PolicySnapshotJson.Serialize(original));
+
+        Assert.Equal(original.Version, read.Version);
+        Assert.Equal(original.IssuedAt, read.IssuedAt);
+        Assert.Equal(original.HardExpiresAt, read.HardExpiresAt);
+        Assert.Equal("template-v1", read.SliceKeyVersion);
+        var a = read.Entries.Single(e => e.SliceKey == "t-1");
+        Assert.Equal(TrustState.Active, a.State);
+        Assert.Equal(0.31, a.SampleRates!["miss"]);
+        Assert.Equal(0.05, a.AbstainQuantile);
+        Assert.Equal("miss", a.RateSetBy);
+        Assert.Null(read.Entries.Single(e => e.SliceKey == "t-0").SampleRates);
+    }
+
+    [Fact]
+    public void TheHashNamesTheContent_NotTheOrderItWasBuiltIn()
+    {
+        var reordered = Snapshot(B, A with { SampleRates = new Dictionary<string, double> { ["miss"] = 0.31, ["uniform"] = 0.05 } });
+        var sameInstantOtherZone = Snapshot(A, B) with { IssuedAt = new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero) };
+
+        Assert.Equal(PolicySnapshotJson.ContentHash(Snapshot(A, B)), PolicySnapshotJson.ContentHash(reordered));
+        Assert.Equal(PolicySnapshotJson.ContentHash(Snapshot(A, B)), PolicySnapshotJson.ContentHash(sameInstantOtherZone));
+        Assert.NotEqual(PolicySnapshotJson.ContentHash(Snapshot(A, B)), PolicySnapshotJson.ContentHash(Snapshot(A, B with { State = TrustState.Active })));
+        Assert.Matches("^[0-9a-f]{64}$", PolicySnapshotJson.ContentHash(Snapshot(A)));
+    }
+
+    [Fact]
+    public async Task ASnapshotReadFromJson_RoutesLikeTheOriginal()
+    {
+        var read = PolicySnapshotJson.Deserialize(PolicySnapshotJson.Serialize(Snapshot(A, B)));
+        var router = new TieredRouter<Item, string>(
+            new[] { Judge.Constant<Item, string>(Ml, "OK"), Judge.Constant<Item, string>(Teacher, "OK") },
+            SettlementPolicy.Categorical(new[] { "OK" }, Array.Empty<string>()),
+            SliceKey.From<Item>("template-v1", i => i.Slice), i => i.Id, () => read,
+            new TieredRouterOptions { Clock = () => new DateTimeOffset(2026, 10, 21, 12, 0, 0, TimeSpan.Zero) });
+
+        var settled = (await router.RouteAsync(new Item("d3", "t-1"))).Provenance;
+        Assert.Equal("edge-ml", settled.TierId);
+        Assert.Equal(0.31, settled.Sample!.Probability);
+        Assert.Equal("miss", settled.Sample.Knob);
+    }
+}

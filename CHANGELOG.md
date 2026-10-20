@@ -40,6 +40,12 @@ All notable changes to HoneAI are documented here. The format follows
   tier above answers — deterministic across sites and retries.
 - **Reference judges**: `Judge.From`, `Judge.Constant`, `MemoryJudge<,>` (`System1`). `JudgeVerdict`
   can carry hints for a tier above.
+- **Blind recheck** — `TieredRouter.RecheckAsync(input, decisionId, tierId)` judges a settled decision
+  again at the named tier with `IsRecheck` set and no hints, lower answer or abstain quantile, and
+  settles nothing; a recheck that throws or times out comes back as an abstained verdict ("drawn but
+  not judged"), not an error.
+- **`PolicySnapshotJson`** — canonical serialization of a `PolicySnapshot` (one byte sequence per
+  content) and its SHA-256 `ContentHash`; `Deserialize` reads it back.
 - `ModelLifecycle` records the review step as `JudgeKind.Human` (it was recorded as the LLM layer).
 - **Migration**: `ReasoningLayer.AutoMl` → `JudgeKind.Ml`, `Frontier` → `Llm`, `Theory` and
   `Statistics` keep their names (numbers 0–3 unchanged). `new PredictionProvenance { SourceLayer = x,

@@ -170,6 +170,24 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
         throw new DecisionNotSettledException(decisionId, steps.Select(ToTierStep).ToArray());
     }
 
+    /// <summary>
+    /// Judge an already settled decision again at <paramref name="tierId"/>, blind: the tier is told it
+    /// is a recheck and given the input only — no hints, no lower answer, no abstain quantile (a
+    /// recheck that skips the hard cases would bias every count built on it). Nothing is settled or
+    /// drawn; the verdict is for the trust ledger. A judge that throws or times out has abstained,
+    /// and an abstained recheck is still a result: "drawn but not judged".
+    /// </summary>
+    public async Task<RecheckResult<TValue>> RecheckAsync(
+        TInput input, string decisionId, string tierId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(decisionId);
+        var judge = _judges.FirstOrDefault(j => j.Tier.Id == tierId)
+            ?? throw new ArgumentException($"No tier '{tierId}' on this ladder.", nameof(tierId));
+        var context = new JudgeContext { DecisionId = decisionId, SliceKey = _sliceKey.KeyOf(input), IsRecheck = true };
+        var verdict = await JudgeAsync(judge, input, context, cancellationToken).ConfigureAwait(false);
+        return new RecheckResult<TValue>(decisionId, judge.Tier, verdict, _options.Clock());
+    }
+
     private RoutedDecision<TValue> Settle(
         string decisionId, string slice, PolicySnapshot? snapshot, List<RoutedStep<TValue>> steps,
         RoutedStep<TValue> settled, SampleDraw? sample, bool unverified)
@@ -274,6 +292,13 @@ public sealed record RoutedDecision<TValue>(
 /// <param name="HadHint">Whether hints were passed to it.</param>
 public sealed record RoutedStep<TValue>(
     Tier Tier, JudgeVerdict<TValue> Verdict, StepOutcome Outcome, string? Detail, TrustState? State, bool HadHint);
+
+/// <summary>A blind recheck of a settled decision.</summary>
+/// <param name="DecisionId">The decision rechecked.</param>
+/// <param name="Tier">The tier that rechecked it, with its version at the time.</param>
+/// <param name="Verdict">Its answer, or why it could not judge.</param>
+/// <param name="JudgedAt">When.</param>
+public sealed record RecheckResult<TValue>(string DecisionId, Tier Tier, JudgeVerdict<TValue> Verdict, DateTimeOffset JudgedAt);
 
 /// <summary>No tier settled a decision — every tier abstained, or held its answer back.</summary>
 public sealed class DecisionNotSettledException : Exception

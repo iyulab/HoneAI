@@ -11,6 +11,11 @@ contracts. No third-party dependencies.
   for the input's slice, and only an answer the settlement policy lets it settle; otherwise the
   decision goes up without the lower answer. Every lower-tier settlement is drawn for a recheck at π.
 - **`RecheckDraw`** — the deterministic draw: SHA-256 of the decision id and snapshot version → [0, 1) < π.
+  `TieredRouter.RecheckAsync` judges a drawn decision again at a tier above, blind — told it is a
+  recheck, given no hints, no lower answer and no abstain quantile — and settles nothing.
+- **`PolicySnapshotJson`** — the canonical JSON of a policy snapshot (entries by tier and slice, rates
+  by knob, times in UTC) and its SHA-256 content hash, for carrying a snapshot to a judging site and
+  checking it is the one issued. Signing is the consumer's.
 - **`Judge.From` / `Judge.Constant` / `MemoryJudge<,>`** — reference judges: a function, a constant,
   a memory of settled answers (`System1`).
 - **`SettlementPolicy`** / **`SliceKey`** — categorical, tolerance and specification-limit policies;
