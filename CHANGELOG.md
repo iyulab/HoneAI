@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-21
+
 ### Changed — breaking
 - **Reasoning layers became judges and tiers.** `ReasoningLayer` is replaced by `JudgeKind`
   (`Theory`, `Statistics`, `Ml`, `Llm`, `System1`, `Vlm`, `Human`) and `Tier` — a judge of some kind
