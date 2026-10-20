@@ -9,10 +9,10 @@ using Xunit;
 namespace HoneAI.Tests;
 
 /// <summary>
-/// Enforces the additive-only compatibility policy for the contract floor — the four
+/// Enforces the additive-only compatibility policy for the contract floor — the
 /// types a consumer can take on their own, with no other HoneAI package:
 /// <see cref="ITracedPrediction{T}"/>, <see cref="PredictionProvenance"/>,
-/// <see cref="IHitlGate"/>, <see cref="ReasoningLayer"/>. Within 0.x these may grow
+/// <see cref="IHitlGate"/>, <see cref="IJudge{TInput,TValue}"/>, <see cref="JudgeKind"/>. Within 0.x these may grow
 /// (a nullable property, an enum value, a default interface method) but must not change
 /// in a way that breaks code already written against them.
 /// </summary>
@@ -29,8 +29,9 @@ public class ContractFloorCompatibilityTests
     [Fact]
     public void PredictionProvenance_RequiredMembersArePinned()
     {
-        // Only these two must be supplied by an object initializer. Every other member is
-        // optional so a provenance record written today still compiles tomorrow.
+        // Only the kind must be supplied by an object initializer. Every other member is optional
+        // so a provenance record written today still compiles tomorrow. (0.3.0 re-declared this
+        // floor: SourceLayer + Confidence became Kind, with Confidence optional.)
         var required = typeof(PredictionProvenance)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.GetCustomAttribute<RequiredMemberAttribute>() is not null)
@@ -38,14 +39,14 @@ public class ContractFloorCompatibilityTests
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "Confidence", "SourceLayer" }, required);
+        Assert.Equal(new[] { "Kind" }, required);
     }
 
     [Fact]
     public void PredictionProvenance_OptionalMembersAreNullableOrDefaultable()
     {
         // A non-required property must be safe to leave out: either a reference/nullable
-        // type, or a value type whose default is a meaningful "not set" (bool RequiresReview).
+        // type, or a value type whose default is a meaningful "not set" (bool Unverified).
         var optional = typeof(PredictionProvenance)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.GetCustomAttribute<RequiredMemberAttribute>() is null);
@@ -111,13 +112,31 @@ public class ContractFloorCompatibilityTests
     }
 
     [Fact]
-    public void ReasoningLayer_ExistingValuesKeepTheirNumbers()
+    public void JudgeKind_ExistingValuesKeepTheirNumbers()
     {
-        // Provenance records are persisted (JSONL sink); the numbers behind these names are
-        // part of the on-disk contract. New layers may be added, these may not move.
-        Assert.Equal(0, (int)ReasoningLayer.Theory);
-        Assert.Equal(1, (int)ReasoningLayer.Statistics);
-        Assert.Equal(2, (int)ReasoningLayer.AutoMl);
-        Assert.Equal(3, (int)ReasoningLayer.Frontier);
+        // Provenance records are persisted (JSONL sink); the numbers behind these names are part
+        // of the on-disk contract. New kinds may be added, these may not move. The first four are
+        // the numbers of the 0.2.x layers they replaced.
+        Assert.Equal(0, (int)JudgeKind.Theory);
+        Assert.Equal(1, (int)JudgeKind.Statistics);
+        Assert.Equal(2, (int)JudgeKind.Ml);
+        Assert.Equal(3, (int)JudgeKind.Llm);
+        Assert.Equal(4, (int)JudgeKind.System1);
+        Assert.Equal(5, (int)JudgeKind.Vlm);
+        Assert.Equal(6, (int)JudgeKind.Human);
+    }
+
+    [Fact]
+    public void IJudge_AbstractMembersArePinned()
+    {
+        // A consumer that wraps its own engine as a judge must keep compiling.
+        var type = typeof(IJudge<,>);
+        var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .Where(m => m.IsAbstract)
+            .Select(m => m.Name)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "JudgeAsync", "get_Tier" }, methods);
     }
 }

@@ -58,7 +58,7 @@ public sealed class HttpMLoopClient : IMLoopClient
         var outputs = ToObjectMap(row);
         var provenance = new PredictionProvenance
         {
-            SourceLayer = ReasoningLayer.AutoMl,
+            Kind = JudgeKind.Ml,
             Confidence = ConfidenceOf(row),
             Rationale = root.TryGetProperty("task", out var t) && t.ValueKind == JsonValueKind.String
                 ? $"mloop:{t.GetString()}"
@@ -109,7 +109,7 @@ public sealed class HttpMLoopClient : IMLoopClient
 
         var provenance = new PredictionProvenance
         {
-            SourceLayer = ReasoningLayer.AutoMl,
+            Kind = JudgeKind.Ml,
             // A forecast is one multi-step answer; its confidence is its weakest step's —
             // later steps widen their band, and the chain is only as strong as that.
             Confidence = minConfidence,

@@ -6,6 +6,38 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed — breaking
+- **Reasoning layers became judges and tiers.** `ReasoningLayer` is replaced by `JudgeKind`
+  (`Theory`, `Statistics`, `Ml`, `Llm`, `System1`, `Vlm`, `Human`) and `Tier` — a judge of some kind
+  at a site, in a version, with a place in the cost order — so two judges of one kind at different
+  sites, or a memory-backed judge, can be told apart. New contracts: `IJudge<TInput, TValue>` (answers
+  or abstains, given the input only), `ISettlementPolicy<TValue>` (which answers a tier may settle,
+  which must always go up, when two answers agree — predicates, so measured values fit), `ISliceKey<TInput>`,
+  and the `PolicySnapshot` read model (`TrustState` per tier and slice, recheck probabilities, soft
+  and hard expiry). Core adds `SettlementPolicy.Categorical` / `Tolerance` / `SameSideOf` and `SliceKey`.
+- **`PredictionProvenance` v2.** `SourceLayer` → `Kind` (the only `required` member);
+  `Confidence` is now optional (`double?`) — a person or a memory may report none. `Agreement` and
+  `RequiresReview` are replaced by `Path`, the tiers a decision passed through and what each did
+  (`Abstained`, `Escalated`, `Shadowed`, `Settled`). Added: `TierId`, `TierVersion`, `SliceKey`,
+  `TrustState`, `SnapshotVersion`, `Sample` (the recheck draw: π, the knob that set it, whether it was
+  drawn), `HadHint`, `Unverified`.
+- **`ReviewDecision` takes a `ReviewerKey`** — a pseudonymous key, so trust can be measured per
+  reviewer. Never a name.
+- **`DualCheckRouter` is removed.** Its replacement, a router over any number of tiers, follows in
+  this release.
+- `ModelLifecycle` records the review step as `JudgeKind.Human` (it was recorded as the LLM layer).
+- **Migration**: `ReasoningLayer.AutoMl` → `JudgeKind.Ml`, `Frontier` → `Llm`, `Theory` and
+  `Statistics` keep their names (numbers 0–3 unchanged). `new PredictionProvenance { SourceLayer = x,
+  Confidence = c }` → `{ Kind = x, Confidence = c }`. Read `Confidence` as nullable. Where you read
+  `RequiresReview`, read whether the decision was settled by a person or reached the top of the path
+  unsettled; where you read `Agreement`, compare the answers you recorded.
+- **Persisted provenance still reads.** `JsonlProvenanceSink` maps a 0.2.x line's `sourceLayer` to
+  `kind` (`AutoMl` → `Ml`, `Frontier` → `Llm`) and keeps its `agreement` / `requiresReview` as
+  `legacy:agreement` / `legacy:requiresReview` annotations — an audit trail is never rewritten.
+- The contract floor is re-declared for the new shape (`HoneAI.Abstractions` README, «Compatibility»;
+  `ContractFloorCompatibilityTests`): `PredictionProvenance` requires only `Kind`, `IJudge` has two
+  abstract members, `JudgeKind` numbers are pinned.
+
 ### Changed
 - **Charter revised** (`docs/CHARTER.md`) — HoneAI's essence is now stated as coordinating tiers
   of judges (ML, memory/lightweight judges, LLM/VLM, people) with measured trust and provenance,

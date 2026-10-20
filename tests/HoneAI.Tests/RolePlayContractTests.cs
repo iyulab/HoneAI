@@ -53,18 +53,18 @@ public class RolePlayContractTests
     }
 
     [Fact]
-    public void Provenance_StampsRoleAlongsideLayer()
+    public void Provenance_StampsRoleAlongsideKind()
     {
-        // "어느 레이어의 어느 역할이 판정" — role and layer travel together.
+        // Role and judge kind travel together.
         var p = new PredictionProvenance
         {
-            SourceLayer = ReasoningLayer.Frontier,
+            Kind = JudgeKind.Llm,
             Role = AgentRole.DomainExpert,
             Confidence = 0.5,
             Rationale = "domain-expert escalation",
         };
 
-        Assert.Equal(ReasoningLayer.Frontier, p.SourceLayer);
+        Assert.Equal(JudgeKind.Llm, p.Kind);
         Assert.Equal(AgentRole.DomainExpert, p.Role);
     }
 
@@ -72,7 +72,7 @@ public class RolePlayContractTests
     public void Provenance_RoleIsNullWhenNoRoleBound()
     {
         // Single-layer answers with no role binding leave Role null (back-compat).
-        var p = new PredictionProvenance { SourceLayer = ReasoningLayer.AutoMl, Confidence = 0.9 };
+        var p = new PredictionProvenance { Kind = JudgeKind.Ml, Confidence = 0.9 };
 
         Assert.Null(p.Role);
     }

@@ -7,7 +7,12 @@ namespace HoneAI;
 /// </summary>
 /// <param name="Verdict">The reviewer's decision (e.g. "approve", "reject", "retrain").</param>
 /// <param name="Comment">Optional reviewer comment.</param>
-public sealed record ReviewDecision(string Verdict, string? Comment = null);
+/// <param name="ReviewerKey">
+/// A pseudonymous key for the person who decided, so trust can be measured per reviewer. Never a
+/// name: mapping keys to people, retention and consent are the consumer's, and per-person numbers
+/// are for weighting labels, not for evaluating people.
+/// </param>
+public sealed record ReviewDecision(string Verdict, string? Comment = null, string? ReviewerKey = null);
 
 /// <summary>
 /// Async human-in-the-loop gate: a producer opens a gate for an item and awaits the

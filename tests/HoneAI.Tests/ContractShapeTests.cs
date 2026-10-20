@@ -13,39 +13,89 @@ namespace HoneAI.Tests;
 public class ContractShapeTests
 {
     [Fact]
-    public void ReasoningLayer_LaddersCheapToCostly()
+    public void Tier_CarriesTheLadderOrder_NotTheKind()
     {
-        Assert.True((int)ReasoningLayer.Theory < (int)ReasoningLayer.Statistics);
-        Assert.True((int)ReasoningLayer.Statistics < (int)ReasoningLayer.AutoMl);
-        Assert.True((int)ReasoningLayer.AutoMl < (int)ReasoningLayer.Frontier);
+        // Two judges of one kind at different sites are two tiers; the cost order is the tier's.
+        var edge = new Tier { Id = "edge-ml", Kind = JudgeKind.Ml, Version = "m-7", CostRank = 1, Site = "edge" };
+        var central = new Tier { Id = "central-ml", Kind = JudgeKind.Ml, Version = "m-9", CostRank = 2, Site = "central" };
+
+        Assert.Equal(edge.Kind, central.Kind);
+        Assert.True(edge.CostRank < central.CostRank);
+        Assert.False(edge.AcceptsHints);
     }
 
     [Fact]
-    public void Provenance_CarriesTraceabilityAndReviewSignal()
+    public void Provenance_CarriesThePathTheDecisionTook()
     {
-        // Mirrors U-Vision (agreement/requires_review) + SMI.AIMS (confidence/category).
+        // The two flags the 2-tier router set (agreement, requires review) are now what each tier did.
         var p = new PredictionProvenance
         {
-            SourceLayer = ReasoningLayer.AutoMl,
-            Confidence = 0.42,
-            Rationale = "ml_label disagreed with vlm_verdict",
-            Agreement = false,
-            RequiresReview = true,
+            Kind = JudgeKind.Llm,
+            TierId = "teacher",
+            TierVersion = "prompt-12",
+            Confidence = null,
+            SliceKey = "template:42",
+            TrustState = TrustState.Active,
+            SnapshotVersion = "snap-3",
+            Path = new[]
+            {
+                new TierStep("memory", JudgeKind.System1, StepOutcome.Abstained, "no settled answer for the key"),
+                new TierStep("edge-ml", JudgeKind.Ml, StepOutcome.Escalated, "must-catch value"),
+                new TierStep("teacher", JudgeKind.Llm, StepOutcome.Settled),
+            },
             Annotations = new Dictionary<string, string> { ["category"] = "Security" },
         };
 
-        Assert.Equal(ReasoningLayer.AutoMl, p.SourceLayer);
-        Assert.Equal(0.42, p.Confidence);
-        Assert.False(p.Agreement);
-        Assert.True(p.RequiresReview);
-        Assert.Equal("Security", p.Annotations!["category"]);
+        Assert.Null(p.Confidence);
+        Assert.Equal(StepOutcome.Settled, p.Path![^1].Outcome);
+        Assert.Equal(JudgeKind.Ml, p.Path[1].Kind);
+        Assert.Null(p.Sample);
+        Assert.False(p.Unverified);
     }
+
+    [Fact]
+    public void JudgeVerdict_IsAnAnswerOrAnAbstention()
+    {
+        var answer = JudgeVerdict<string>.Answer("NG", 0.81, "edge model");
+        var abstain = JudgeVerdict<string>.Abstain("timeout");
+
+        Assert.True(answer.Answered);
+        Assert.Equal("NG", answer.Value);
+        Assert.False(abstain.Answered);
+        Assert.Null(abstain.Value);
+        Assert.Equal("timeout", abstain.Rationale);
+    }
+
+    [Fact]
+    public void SettlementPolicy_NeverSettlesAMustCatchValue()
+    {
+        var tier = new Tier { Id = "edge-ml", Kind = JudgeKind.Ml, Version = "1", CostRank = 1 };
+        // Even a policy that lists a value as settleable cannot settle it if it must be caught.
+        var policy = SettlementPolicy.Categorical(new[] { "OK", "NG" }, new[] { "NG" });
+
+        Assert.True(policy.MaySettle(tier, "OK"));
+        Assert.False(policy.MaySettle(tier, "NG"));
+        Assert.True(policy.MustCatch("NG"));
+        Assert.True(policy.Agrees("OK", "OK"));
+    }
+
+    [Theory]
+    [InlineData(10.0, 10.4, true)]
+    [InlineData(10.0, 10.6, false)]
+    public void SettlementPolicy_Tolerance_AgreesWithinTheTolerance(double a, double b, bool agrees)
+        => Assert.Equal(agrees, SettlementPolicy.Tolerance(0.5).Agrees(a, b));
+
+    [Theory]
+    [InlineData(9.9, 9.0, true)]    // both below the limit
+    [InlineData(9.9, 10.1, false)]  // the limit falls between them
+    public void SettlementPolicy_SameSideOf_AgreesOnTheVerdictTheValuesImply(double a, double b, bool agrees)
+        => Assert.Equal(agrees, SettlementPolicy.SameSideOf(10.0).Agrees(a, b));
 
     [Fact]
     public void TracedPrediction_AlwaysCarriesProvenance()
     {
         // "출처 없는 예측 = 컴파일 불가": Provenance is a required ctor argument.
-        var provenance = new PredictionProvenance { SourceLayer = ReasoningLayer.Frontier, Confidence = 0.9 };
+        var provenance = new PredictionProvenance { Kind = JudgeKind.Llm, Confidence = 0.9 };
         ITracedPrediction<string> pred = new TracedPrediction<string>("OK", provenance);
 
         Assert.Equal("OK", pred.Value);
@@ -74,13 +124,12 @@ public class ContractShapeTests
     [Fact]
     public async Task ReasoningRouter_ContractIsImplementable()
     {
-        // Compile-time proof the router contract is consumable; a stub climbs to L3.
+        // Compile-time proof the router contract is consumable; a stub settles at the top tier.
         IReasoningRouter<string, string> router = new StubRouter();
         var pred = await router.RouteAsync("anything");
 
         Assert.Equal("escalated", pred.Value);
-        Assert.Equal(ReasoningLayer.Frontier, pred.Provenance.SourceLayer);
-        Assert.True(pred.Provenance.RequiresReview);
+        Assert.Equal(JudgeKind.Human, pred.Provenance.Kind);
     }
 
     private sealed class StubRouter : IReasoningRouter<string, string>
@@ -89,10 +138,8 @@ public class ContractShapeTests
         {
             var provenance = new PredictionProvenance
             {
-                SourceLayer = ReasoningLayer.Frontier,
-                Confidence = 0.3,
-                Agreement = false,
-                RequiresReview = true,
+                Kind = JudgeKind.Human,
+                Path = new[] { new TierStep("edge-ml", JudgeKind.Ml, StepOutcome.Abstained), new TierStep("reviewer", JudgeKind.Human, StepOutcome.Settled) },
             };
             return Task.FromResult<ITracedPrediction<string>>(
                 new TracedPrediction<string>("escalated", provenance));

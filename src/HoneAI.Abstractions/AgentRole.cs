@@ -6,9 +6,9 @@ namespace HoneAI;
 /// (e.g. IronHive's <c>IAgent</c>/<c>IAgentOrchestrator</c>); this enum is the
 /// <b>identifier of the trust-loop seat</b> a given agent occupies, used as the
 /// role↔agent binding key and stamped onto <see cref="PredictionProvenance.Role"/>
-/// ("어느 레이어의 어느 역할이 판정"). It parallels <see cref="ReasoningLayer"/> — the
-/// layer says <i>how cheap/certain</i> the answer is; the role says <i>which expert
-/// persona</i> produced it.
+/// ("어느 레이어의 어느 역할이 판정"). It parallels <see cref="JudgeKind"/> — the
+/// kind says <i>what sort of judge</i> answered; the role says <i>which expert
+/// persona</i> it played.
 /// </summary>
 public enum AgentRole
 {

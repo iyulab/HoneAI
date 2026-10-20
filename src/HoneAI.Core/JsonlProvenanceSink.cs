@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -79,13 +80,51 @@ public sealed class JsonlProvenanceSink : IProvenanceSink
             if (string.IsNullOrWhiteSpace(line))
                 continue;
 
-            var record = JsonSerializer.Deserialize<ProvenanceRecord>(line, JsonOptions);
+            var node = JsonNode.Parse(line);
+            if (node is JsonObject { } obj && obj["provenance"] is JsonObject provenance)
+                UpgradeLegacyProvenance(provenance);
+            var record = node.Deserialize<ProvenanceRecord>(JsonOptions);
             if (record is null)
                 continue;
             if (subjectId is not null && record.SubjectId != subjectId)
                 continue;
 
             yield return record;
+        }
+    }
+
+    // Kind names that changed when the reasoning layers became judge kinds. Numbers did not move.
+    private static readonly Dictionary<string, string> LegacyKindNames = new(StringComparer.Ordinal)
+    {
+        ["AutoMl"] = nameof(JudgeKind.Ml),
+        ["Frontier"] = nameof(JudgeKind.Llm),
+    };
+
+    /// <summary>
+    /// Reads a record written by 0.2.x as the current contract. An audit trail is never rewritten,
+    /// so the old shape is a read rule, not an API alias: <c>sourceLayer</c> becomes <c>kind</c>
+    /// (with the renamed values mapped), and the two flags the per-tier path replaced are kept as
+    /// <c>legacy:</c> annotations rather than dropped.
+    /// </summary>
+    private static void UpgradeLegacyProvenance(JsonObject provenance)
+    {
+        if (provenance["sourceLayer"] is { } layer && provenance["kind"] is null)
+        {
+            provenance.Remove("sourceLayer");
+            provenance["kind"] = layer.GetValueKind() == JsonValueKind.String
+                && LegacyKindNames.TryGetValue(layer.GetValue<string>(), out var renamed)
+                ? renamed
+                : layer.DeepClone();
+        }
+
+        foreach (var flag in new[] { "agreement", "requiresReview" })
+        {
+            if (provenance[flag] is not { } value)
+                continue;
+            provenance.Remove(flag);
+            if (provenance["annotations"] is not JsonObject annotations)
+                provenance["annotations"] = annotations = new JsonObject();
+            annotations["legacy:" + flag] = value.ToJsonString();
         }
     }
 }

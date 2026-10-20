@@ -38,8 +38,8 @@ public class HttpMLoopClientTests
             new Dictionary<string, object?> { ["temp"] = 36.5 }, Model: "weld"));
 
         Assert.Equal("NG", pred.Value.Outputs["predictedLabel"]);
-        Assert.Equal(ReasoningLayer.AutoMl, pred.Provenance.SourceLayer);
-        Assert.Equal(0.82, pred.Provenance.Confidence, precision: 6);
+        Assert.Equal(JudgeKind.Ml, pred.Provenance.Kind);
+        Assert.Equal(0.82, pred.Provenance.Confidence!.Value, precision: 6);
         Assert.Equal("mloop:binary", pred.Provenance.Rationale);
 
         // Request shape: POST predict?name=weld with the single feature row as an array.
@@ -60,7 +60,7 @@ public class HttpMLoopClientTests
         var pred = await Client(handler).PredictAsync(
             new MLoopPredictionRequest(new Dictionary<string, object?>()));
 
-        Assert.Equal(0.4, pred.Provenance.Confidence, precision: 6);
+        Assert.Equal(0.4, pred.Provenance.Confidence!.Value, precision: 6);
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public class HttpMLoopClientTests
         var pred = await Client(handler).PredictAsync(
             new MLoopPredictionRequest(new Dictionary<string, object?>()));
 
-        Assert.Equal(0.42, pred.Provenance.Confidence, precision: 6); // server value, not max-prob 0.95
+        Assert.Equal(0.42, pred.Provenance.Confidence!.Value, precision: 6); // server value, not max-prob 0.95
     }
 
     [Theory]
@@ -96,7 +96,7 @@ public class HttpMLoopClientTests
         var pred = await Client(handler).PredictAsync(
             new MLoopPredictionRequest(new Dictionary<string, object?>()));
 
-        Assert.Equal(expected, pred.Provenance.Confidence, precision: 3);
+        Assert.Equal(expected, pred.Provenance.Confidence!.Value, precision: 3);
     }
 
     [Theory]
@@ -119,7 +119,7 @@ public class HttpMLoopClientTests
         var pred = await Client(handler).PredictAsync(
             new MLoopPredictionRequest(new Dictionary<string, object?>()));
 
-        Assert.Equal(expected, pred.Provenance.Confidence, precision: 3);
+        Assert.Equal(expected, pred.Provenance.Confidence!.Value, precision: 3);
     }
 
     [Fact]
@@ -255,9 +255,9 @@ public class HttpMLoopClientTests
         Assert.Equal(13.5, forecast.Value.Points[2].UpperBound);
         Assert.Equal(0.95, forecast.Value.Points[1].IntervalConfidence);
 
-        Assert.Equal(ReasoningLayer.AutoMl, forecast.Provenance.SourceLayer);
+        Assert.Equal(JudgeKind.Ml, forecast.Provenance.Kind);
         // A forecast's confidence is its weakest step's.
-        Assert.Equal(0.7, forecast.Provenance.Confidence, precision: 6);
+        Assert.Equal(0.7, forecast.Provenance.Confidence!.Value, precision: 6);
         Assert.Equal("mloop:forecasting", forecast.Provenance.Rationale);
 
         // Request shape: a JSON *object* {"horizon":3} — not the row-array every other task posts.

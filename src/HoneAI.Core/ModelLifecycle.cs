@@ -68,14 +68,14 @@ public sealed class ModelLifecycle : IModelLifecycle
         var steps = new List<LifecycleStep>();
 
         void Set(string status) => _runs[runId] = new LifecycleRun(runId, status, steps.ToArray());
-        async Task Record(LifecycleStage stage, string status, string? detail, ReasoningLayer layer)
+        async Task Record(LifecycleStage stage, string status, string? detail, JudgeKind kind)
         {
             steps.Add(new LifecycleStep(stage, status, detail));
             Set(status == "failed" ? "failed" : "running");
             if (_provenance is not null)
             {
                 await _provenance.AppendAsync(runId,
-                    new PredictionProvenance { SourceLayer = layer, Confidence = 1.0, Rationale = $"{stage}:{status}" },
+                    new PredictionProvenance { Kind = kind, Rationale = $"{stage}:{status}" },
                     cancellationToken).ConfigureAwait(false);
             }
         }
@@ -85,19 +85,19 @@ public sealed class ModelLifecycle : IModelLifecycle
         {
             // Train.
             var job = await _mloop.TrainAsync(request.Training, cancellationToken).ConfigureAwait(false);
-            await Record(LifecycleStage.Train, "running", job.Id, ReasoningLayer.AutoMl).ConfigureAwait(false);
+            await Record(LifecycleStage.Train, "running", job.Id, JudgeKind.Ml).ConfigureAwait(false);
 
             // Poll to completion.
             job = await PollToCompletionAsync(job, cancellationToken).ConfigureAwait(false);
             if (!IsCompleted(job.Status))
             {
-                await Record(LifecycleStage.Train, "failed", $"job {job.Id} status={job.Status}", ReasoningLayer.AutoMl)
+                await Record(LifecycleStage.Train, "failed", $"job {job.Id} status={job.Status}", JudgeKind.Ml)
                     .ConfigureAwait(false);
                 return Fail(runId, steps);
             }
 
             // Evaluate (metrics carried by the completed job).
-            await Record(LifecycleStage.Evaluate, "completed", DescribeMetrics(job.Metrics), ReasoningLayer.AutoMl)
+            await Record(LifecycleStage.Evaluate, "completed", DescribeMetrics(job.Metrics), JudgeKind.Ml)
                 .ConfigureAwait(false);
 
             // Review (HITL): wait for the human decision.
@@ -105,7 +105,7 @@ public sealed class ModelLifecycle : IModelLifecycle
             var decision = await _hitl.AwaitDecisionAsync(reviewId, cancellationToken).ConfigureAwait(false);
             var approved = ApprovalVerdicts.Contains(decision.Verdict);
             await Record(LifecycleStage.Review, approved ? "completed" : "rejected",
-                decision.Comment, ReasoningLayer.Frontier).ConfigureAwait(false);
+                decision.Comment, JudgeKind.Human).ConfigureAwait(false);
 
             if (!approved)
                 return Settle(runId, steps, "completed"); // run completed without promotion
@@ -113,13 +113,13 @@ public sealed class ModelLifecycle : IModelLifecycle
             // Promote.
             if (string.IsNullOrEmpty(job.ExperimentId))
             {
-                await Record(LifecycleStage.Promote, "failed", "no experimentId on completed job", ReasoningLayer.AutoMl)
+                await Record(LifecycleStage.Promote, "failed", "no experimentId on completed job", JudgeKind.Ml)
                     .ConfigureAwait(false);
                 return Fail(runId, steps);
             }
             await _mloop.PromoteAsync(request.Training.Model ?? "default", job.ExperimentId, cancellationToken)
                 .ConfigureAwait(false);
-            await Record(LifecycleStage.Promote, "completed", job.ExperimentId, ReasoningLayer.AutoMl)
+            await Record(LifecycleStage.Promote, "completed", job.ExperimentId, JudgeKind.Ml)
                 .ConfigureAwait(false);
 
             return Settle(runId, steps, "completed");
