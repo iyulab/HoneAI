@@ -72,23 +72,53 @@ public static class SelectionFit
         var auc = TrustLedger.RankAuc(held);
         var tau = auc is not { } v || v <= 0.5 ? 1.0 : Math.Clamp(1 - 2 * (v - 0.5), options.MinimumUniformMix, 1);
 
-        // Mean score over every settled decision; one without a risk scores the mean itself
-        // (times its weight where the shape weighs), so the mean solves M = (Σ scored + M·Σ unscored) / N.
-        var probe = new KnobSelection { Shape = shape, Calibration = calibration, MeanScore = 1, UniformMix = 0 };
-        double scoredSum = 0, unscoredWeight = 0;
-        var count = 0;
-        foreach (var signal in decided)
-        {
-            count++;
-            if (signal?.Risk is { } risk && !double.IsNaN(risk))
-                scoredSum += SelectionScore.Score(shape, SelectionScore.Calibrate(calibration, risk)!.Value, signal.Weight);
-            else
-                unscoredWeight += shape == SelectionShape.Variance ? 1 : Math.Max(signal?.Weight ?? 1, 0);
-        }
-        var denominator = count - unscoredWeight;
-        if (count == 0 || !(denominator > 0) || !(scoredSum > 0))
+        var decisions = decided.ToList();
+        var probe = new KnobSelection { Shape = shape, Calibration = calibration, MeanScore = 1, UniformMix = tau };
+        if (MeanScore(decisions, probe, null) is not { } mean)
             return Uncalibrated(shape, observed.Count, disagreed,
                 "no settled decision with a risk to normalize the scores over");
+
+        // Representativeness: a cluster the tilt would send more than the cap of rechecks in the window
+        // is damped to the cap. Only the tilted share is capped — the uniform share τ is proportional to
+        // a cluster's size, representative already, and stays whatever the signal says. The damping
+        // lowers the mean, which raises everyone else's rate, so fit both together.
+        IReadOnlyDictionary<string, double>? factors = null;
+        if (options.ClusterRecheckCap is { } cap)
+        {
+            if (options.KnobRate is not { } rate || !(rate is > 0 and <= 1))
+                throw new ArgumentException("A cluster cap needs the knob's rate (SelectionFitOptions.KnobRate) to count draws by.", nameof(options));
+            var byCluster = decisions
+                .Where(d => d?.Cluster is not null)
+                .GroupBy(d => d!.Cluster!, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+            // Expected tilted draws of a cluster at a mean: Σ rate·(1 − τ)·score/mean, before damping.
+            double Tilted(List<SelectionSignal?> members, double m)
+                => members.Sum(x => rate * (1 - tau) * SelectionScore.ScoreOf(probe with { MeanScore = m }, x)!.Value / m);
+
+            // The mean moves with the factors (a damped half of the population lowers it a lot), so
+            // step each factor toward the cap by the square root of the miss, re-measuring at the mean
+            // the factors give, until every damped cluster sits within 1% of the cap.
+            var current = new Dictionary<string, double>(StringComparer.Ordinal);
+            for (var iteration = 0; iteration < 100; iteration++)
+            {
+                var settled = true;
+                foreach (var (cluster, members) in byCluster)
+                {
+                    var factor = current.GetValueOrDefault(cluster, 1.0);
+                    var realized = factor * Tilted(members, mean);
+                    if (realized <= cap && factor >= 1)
+                        continue;
+                    var stepped = Math.Clamp(factor * Math.Sqrt(cap / Math.Max(realized, 1e-12)), options.MinimumClusterFactor, 1);
+                    if (Math.Abs(realized - cap) > 0.01 * cap && stepped != factor)
+                        settled = false;
+                    if (stepped >= 1) current.Remove(cluster); else current[cluster] = stepped;
+                }
+                mean = MeanScore(decisions, probe, current) ?? mean;
+                if (settled)
+                    break;
+            }
+            factors = current.Count > 0 ? current : null;
+        }
 
         var reason = auc is null
             ? "the halves could not both be scored — the signal is drawn uniformly until they can"
@@ -97,12 +127,30 @@ public static class SelectionFit
                 : $"held-out AUC {auc:F3}";
         return new SelectionFitResult
         {
-            Selection = probe with { MeanScore = scoredSum / denominator, UniformMix = tau },
+            Selection = probe with { MeanScore = mean, ClusterFactors = factors },
             Rechecks = observed.Count,
             Disagreements = disagreed,
             HeldOutRankAuc = auc,
             Reason = reason,
         };
+    }
+
+    // The mean score over the decisions, damping included. A decision without a risk scores the mean
+    // itself (times its weight where the shape weighs, times its damping), so M solves
+    // M = (Σ scored + M · Σ unscored) / N.
+    private static double? MeanScore(List<SelectionSignal?> decisions, KnobSelection probe, IReadOnlyDictionary<string, double>? factors)
+    {
+        double scoredSum = 0, unscored = 0;
+        foreach (var signal in decisions)
+        {
+            var damping = signal?.Cluster is { } c && factors is not null && factors.TryGetValue(c, out var f) ? f : 1;
+            if (signal?.Risk is { } risk && !double.IsNaN(risk))
+                scoredSum += damping * SelectionScore.Score(probe.Shape, SelectionScore.Calibrate(probe.Calibration, risk)!.Value, signal.Weight);
+            else
+                unscored += damping * (probe.Shape == SelectionShape.Variance ? 1 : Math.Max(signal?.Weight ?? 1, 0));
+        }
+        var denominator = decisions.Count - unscored;
+        return decisions.Count > 0 && denominator > 0 && scoredSum > 0 ? scoredSum / denominator : null;
     }
 
     private static SelectionFitResult Uncalibrated(SelectionShape shape, int rechecks, int disagreed, string reason) => new()
@@ -200,6 +248,20 @@ public sealed record SelectionFitOptions
 
     /// <summary>The least uniform share τ, however well the signal ranks. Default 0.1.</summary>
     public double MinimumUniformMix { get; init; } = 0.1;
+
+    /// <summary>
+    /// The most rechecks the selection's tilt should send to one meaning cluster over the decisions
+    /// fitted on (one window); clusters above it are damped (<see cref="KnobSelection.ClusterFactors"/>).
+    /// The uniform share τ is not counted — it is proportional to a cluster's size already. Null (the
+    /// default) leaves clusters undamped. Needs <see cref="KnobRate"/>.
+    /// </summary>
+    public double? ClusterRecheckCap { get; init; }
+
+    /// <summary>The knob's expected rate — what draws are counted by for <see cref="ClusterRecheckCap"/>.</summary>
+    public double? KnobRate { get; init; }
+
+    /// <summary>The least a cluster's score is damped to. Default 0.05 — damping thins a cluster, it never empties it.</summary>
+    public double MinimumClusterFactor { get; init; } = 0.05;
 }
 
 /// <summary>A fitted selection and what it rests on.</summary>

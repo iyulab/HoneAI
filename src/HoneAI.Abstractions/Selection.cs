@@ -106,6 +106,15 @@ public sealed record KnobSelection
     public required double MeanScore { get; init; }
 
     /// <summary>
+    /// Score multipliers in (0, 1] by meaning cluster (<see cref="SelectionSignal.Cluster"/>): a
+    /// cluster the tilt would send too many rechecks in a window is damped, so a large repeated
+    /// cluster does not take the budget for the same shape over and over. The uniform share is not
+    /// damped — it is proportional to a cluster's size already. A cluster
+    /// without an entry keeps its score. Fitted with <see cref="MeanScore"/>, which already counts the damping.
+    /// </summary>
+    public IReadOnlyDictionary<string, double>? ClusterFactors { get; init; }
+
+    /// <summary>
     /// τ in [0, 1]: the share drawn uniformly whatever the signal says. Larger when the signal has
     /// measured worse, so a selection is never much worse than uniform.
     /// </summary>

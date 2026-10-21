@@ -68,6 +68,13 @@ public static class PolicySnapshotJson
                             w.WriteEndObject();
                         }
                         w.WriteEndArray();
+                        if (sel.ClusterFactors is { Count: > 0 } factors)
+                        {
+                            w.WriteStartObject("clusterFactors");
+                            foreach (var (cluster, factor) in factors.OrderBy(f => f.Key, StringComparer.Ordinal))
+                                w.WriteNumber(cluster, factor);
+                            w.WriteEndObject();
+                        }
                         w.WriteNumber("meanScore", sel.MeanScore);
                         w.WriteNumber("uniformMix", sel.UniformMix);
                         w.WriteEndObject();

@@ -35,6 +35,11 @@ All notable changes to HoneAI are documented here. The format follows
   halves of a stable split by decision id score each other): at or below chance τ = 1, else
   max(0.1, 1 − 2·(AUC − 0.5)). Short evidence (under 100 rechecks or 10 disagreements, by default)
   leaves the knob uncalibrated — uniform — and `SelectionFitResult.Reason` says why.
+  **Representativeness**: with `SelectionFitOptions.ClusterRecheckCap` (and the knob's rate), a
+  meaning cluster the tilt would send more rechecks than the cap in the window is damped
+  (`KnobSelection.ClusterFactors`, applied by the router through `SelectionSignal.Cluster`), and the
+  mean score is refitted with the damping so the knob keeps its rate. Only the tilted share is
+  capped — the uniform share is proportional to a cluster's size already.
   `RecheckRecord.Risk` / `Weight` carry the signal from the draw; `TrustLedger.RankAuc` is the
   weighted Mann–Whitney both the ledger and the fit use.
 - **Selection: a recheck probability per decision.** A recheck spent re-confirming a right answer

@@ -261,9 +261,28 @@ public class SelectionRoutingTests
     }
 
     [Fact]
+    public async Task ADampedCluster_IsDrawnAtItsFactor()
+    {
+        var damped = Watch with { ClusterFactors = new Dictionary<string, double> { ["c-d6"] = 0.25 } };
+        var router = Router(Snapshot(new Dictionary<string, KnobSelection> { ["slice-watch"] = damped }), new RiskSignals());
+
+        var sample = (await router.RouteAsync(new Item("d6", 0.9))).Provenance.Sample!;
+
+        var tilted = 0.05 * (0.8 * 0.25 * 2 * Math.Sqrt(0.25 * 0.75) / 0.4 + 0.2);
+        Assert.Equal(tilted, sample.KnobRates!["slice-watch"], 12);
+
+        // A cluster the factors do not name keeps its full score.
+        var other = (await router.RouteAsync(new Item("d7", 0.9))).Provenance.Sample!;
+        Assert.Equal(0.05 * (0.8 * 2 * Math.Sqrt(0.25 * 0.75) / 0.4 + 0.2), other.KnobRates!["slice-watch"], 12);
+    }
+
+    [Fact]
     public void TheCanonicalSnapshot_CarriesTheSelection_AndItsHashMovesWithIt()
     {
-        var with = Snapshot(new Dictionary<string, KnobSelection> { ["slice-watch"] = Watch });
+        var with = Snapshot(new Dictionary<string, KnobSelection>
+        {
+            ["slice-watch"] = Watch with { ClusterFactors = new Dictionary<string, double> { ["b"] = 0.5, ["a"] = 0.2 } },
+        });
         var without = Snapshot(null);
 
         var json = System.Text.Encoding.UTF8.GetString(PolicySnapshotJson.Serialize(with));
@@ -276,5 +295,7 @@ public class SelectionRoutingTests
         Assert.Equal(Watch.Shape, restored.Shape);
         Assert.Equal(Watch.Calibration, restored.Calibration);
         Assert.Equal(Watch.MeanScore, restored.MeanScore);
+        Assert.Contains("\"clusterFactors\":{\"a\":0.2,\"b\":0.5}", json);
+        Assert.Equal(0.2, restored.ClusterFactors!["a"]);
     }
 }

@@ -48,7 +48,8 @@ public static class SelectionScore
 
     /// <summary>
     /// The score of a decision under <paramref name="selection"/>, or null when it cannot be scored —
-    /// no calibration yet. A decision without a risk scores the mean (weighted, where the shape weighs).
+    /// no calibration yet. A decision without a risk scores the mean (weighted, where the shape weighs);
+    /// either way a damped cluster's factor applies.
     /// </summary>
     public static double? ScoreOf(KnobSelection selection, SelectionSignal? signal)
     {
@@ -57,9 +58,11 @@ public static class SelectionScore
             return null;
         var weight = signal?.Weight ?? 1;
         var weighs = selection.Shape != SelectionShape.Variance;
+        var damping = signal?.Cluster is { } cluster && selection.ClusterFactors is { } factors && factors.TryGetValue(cluster, out var f)
+            ? Math.Clamp(f, 0, 1) : 1;
         if (signal?.Risk is not { } risk || Calibrate(selection.Calibration, risk) is not { } p)
-            return selection.MeanScore * (weighs ? Math.Max(weight, 0) : 1);
-        return Score(selection.Shape, p, weight);
+            return damping * selection.MeanScore * (weighs ? Math.Max(weight, 0) : 1);
+        return damping * Score(selection.Shape, p, weight);
     }
 
     /// <summary>

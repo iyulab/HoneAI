@@ -124,6 +124,38 @@ public class SelectionFitTests
     }
 
     [Fact]
+    public void ARepeatedCluster_IsDampedToItsCap_AndTheKnobKeepsItsRate()
+    {
+        // Half the decisions are one cluster of near-identical risky inputs; at a 5% knob the tilt
+        // would send it most of its rechecks. Capped at 60, it is thinned and the rest gain.
+        var (rechecks, decided) = Population(20_000, r => 0.01 + 0.3 * r * r, seed: 7);
+        decided = decided.Select((s, i) => i % 2 == 0
+            ? s with { Risk = 0.95, Cluster = "same-template" }
+            : s with { Cluster = $"c{i % 40}" }).ToList();
+        var options = new SelectionFitOptions { ClusterRecheckCap = 60, KnobRate = 0.05 };
+
+        var selection = SelectionFit.Fit(rechecks, decided, SelectionShape.WeightedVariance, options).Selection;
+
+        var factor = selection.ClusterFactors!["same-template"];
+        Assert.InRange(factor, 0.05, 0.5);
+        // The tilt sends it the cap; the uniform share it gets anyway is proportional to its size.
+        var members = decided.Where(d => d.Cluster == "same-template").ToList();
+        var draws = members.Sum(d => SelectionScore.Rate(0.05, selection, d));
+        var uniformShare = members.Count * 0.05 * selection.UniformMix;
+        Assert.InRange(draws - uniformShare, 57, 63);
+        Assert.Equal(0.05, decided.Average(d => SelectionScore.Rate(0.05, selection, d)), 3);
+    }
+
+    [Fact]
+    public void AClusterCap_NeedsTheKnobsRate()
+    {
+        var (rechecks, decided) = Population(20_000, r => 0.01 + 0.3 * r * r, seed: 8);
+
+        Assert.Throws<ArgumentException>(() =>
+            SelectionFit.Fit(rechecks, decided, SelectionShape.Variance, new SelectionFitOptions { ClusterRecheckCap = 10 }));
+    }
+
+    [Fact]
     public async Task TheRecheckRecord_CarriesTheSignal_TheFitReads()
     {
         var tier = new Tier { Id = "ml", Kind = JudgeKind.Ml, Version = "1", CostRank = 1 };
