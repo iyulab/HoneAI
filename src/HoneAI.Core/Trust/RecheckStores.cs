@@ -50,6 +50,88 @@ public sealed class InMemoryRecheckStore : IRecheckStore
 /// </remarks>
 public sealed class JsonlRecheckStore : IRecheckStore
 {
+    private readonly JsonlKeyedLog<RecheckRecord> _log;
+
+    /// <param name="path">JSONL file (created on first write, with parent directories).</param>
+    public JsonlRecheckStore(string path) => _log = new JsonlKeyedLog<RecheckRecord>(path, r => (r.DecisionId, r.TierId));
+
+    /// <inheritdoc />
+    public ValueTask<bool> AppendAsync(RecheckRecord record, CancellationToken cancellationToken = default)
+        => _log.AppendAsync(record, cancellationToken);
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<RecheckRecord> ReadAsync(
+        string tierId, string sliceKey, DateTimeOffset from, DateTimeOffset to,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var record in _log.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (record.TierId == tierId && record.SliceKey == sliceKey && record.DecidedAt >= from && record.DecidedAt < to)
+                yield return record;
+        }
+    }
+}
+
+/// <summary>In-memory <see cref="IPlantStore"/> — for tests, examples and a single process.</summary>
+public sealed class InMemoryPlantStore : IPlantStore
+{
+    private readonly ConcurrentDictionary<(string PlantId, string TierId), PlantRecord> _records = new();
+
+    /// <inheritdoc />
+    public ValueTask<bool> AppendAsync(PlantRecord record, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        return ValueTask.FromResult(_records.TryAdd((record.PlantId, record.TierId), record));
+    }
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<PlantRecord> ReadAsync(
+        string tierId, DateTimeOffset from, DateTimeOffset to,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        foreach (var record in _records.Values
+                     .Where(r => r.TierId == tierId && r.JudgedAt >= from && r.JudgedAt < to)
+                     .OrderBy(r => r.JudgedAt))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return record;
+        }
+        await Task.CompletedTask.ConfigureAwait(false);
+    }
+}
+
+/// <summary>File-backed <see cref="IPlantStore"/>: one JSON line per judged plant, append-only, once per plant and tier.</summary>
+public sealed class JsonlPlantStore : IPlantStore
+{
+    private readonly JsonlKeyedLog<PlantRecord> _log;
+
+    /// <param name="path">JSONL file (created on first write, with parent directories).</param>
+    public JsonlPlantStore(string path) => _log = new JsonlKeyedLog<PlantRecord>(path, r => (r.PlantId, r.TierId));
+
+    /// <inheritdoc />
+    public ValueTask<bool> AppendAsync(PlantRecord record, CancellationToken cancellationToken = default)
+        => _log.AppendAsync(record, cancellationToken);
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<PlantRecord> ReadAsync(
+        string tierId, DateTimeOffset from, DateTimeOffset to,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var record in _log.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (record.TierId == tierId && record.JudgedAt >= from && record.JudgedAt < to)
+                yield return record;
+        }
+    }
+}
+
+/// <summary>
+/// An append-only JSONL file of records, each written once per key. One writer per file within one
+/// process (appends are serialized by an async lock; processes do not coordinate); the keys already
+/// written are read once, on the first append.
+/// </summary>
+internal sealed class JsonlKeyedLog<T> where T : class
+{
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() },
@@ -57,18 +139,18 @@ public sealed class JsonlRecheckStore : IRecheckStore
     };
 
     private readonly string _path;
+    private readonly Func<T, (string, string)> _keyOf;
     private readonly SemaphoreSlim _lock = new(1, 1);
     private HashSet<(string, string)>? _keys;
 
-    /// <param name="path">JSONL file (created on first write, with parent directories).</param>
-    public JsonlRecheckStore(string path)
+    public JsonlKeyedLog(string path, Func<T, (string, string)> keyOf)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         _path = path;
+        _keyOf = keyOf;
     }
 
-    /// <inheritdoc />
-    public async ValueTask<bool> AppendAsync(RecheckRecord record, CancellationToken cancellationToken = default)
+    public async ValueTask<bool> AppendAsync(T record, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(record);
         await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -78,9 +160,9 @@ public sealed class JsonlRecheckStore : IRecheckStore
             {
                 _keys = [];
                 await foreach (var existing in ReadAllAsync(cancellationToken).ConfigureAwait(false))
-                    _keys.Add((existing.DecisionId, existing.TierId));
+                    _keys.Add(_keyOf(existing));
             }
-            if (!_keys.Add((record.DecisionId, record.TierId)))
+            if (!_keys.Add(_keyOf(record)))
                 return false;
 
             var dir = Path.GetDirectoryName(_path);
@@ -96,19 +178,7 @@ public sealed class JsonlRecheckStore : IRecheckStore
         }
     }
 
-    /// <inheritdoc />
-    public async IAsyncEnumerable<RecheckRecord> ReadAsync(
-        string tierId, string sliceKey, DateTimeOffset from, DateTimeOffset to,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        await foreach (var record in ReadAllAsync(cancellationToken).ConfigureAwait(false))
-        {
-            if (record.TierId == tierId && record.SliceKey == sliceKey && record.DecidedAt >= from && record.DecidedAt < to)
-                yield return record;
-        }
-    }
-
-    private async IAsyncEnumerable<RecheckRecord> ReadAllAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    public async IAsyncEnumerable<T> ReadAllAsync([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         if (!File.Exists(_path))
             yield break;
@@ -116,7 +186,7 @@ public sealed class JsonlRecheckStore : IRecheckStore
         {
             if (string.IsNullOrWhiteSpace(line))
                 continue;
-            if (JsonSerializer.Deserialize<RecheckRecord>(line, JsonOptions) is { } record)
+            if (JsonSerializer.Deserialize<T>(line, JsonOptions) is { } record)
                 yield return record;
         }
     }

@@ -7,6 +7,16 @@ All notable changes to HoneAI are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Teacher qualification from planted items.** Agreement with a teacher is not correctness: a
+  teacher that waves through what it should catch lifts a lower tier that does the same. Items whose
+  answer is known (a consensus, a person's settled decision) are judged by the teacher through
+  `RecheckAsync` with the plant's id, so it sees them exactly as real rechecks; `PlantRecords.From`
+  records the judgment against the known answer (`PlantRecord` — `Correct`, `Wrong`, `Failed`, and
+  whether the teacher answered a must-catch value). `TeacherLedger.Compute` gives a `TeacherCell`:
+  must-catch recall and accuracy on the planted set, each with an exact (Clopper–Pearson) lower bound
+  that counts failed judgments as misses; `TeacherLedger.Qualifies(cell, minimumRecall)` holds only
+  when the recall lower bound clears the floor — five out of five does not show 0.9.
+  `IPlantStore` with `InMemoryPlantStore` and `JsonlPlantStore` (once per plant and tier).
 - **Fitting the selection from what was measured.** `SelectionFit.Fit(rechecks, decided, shape)`
   gives a knob's `KnobSelection`: the calibration from the answered rechecks — bins of equal
   effective size by raw risk, each bin's 1/π-weighted disagreement rate shrunk toward the overall
