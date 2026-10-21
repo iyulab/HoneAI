@@ -118,6 +118,10 @@ A tier earns the right to settle a slice from rechecks, not from its own confide
    so it cannot remember): how often it holds its answer and its must-catch call, and on known answers how its
    errors split — `SystematicErrorRate` (the same wrong answer twice: a bias asking again will not average
    away) against `NoiseRate` (the answer moved: a disagreeing repeat is a reason to send the item up).
+   `LatentTruth.Estimate` (experimental — opt in by suppressing `HONEAI001`) takes nobody's answer as the
+   truth: it estimates every item's truth and every judge's confusion matrix together (Dawid–Skene, EM),
+   holding planted or consensus items at their known truth. It runs only where it is identified — three or
+   more judges, or some known items — and refuses otherwise.
 2. **Lifecycle** — `TrustLifecycle.Release` moves shadow → active → stable only at a window's end,
    on every condition at once; `TrustLifecycle.Tighten` moves back at any time (a new version, a
    seen miss, agreement shown low, drift — `StalenessWatch` reads MLoop's `GET /drift`).

@@ -30,6 +30,10 @@ All notable changes to HoneAI are documented here. The format follows
   second may be asked under another decision id); `Compute` gives the judge's `RepeatCell` — consistency,
   must-catch flips, and on known answers the split of its errors into `SystematicErrorRate` (repeated wrong
   answers) and `NoiseRate` (answers that moved), with `AccuracyWhenConsistent`.
+- **Latent truth (experimental, `HONEAI001`).** `LatentTruth.Estimate` estimates each item's truth and each
+  judge's confusion matrix together from who answered what (Dawid–Skene by expectation–maximisation), with items
+  of known truth held fixed. Refuses an unidentified set — fewer than three judges and nothing known. A judge with
+  a lean shows it as mass off the diagonal, and a majority that leans no longer outvotes a judge that does not.
 
 ### Changed
 - **Breaking:** `LabelConfirmation.Decide`'s `teacherCell` lookup takes a `JudgeIdentity` instead of a tier id, so
