@@ -65,7 +65,10 @@ public sealed class HttpMLoopClient : IMLoopClient
                 : "mloop",
         };
 
-        return new TracedPrediction<MLoopPredictionResult>(new MLoopPredictionResult(outputs), provenance);
+        // The logged id is not an output of the model: it names the row, so feedback can find it.
+        outputs.Remove("predictionId");
+        var predictionId = String(row, "predictionId");
+        return new TracedPrediction<MLoopPredictionResult>(new MLoopPredictionResult(outputs, predictionId), provenance);
     }
 
     /// <inheritdoc />
@@ -198,6 +201,23 @@ public sealed class HttpMLoopClient : IMLoopClient
             : null;
 
         return new MLoopModelInfo(name, task, ParseMetrics(root));
+    }
+
+    /// <inheritdoc />
+    public async Task RecordFeedbackAsync(MLoopFeedback feedback, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(feedback);
+        ArgumentException.ThrowIfNullOrWhiteSpace(feedback.PredictionId);
+
+        var body = new Dictionary<string, object?>
+        {
+            ["predictionId"] = feedback.PredictionId,
+            ["actualValue"] = feedback.ActualValue,
+            ["source"] = feedback.Source,
+            ["weight"] = feedback.Weight,
+        };
+        using var response = await _http.PostAsJsonAsync("feedback", body, JsonOptions, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccess(response, "feedback", cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

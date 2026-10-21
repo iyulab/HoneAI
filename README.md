@@ -122,11 +122,31 @@ A tier earns the right to settle a slice from rechecks, not from its own confide
 (`LifecycleStep.AwaitsApproval`) unless `LifecyclePolicy.AutoRelease` is on; tightening never waits.
 Every number a promise is made of — targets, margins, deadlines, budgets — is yours to set.
 
+### Learning from what was confirmed (`HoneAI.Learning`)
+
+A cheap tier gets better by learning from answers the tiers above it confirmed — never its own.
+`LabelConfirmation.Decide` turns upper answers into a `ConfirmedLabel` for a learning tier:
+
+- only a tier above the learner confirms;
+- a decision that went up reached the confirming tier with certainty (π = 1); one the learner settled is
+  a label only if it was drawn for recheck, at its draw's π;
+- judges above that disagree where one says must-catch produce no label (`NeedsConsensus`) — neither
+  side wins automatically;
+- trust is the teacher ledger's measured accuracy for the confirming tier, else its kind's default
+  (`LabelTrustDefaults`), and the label says which (`LabelTrustBasis`).
+
+The label's `Weight` is trust / π. Send it to each engine's `IConfirmedLabelSink<T>`:
+`MLoopFeedbackSink<T>` records it as weighted feedback on the ML tier's MLoop prediction
+(`MLoopPredictionResult.PredictionId` — keep `MLoopFeedbackSink.ReferenceTo(result)` with the decision and pass it to
+`Decide` as `annotations`),
+which MLoop turns into a retraining set (`mloop sample create --model`). Other engines — a memory's
+settlement — implement the sink themselves.
+
 ### Talking to an MLoop model server (`HttpMLoopClient`)
 
 [`MLoop`](https://github.com/iyulab/MLoop) is an open-source AutoML CLI/server
 for ML.NET. `HttpMLoopClient` implements `IMLoopClient` over its REST API
-(`/predict`, `/train`, `/jobs/{id}`, `/promote`, `/info`, `/drift`), returning
+(`/predict`, `/train`, `/jobs/{id}`, `/promote`, `/info`, `/drift`, `/feedback`), returning
 predictions already stamped with `JudgeKind.Ml` provenance — wrap it in a judge to make it a tier.
 
 ### Audit trail (`IProvenanceSink`)

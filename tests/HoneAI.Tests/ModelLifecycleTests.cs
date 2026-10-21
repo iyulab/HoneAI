@@ -148,6 +148,9 @@ public class ModelLifecycleTests
 
         public Task<MLoopDrift> GetDriftAsync(MLoopDriftRequest request, CancellationToken ct = default)
             => throw new NotSupportedException("lifecycle tests never read drift");
+
+        public Task RecordFeedbackAsync(MLoopFeedback feedback, CancellationToken ct = default)
+            => throw new NotSupportedException("lifecycle tests never record feedback");
     }
 
     private sealed class RecordingSink : IProvenanceSink

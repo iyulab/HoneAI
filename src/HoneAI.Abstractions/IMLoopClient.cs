@@ -43,6 +43,12 @@ public interface IMLoopClient
     /// </summary>
     Task<MLoopDrift> GetDriftAsync(MLoopDriftRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Record the actual value of a logged prediction, with its source and weight — the row a retraining
+    /// dataset is built from (<c>mloop sample create --model</c>).
+    /// </summary>
+    Task RecordFeedbackAsync(MLoopFeedback feedback, CancellationToken cancellationToken = default);
+
     /// <summary>Production model metadata, or <see langword="null"/> when the model or transport is unavailable.</summary>
     Task<MLoopModelInfo?> GetInfoAsync(string? model = null, CancellationToken cancellationToken = default);
 }

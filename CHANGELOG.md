@@ -6,6 +6,23 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Confirmed labels.** `LabelConfirmation.Decide` turns what tiers above a learning tier answered into a
+  `ConfirmedLabel<T>` — or says why not (`ConfirmationOutcome`): only a tier above confirms; a settled
+  decision is a label only when drawn for recheck, at its draw's π (a decision that went up: π = 1); judges
+  above disagreeing on a must-catch value wait for consensus; trust is the teacher ledger's measured
+  accuracy, else the kind's default (`LabelTrustDefaults`, recorded as `LabelTrustBasis.Default`). The
+  label's `Weight` is trust / π.
+- **Sinks.** `IConfirmedLabelSink<T>` delivers a label to an engine; `MLoopFeedbackSink<T>` records it as
+  weighted feedback on the ML tier's MLoop prediction, with the confirming tier as the source;
+  `MLoopFeedbackSink.ReferenceTo(prediction)` makes the reference a label carries to it.
+- `IMLoopClient.RecordFeedbackAsync(MLoopFeedback)` (`POST /feedback` with source and weight), and
+  `MLoopPredictionResult.PredictionId` — the id MLoop logged a prediction under, no longer mixed into the
+  outputs.
+
+### Changed
+- `IMLoopClient` gains `RecordFeedbackAsync` — an implementation of the interface adds it.
+
 ## [0.5.0] - 2026-10-21
 
 ### Added

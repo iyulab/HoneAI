@@ -9,7 +9,21 @@ public sealed record MLoopPredictionRequest(
 
 /// <summary>Outcome of an MLoop prediction — predicted output columns keyed by name.</summary>
 /// <param name="Outputs">Predicted column name → value (label, score, probability, …).</param>
-public sealed record MLoopPredictionResult(IReadOnlyDictionary<string, object?> Outputs);
+/// <param name="PredictionId">
+/// The id MLoop logged the prediction under — what <see cref="IMLoopClient.RecordFeedbackAsync"/> takes to
+/// record its actual value. <see langword="null"/> when the server did not log it.
+/// </param>
+public sealed record MLoopPredictionResult(IReadOnlyDictionary<string, object?> Outputs, string? PredictionId = null);
+
+/// <summary>The actual value of a logged prediction (MLoop <c>POST /feedback</c>).</summary>
+/// <param name="PredictionId">The id MLoop logged the prediction under (<see cref="MLoopPredictionResult.PredictionId"/>).</param>
+/// <param name="ActualValue">The actual value.</param>
+/// <param name="Source">Where it came from — free text.</param>
+/// <param name="Weight">
+/// How much the row counts in training and evaluation built from feedback (for a row reviewed with
+/// probability π, 1/π); <see langword="null"/> counts 1.
+/// </param>
+public sealed record MLoopFeedback(string PredictionId, object ActualValue, string? Source = null, double? Weight = null);
 
 /// <summary>
 /// Request for a forecasting-model prediction. Forecasting is horizon-based, not row-based

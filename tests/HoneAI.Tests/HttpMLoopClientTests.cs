@@ -50,6 +50,45 @@ public class HttpMLoopClientTests
     }
 
     [Fact]
+    public async Task Predict_SurfacesTheLoggedPredictionId_NotAsAnOutput()
+    {
+        // MLoop logs a served row and returns the id feedback is recorded against.
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "task": "binary", "predictions": [ { "predictedLabel": "NG", "predictionId": "9f2c4e1a7b3d5f60" } ] }
+            """));
+
+        var pred = await Client(handler).PredictAsync(new MLoopPredictionRequest(new Dictionary<string, object?> { ["t"] = 1 }));
+
+        Assert.Equal("9f2c4e1a7b3d5f60", pred.Value.PredictionId);
+        Assert.False(pred.Value.Outputs.ContainsKey("predictionId"));
+    }
+
+    [Fact]
+    public async Task RecordFeedback_PostsTheValueSourceAndWeight()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """{ "recorded": true }"""));
+
+        await Client(handler).RecordFeedbackAsync(new MLoopFeedback("9f2c4e1a7b3d5f60", "NG", "person-a@1", 4.0));
+
+        Assert.Equal(HttpMethod.Post, handler.LastRequest!.Method);
+        Assert.EndsWith("feedback", handler.LastUri);
+        Assert.Contains("\"predictionId\":\"9f2c4e1a7b3d5f60\"", handler.LastBody);
+        Assert.Contains("\"actualValue\":\"NG\"", handler.LastBody);
+        Assert.Contains("\"source\":\"person-a@1\"", handler.LastBody);
+        Assert.Contains("\"weight\":4", handler.LastBody);
+    }
+
+    [Fact]
+    public async Task RecordFeedback_UnknownPrediction_IsAClientError()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.NotFound, """{ "title": "Prediction not found" }"""));
+
+        var error = await Assert.ThrowsAsync<MLoopClientException>(
+            () => Client(handler).RecordFeedbackAsync(new MLoopFeedback("0000000000000000", "NG")));
+        Assert.Equal(HttpStatusCode.NotFound, error.StatusCode);
+    }
+
+    [Fact]
     public async Task Predict_FallsBackToScoreWhenNoProbabilities()
     {
         // Regression with no conformal band (old model / bare point estimate) → the scalar score itself.
