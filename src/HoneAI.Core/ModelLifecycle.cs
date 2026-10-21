@@ -85,7 +85,9 @@ public sealed class ModelLifecycle : IModelLifecycle
         try
         {
             // Export: the confirmed labels recorded as feedback become a retraining set merged into training.
-            var training = request.Training;
+            // Promotion waits for the review below, so MLoop keeps the experiment in staging — left to itself it
+            // promotes a better model the moment training ends, before anyone has reviewed it.
+            var training = request.Training with { Promote = false };
             if (request.Feedback is { } feedback)
             {
                 var sample = await _mloop.CreateSampleAsync(feedback with { Model = feedback.Model ?? training.Model }, cancellationToken)

@@ -6,6 +6,15 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `MLoopTrainRequest.Promote` — `false` asks MLoop to keep the trained experiment in staging (`"promote": false` on
+  `POST /train`, MLoop 0.42 and later) for the caller to promote with `IMLoopClient.PromoteAsync`.
+
+### Fixed
+- `ModelLifecycle` trains with `Promote = false`. Its run is train → review → promote, but MLoop promoted a better
+  model as soon as training finished, so it served production before the review had decided — and a rejected review
+  left it there. Against an MLoop that does not know the field the old behaviour remains.
+
 ## [0.7.0] - 2026-10-22
 
 ### Added

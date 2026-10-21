@@ -105,6 +105,10 @@ public class HttpMLoopClientTests
 
         await client.TrainAsync(new MLoopTrainRequest("d.csv", "y", "binary-classification"));
         Assert.DoesNotContain("additionalDataFiles", handler.LastBody);
+        Assert.DoesNotContain("promote", handler.LastBody);                // MLoop's default: it promotes
+
+        await client.TrainAsync(new MLoopTrainRequest("d.csv", "y", "binary-classification", Promote: false));
+        Assert.Contains("\"promote\":false", handler.LastBody);
     }
 
     [Fact]

@@ -33,6 +33,7 @@ public class ModelLifecycleTests
         var run = await runTask;
 
         Assert.Equal("completed", run.Status);
+        Assert.False(mloop.Trained!.Promote);                               // MLoop must not promote before the review
         Assert.Equal(("weld", "exp-9"), mloop.Promoted);
         Assert.Equal(LifecycleStage.Promote, run.Steps[^1].Stage);
         Assert.Equal("completed", run.Steps[^1].Status);

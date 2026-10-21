@@ -61,13 +61,19 @@ public sealed record MLoopForecastResult(IReadOnlyList<MLoopForecastPoint> Point
 /// A file without the model's weight column counts its rows 1.
 /// </param>
 /// <param name="Weight">The column that weights the rows; <see langword="null"/> leaves it to the project's definition.</param>
+/// <param name="Promote">
+/// <see langword="false"/> keeps the trained experiment in staging (MLoop <c>"promote": false</c>) for the caller to promote
+/// with <see cref="IMLoopClient.PromoteAsync"/> once it has decided; <see langword="true"/> lets MLoop promote it when it beats
+/// production and passes the gates.
+/// </param>
 public sealed record MLoopTrainRequest(
     string DataPath,
     string? Label = null,
     string? Task = null,
     string? Model = null,
     IReadOnlyList<string>? AdditionalDataPaths = null,
-    string? Weight = null);
+    string? Weight = null,
+    bool Promote = true);
 
 /// <summary>A retraining set to build from a model's logged predictions and their feedback (MLoop <c>POST /samples</c>).</summary>
 /// <param name="Model">Target model name; <see langword="null"/> uses the default model.</param>

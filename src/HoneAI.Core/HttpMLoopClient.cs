@@ -139,6 +139,8 @@ public sealed class HttpMLoopClient : IMLoopClient
             body["additionalDataFiles"] = more;
         if (!string.IsNullOrWhiteSpace(request.Weight))
             body["weight"] = request.Weight;
+        if (!request.Promote)
+            body["promote"] = false;
 
         using var response = await _http.PostAsJsonAsync("train", body, JsonOptions, cancellationToken)
             .ConfigureAwait(false);
