@@ -104,3 +104,36 @@ public class TrustControllerTests
     public void ASliceInAPoolWithoutABudget_IsRefused()
         => Assert.Throws<ArgumentException>(() => TrustController.Close("s", Now, [Slice("x", TrustState.Shadow, Good()) with { Pool = "nowhere" }], Policy));
 }
+
+public class ConfidenceAbstainTests
+{
+    private static LedgerCell Window(double? auc, double ess = 500, double agreement = 0.9) => new()
+    {
+        TierId = "ml", SliceKey = "s", WindowStart = DateTimeOffset.UnixEpoch, WindowEnd = DateTimeOffset.UnixEpoch.AddDays(7),
+        Rechecks = (int)ess, UpperFailures = 0, EffectiveSampleSize = ess, Agreement = agreement,
+        MissesEstimated = 0, Caught = 0, Confidence = 0.95, ConfidenceRankAuc = auc,
+    };
+
+    [Fact]
+    public void ARankingThatWorks_EarnsTheAbstainQuantile()
+        => Assert.Equal(0.05, ConfidenceAbstain.Quantile(Window(0.8), 0.05));
+
+    [Theory]
+    [InlineData(0.52)]      // above chance, but not shown to be on 500 rechecks with 50 disagreements
+    [InlineData(0.3)]       // confidence runs against correctness
+    public void ARankingNotShownAboveChance_DoesNotAbstain(double auc)
+        => Assert.Null(ConfidenceAbstain.Quantile(Window(auc), 0.05));
+
+    [Fact]
+    public void TooFewDisagreements_OrNoAuc_OrNoCalibration_DoNotAbstain()
+    {
+        Assert.Null(ConfidenceAbstain.Quantile(Window(0.9, ess: 5), 0.05));
+        Assert.Null(ConfidenceAbstain.Quantile(Window(null), 0.05));
+        Assert.Null(ConfidenceAbstain.Quantile(Window(0.8), 0.05, calibrated: false));
+        Assert.Null(ConfidenceAbstain.Quantile(Window(0.8), null));
+    }
+
+    [Fact]
+    public void TheLowerBound_TightensWithMoreRechecks()
+        => Assert.True(ConfidenceAbstain.RankAucLower(Window(0.6, ess: 5_000)) > ConfidenceAbstain.RankAucLower(Window(0.6, ess: 500)));
+}

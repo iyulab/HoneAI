@@ -12,6 +12,12 @@ All notable changes to HoneAI are documented here. The format follows
   stable tiers by possible misses (u·C/(1 − u) from the window, an unmeasured tier first) — and
   issues the snapshot. A release awaiting approval keeps the old standing in the snapshot
   (`ControllerStep.AwaitingApproval`); tightening is committed at once. The README walks the loop.
+- **Abstaining on the least confident answers — only where it works.** `ConfidenceAbstain.Quantile`
+  issues a tier's wanted abstain quantile only when its window shows the confidence ranks mistakes
+  above chance (the confidence-rank AUC's Hanley–McNeil lower bound over 0.5, on effective agreed
+  and disagreed counts) and the tier is calibrated (`SliceWindow.Calibrated`); `TrustController`
+  applies it to `SliceWindow.AbstainQuantile`. A confidence that runs against correctness never
+  earns it.
 - **Recheck probabilities from the promise.** `RecheckRate.Solve(targets, traffic)` derives the rate a
   stable tier needs in a slice from what the consumer promised (`TrustTargets` — agreement p0,
   detectable drop δ, must-catch miss limit m, deadline D, α, power, floor and ceiling) and what the

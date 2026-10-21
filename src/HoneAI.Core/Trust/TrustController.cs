@@ -23,8 +23,17 @@ public sealed record SliceWindow(
     /// <summary>How knobs tilt toward decisions worth checking.</summary>
     public IReadOnlyDictionary<string, KnobSelection>? Selection { get; init; }
 
-    /// <summary>The abstain quantile, where the ledger showed the tier's confidence ranks its mistakes.</summary>
+    /// <summary>
+    /// The abstain quantile wanted for the tier. Issued only where the window shows its confidence ranks
+    /// its mistakes (<see cref="ConfidenceAbstain"/>) and it is <see cref="Calibrated"/>.
+    /// </summary>
     public double? AbstainQuantile { get; init; }
+
+    /// <summary>
+    /// The tier's confidence passed its calibration check (for an ML tier, MLoop's <c>ece</c>). True
+    /// for a tier whose confidence has no calibration to check.
+    /// </summary>
+    public bool Calibrated { get; init; } = true;
 }
 
 /// <summary>Everything the controller applies. People set all of it.</summary>
@@ -110,7 +119,7 @@ public static class TrustController
             {
                 OtherKnobRates = j.Slice.OtherKnobRates,
                 Selection = j.Slice.Selection,
-                AbstainQuantile = j.Slice.AbstainQuantile,
+                AbstainQuantile = ConfidenceAbstain.Quantile(j.Slice.Window, j.Slice.AbstainQuantile, j.Slice.Calibrated),
             }).ToList(),
             policy.Issue, sliceKeyVersion);
 
@@ -129,5 +138,54 @@ public static class TrustController
         if (window.MissRateUpper is not { } u)
             return null;
         return u >= 1 ? double.PositiveInfinity : u * window.Caught / (1 - u);
+    }
+}
+
+/// <summary>
+/// Whether a tier's confidence has earned it the right to abstain on its least confident answers.
+/// </summary>
+/// <remarks>
+/// Confidence is not a qualification, but its <i>ranking</i> can be: on one measured set a fixed
+/// threshold sent up a fifth of the errors while the bottom 5% by rank held almost all of them. So a
+/// tier may abstain on its lowest quantile q — sending those decisions up, which never biases the
+/// ledger since the tier above judges every one of them — but only where the ledger shows the ranking
+/// works: the confidence-rank AUC's lower bound (Hanley–McNeil, on the window's effective agreed and
+/// disagreed counts) above chance. Where confidence runs against correctness, as it can for an
+/// unsupervised anomaly score, the bound stays under 0.5 and the tier does not abstain.
+/// </remarks>
+public static class ConfidenceAbstain
+{
+    /// <summary>
+    /// <paramref name="requested"/> when <paramref name="window"/> shows the tier's confidence ranks its
+    /// mistakes above chance at <paramref name="confidence"/> and the tier is <paramref name="calibrated"/>; otherwise null.
+    /// </summary>
+    public static double? Quantile(LedgerCell window, double? requested, bool calibrated = true, double confidence = TrustLedger.DefaultConfidence)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        if (requested is not { } q)
+            return null;
+        if (!(q > 0 && q < 1))
+            throw new ArgumentOutOfRangeException(nameof(requested), q, "An abstain quantile lies strictly between 0 and 1.");
+        return calibrated && RankAucLower(window, confidence) > 0.5 ? q : null;
+    }
+
+    /// <summary>
+    /// One-sided lower bound on <see cref="LedgerCell.ConfidenceRankAuc"/> by the Hanley–McNeil standard
+    /// error, on effective counts of agreed and disagreed rechecks; null without an AUC or with fewer than
+    /// one effective recheck of either kind.
+    /// </summary>
+    public static double? RankAucLower(LedgerCell window, double confidence = TrustLedger.DefaultConfidence)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        if (window.ConfidenceRankAuc is not { } a || window.Agreement is not { } agreement)
+            return null;
+        var disagreed = window.EffectiveSampleSize * (1 - agreement);
+        var agreed = window.EffectiveSampleSize * agreement;
+        if (disagreed < 1 || agreed < 1)
+            return null;
+        var q1 = a / (2 - a);
+        var q2 = 2 * a * a / (1 + a);
+        var variance = (a * (1 - a) + (disagreed - 1) * (q1 - a * a) + (agreed - 1) * (q2 - a * a)) / (disagreed * agreed);
+        return a - TrustLedger.NormalQuantile(confidence) * Math.Sqrt(Math.Max(variance, 0));
     }
 }
