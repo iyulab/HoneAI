@@ -34,6 +34,10 @@ All notable changes to HoneAI are documented here. The format follows
   judge's confusion matrix together from who answered what (Dawid–Skene by expectation–maximisation), with items
   of known truth held fixed. Refuses an unidentified set — fewer than three judges and nothing known. A judge with
   a lean shows it as mass off the diagonal, and a majority that leans no longer outvotes a judge that does not.
+- **Hierarchical shrinkage.** `LedgerShrinkage.Agreement` shrinks each slice's agreement toward its group's and
+  the groups' toward the whole (empirical Bayes, the between-slice spread by the method of moments) — a small
+  slice borrows strength as far as its siblings are alike. For ordering and reporting only; releases still rest
+  on a slice's own rechecks.
 
 ### Changed
 - **Breaking:** `LabelConfirmation.Decide`'s `teacherCell` lookup takes a `JudgeIdentity` instead of a tier id, so

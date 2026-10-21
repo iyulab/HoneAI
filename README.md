@@ -122,6 +122,10 @@ A tier earns the right to settle a slice from rechecks, not from its own confide
    truth: it estimates every item's truth and every judge's confusion matrix together (Dawid–Skene, EM),
    holding planted or consensus items at their known truth. It runs only where it is identified — three or
    more judges, or some known items — and refuses otherwise.
+   `LedgerShrinkage.Agreement` lets a slice with few rechecks borrow strength from the slices like it (slice →
+   your group → every slice, empirical Bayes), as far as they are alike. It orders and reports — which small
+   slice looks worst, what a cold one probably is — and is never what a slice gains ground on: a release rests
+   on the slice's own rechecks, or a rare danger in a small slice would ride on its siblings.
 2. **Lifecycle** — `TrustLifecycle.Release` moves shadow → active → stable only at a window's end,
    on every condition at once; `TrustLifecycle.Tighten` moves back at any time (a new version, a
    seen miss, agreement shown low, drift — `StalenessWatch` reads MLoop's `GET /drift`).
