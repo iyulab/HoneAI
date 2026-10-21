@@ -139,8 +139,9 @@ The label's `Weight` is trust / π. Send it to each engine's `IConfirmedLabelSin
 `MLoopFeedbackSink<T>` records it as weighted feedback on the ML tier's MLoop prediction
 (`MLoopPredictionResult.PredictionId` — keep `MLoopFeedbackSink.ReferenceTo(result)` with the decision and pass it to
 `Decide` as `annotations`),
-which MLoop turns into a retraining set (`mloop sample create --model`). Other engines — a memory's
-settlement — implement the sink themselves.
+which MLoop turns into a retraining set (`POST /samples`). `ModelLifecycle` closes the loop: a run started with
+`LifecycleRequest.Feedback` builds that set, trains on the data with it merged in — weighted — and goes on to review
+and promotion. Other engines — a memory's settlement — implement the sink themselves.
 
 ### Talking to an MLoop model server (`HttpMLoopClient`)
 

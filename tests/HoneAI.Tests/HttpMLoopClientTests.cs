@@ -79,6 +79,35 @@ public class HttpMLoopClientTests
     }
 
     [Fact]
+    public async Task CreateSample_PostsTheRequest_AndReadsTheFile()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "modelName": "weld", "path": ".mloop/samples/weld_20261021.csv", "sampledCount": 10, "labeledCount": 4,
+              "totalAvailable": 12, "strategy": "FeedbackPriority", "labelColumn": "y", "weightColumn": "weight" }
+            """));
+
+        var sample = await Client(handler).CreateSampleAsync(new MLoopSampleRequest("weld", 10, "feedback-priority"));
+
+        Assert.Equal(new MLoopSample(".mloop/samples/weld_20261021.csv", 10, 4, "y", "weight"), sample);
+        Assert.EndsWith("samples", handler.LastUri);
+        Assert.Contains("\"strategy\":\"feedback-priority\"", handler.LastBody);
+    }
+
+    [Fact]
+    public async Task Train_SendsAdditionalDataFiles_OnlyWhenThereAreAny()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.Accepted, """{ "jobId": "job-1" }"""));
+        var client = Client(handler);
+
+        await client.TrainAsync(new MLoopTrainRequest("d.csv", "y", "binary-classification", "weld", [".mloop/samples/s.csv"], "weight"));
+        Assert.Contains("\"additionalDataFiles\":[\".mloop/samples/s.csv\"]", handler.LastBody);
+        Assert.Contains("\"weight\":\"weight\"", handler.LastBody);
+
+        await client.TrainAsync(new MLoopTrainRequest("d.csv", "y", "binary-classification"));
+        Assert.DoesNotContain("additionalDataFiles", handler.LastBody);
+    }
+
+    [Fact]
     public async Task RecordFeedback_UnknownPrediction_IsAClientError()
     {
         var handler = new StubHandler(_ => Json(HttpStatusCode.NotFound, """{ "title": "Prediction not found" }"""));

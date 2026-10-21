@@ -20,8 +20,17 @@ All notable changes to HoneAI are documented here. The format follows
   `MLoopPredictionResult.PredictionId` — the id MLoop logged a prediction under, no longer mixed into the
   outputs.
 
+- **Retraining on confirmed labels.** `LifecycleRequest.Feedback` makes a `ModelLifecycle` run first build a
+  retraining set from the model's feedback (`IMLoopClient.CreateSampleAsync` — MLoop `POST /samples`, the Export
+  stage) and train on the data with it merged in, weighted by the set's weight column.
+  `MLoopTrainRequest` gains `AdditionalDataPaths` and `Weight`.
+
 ### Changed
-- `IMLoopClient` gains `RecordFeedbackAsync` — an implementation of the interface adds it.
+- `IMLoopClient` gains `RecordFeedbackAsync` and `CreateSampleAsync` — an implementation of the interface adds them.
+
+### Fixed
+- `ModelLifecycle` recorded any failure as a failed Promote stage — a training run MLoop refused read as a promotion
+  failure. The failure is recorded at the stage that threw.
 
 ## [0.5.0] - 2026-10-21
 

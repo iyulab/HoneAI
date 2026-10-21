@@ -44,7 +44,12 @@ public sealed record LifecycleRun(string RunId, string Status, IReadOnlyList<Lif
 /// <param name="Training">What to train (data path, label, task, model).</param>
 /// <param name="ReviewId">The id the human-review gate keys on; defaults to the run id.</param>
 /// <param name="Trigger">Who/what triggered the run (e.g. "manual", "auto", "schedule").</param>
-public sealed record LifecycleRequest(MLoopTrainRequest Training, string? ReviewId = null, string? Trigger = null);
+/// <param name="Feedback">
+/// When set, the run first builds a retraining set from the model's feedback — the confirmed labels sinks recorded —
+/// and trains on <see cref="MLoopTrainRequest.DataPath"/> with it merged in (the <see cref="LifecycleStage.Export"/> stage).
+/// </param>
+public sealed record LifecycleRequest(
+    MLoopTrainRequest Training, string? ReviewId = null, string? Trigger = null, MLoopSampleRequest? Feedback = null);
 
 /// <summary>
 /// Orchestrates a model reliability lifecycle — export→init→inspect→train→evaluate→

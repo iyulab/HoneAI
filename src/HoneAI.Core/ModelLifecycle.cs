@@ -81,10 +81,29 @@ public sealed class ModelLifecycle : IModelLifecycle
         }
 
         Set("running");
+        var stage = LifecycleStage.Export;
         try
         {
+            // Export: the confirmed labels recorded as feedback become a retraining set merged into training.
+            var training = request.Training;
+            if (request.Feedback is { } feedback)
+            {
+                var sample = await _mloop.CreateSampleAsync(feedback with { Model = feedback.Model ?? training.Model }, cancellationToken)
+                    .ConfigureAwait(false);
+                await Record(LifecycleStage.Export, "completed",
+                    $"{sample.Path}: {sample.LabeledRows} of {sample.Rows} rows with feedback"
+                    + (sample.WeightColumn is { } w ? $", weighted by '{w}'" : string.Empty), JudgeKind.Ml).ConfigureAwait(false);
+                // Rows weighted by the labels' trust / π are trained on as weighted — unless the request says otherwise.
+                training = training with
+                {
+                    AdditionalDataPaths = [.. training.AdditionalDataPaths ?? [], sample.Path],
+                    Weight = training.Weight ?? sample.WeightColumn,
+                };
+            }
+
             // Train.
-            var job = await _mloop.TrainAsync(request.Training, cancellationToken).ConfigureAwait(false);
+            stage = LifecycleStage.Train;
+            var job = await _mloop.TrainAsync(training, cancellationToken).ConfigureAwait(false);
             await Record(LifecycleStage.Train, "running", job.Id, JudgeKind.Ml).ConfigureAwait(false);
 
             // Poll to completion.
@@ -101,6 +120,7 @@ public sealed class ModelLifecycle : IModelLifecycle
                 .ConfigureAwait(false);
 
             // Review (HITL): wait for the human decision.
+            stage = LifecycleStage.Review;
             _runs[runId] = new LifecycleRun(runId, "waiting_review", steps.ToArray());
             var decision = await _hitl.AwaitDecisionAsync(reviewId, cancellationToken).ConfigureAwait(false);
             var approved = ApprovalVerdicts.Contains(decision.Verdict);
@@ -111,6 +131,7 @@ public sealed class ModelLifecycle : IModelLifecycle
                 return Settle(runId, steps, "completed"); // run completed without promotion
 
             // Promote.
+            stage = LifecycleStage.Promote;
             if (string.IsNullOrEmpty(job.ExperimentId))
             {
                 await Record(LifecycleStage.Promote, "failed", "no experimentId on completed job", JudgeKind.Ml)
@@ -126,7 +147,8 @@ public sealed class ModelLifecycle : IModelLifecycle
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            steps.Add(new LifecycleStep(LifecycleStage.Promote, "failed", ex.Message));
+            // The stage that threw, not always Promote: a training run MLoop refused failed at Train.
+            steps.Add(new LifecycleStep(stage, "failed", ex.Message));
             return Fail(runId, steps);
         }
     }

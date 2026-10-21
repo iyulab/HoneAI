@@ -56,11 +56,32 @@ public sealed record MLoopForecastResult(IReadOnlyList<MLoopForecastPoint> Point
 /// <param name="Label">Label column; <see langword="null"/> for unsupervised tasks.</param>
 /// <param name="Task">ML task type (e.g. "regression", "binary"); <see langword="null"/> to let MLoop infer.</param>
 /// <param name="Model">Target model name; <see langword="null"/> uses the default model.</param>
+/// <param name="AdditionalDataPaths">
+/// Files merged after <paramref name="DataPath"/> — a retraining set from <see cref="IMLoopClient.CreateSampleAsync"/>.
+/// A file without the model's weight column counts its rows 1.
+/// </param>
+/// <param name="Weight">The column that weights the rows; <see langword="null"/> leaves it to the project's definition.</param>
 public sealed record MLoopTrainRequest(
     string DataPath,
     string? Label = null,
     string? Task = null,
-    string? Model = null);
+    string? Model = null,
+    IReadOnlyList<string>? AdditionalDataPaths = null,
+    string? Weight = null);
+
+/// <summary>A retraining set to build from a model's logged predictions and their feedback (MLoop <c>POST /samples</c>).</summary>
+/// <param name="Model">Target model name; <see langword="null"/> uses the default model.</param>
+/// <param name="Rows">How many logged predictions to take; <see langword="null"/> for MLoop's default.</param>
+/// <param name="Strategy">MLoop's sampling strategy; <see langword="null"/> for its default. <c>feedback-priority</c> takes the rows with feedback first.</param>
+public sealed record MLoopSampleRequest(string? Model = null, int? Rows = null, string? Strategy = null);
+
+/// <summary>A retraining set MLoop wrote.</summary>
+/// <param name="Path">The file, relative to the MLoop project — what <see cref="MLoopTrainRequest.AdditionalDataPaths"/> takes.</param>
+/// <param name="Rows">Rows written.</param>
+/// <param name="LabeledRows">Of those, rows with feedback; the rest have an empty label and training drops them.</param>
+/// <param name="LabelColumn">The column the feedback was written under.</param>
+/// <param name="WeightColumn">The column the rows are weighted under; <see langword="null"/> when none was written.</param>
+public sealed record MLoopSample(string Path, int Rows, int LabeledRows, string? LabelColumn = null, string? WeightColumn = null);
 
 /// <summary>Handle to an MLoop training job, including its result once completed.</summary>
 /// <param name="Id">Job identifier (poll with <see cref="IMLoopClient.GetJobAsync"/>).</param>

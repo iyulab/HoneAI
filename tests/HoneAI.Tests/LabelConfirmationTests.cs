@@ -178,5 +178,6 @@ public class LabelConfirmationTests
         public Task PromoteAsync(string model, string experimentId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<MLoopDrift> GetDriftAsync(MLoopDriftRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<MLoopModelInfo?> GetInfoAsync(string? model = null, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<MLoopSample> CreateSampleAsync(MLoopSampleRequest request, CancellationToken ct = default) => throw new NotSupportedException();
     }
 }

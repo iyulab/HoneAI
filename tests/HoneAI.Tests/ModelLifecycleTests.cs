@@ -56,6 +56,40 @@ public class ModelLifecycleTests
     }
 
     [Fact]
+    public async Task WithFeedback_TrainsOnTheDataAndTheRetrainingSetFromFeedback()
+    {
+        var mloop = new FakeMLoop { CompletedExperimentId = "exp-9" };
+        var hitl = new InMemoryHitlGate();
+        var lifecycle = Lifecycle(mloop, hitl);
+
+        var runTask = lifecycle.StartAsync(new LifecycleRequest(Train, ReviewId: "rev-1",
+            Feedback: new MLoopSampleRequest(Strategy: "feedback-priority")));
+        await SubmitWhenWaiting(hitl, "rev-1", new ReviewDecision("approve"));
+        var run = await runTask;
+
+        Assert.Equal("completed", run.Status);
+        Assert.Equal("weld", mloop.SampleAsked!.Model);                       // the training's model, when the sample names none
+        Assert.Equal(new[] { ".mloop/samples/m.csv" }, mloop.Trained!.AdditionalDataPaths);
+        Assert.Equal("data.csv", mloop.Trained.DataPath);
+        Assert.Equal("weight", mloop.Trained.Weight);                       // trained weighted by the sample's column
+        var export = run.Steps[0];
+        Assert.Equal(LifecycleStage.Export, export.Stage);
+        Assert.Contains("4 of 10 rows with feedback", export.Detail);
+        Assert.Contains("weighted by 'weight'", export.Detail);
+    }
+
+    [Fact]
+    public async Task ATrainingRunMLoopRefuses_FailsAtTrain_NotAtPromote()
+    {
+        var mloop = new FakeMLoop { TrainThrows = new InvalidOperationException("Data file not found") };
+        var run = await Lifecycle(mloop, new InMemoryHitlGate()).StartAsync(new LifecycleRequest(Train));
+
+        Assert.Equal("failed", run.Status);
+        Assert.Equal(LifecycleStage.Train, run.Steps[^1].Stage);
+        Assert.Equal("Data file not found", run.Steps[^1].Detail);
+    }
+
+    [Fact]
     public async Task FailedTraining_StopsBeforeReview()
     {
         var mloop = new FakeMLoop { FinalStatus = "failed" };
@@ -125,7 +159,11 @@ public class ModelLifecycleTests
         public (string Model, string ExperimentId)? Promoted { get; private set; }
 
         public Task<MLoopJob> TrainAsync(MLoopTrainRequest request, CancellationToken ct = default)
-            => Task.FromResult(new MLoopJob("job-1", "running"));
+        {
+            Trained = request;
+            if (TrainThrows is not null) throw TrainThrows;
+            return Task.FromResult(new MLoopJob("job-1", "running"));
+        }
 
         public Task<ITracedPrediction<MLoopForecastResult>> ForecastAsync(MLoopForecastRequest request, CancellationToken ct = default)
             => throw new NotSupportedException("lifecycle tests never forecast");
@@ -151,6 +189,16 @@ public class ModelLifecycleTests
 
         public Task RecordFeedbackAsync(MLoopFeedback feedback, CancellationToken ct = default)
             => throw new NotSupportedException("lifecycle tests never record feedback");
+
+        public MLoopSampleRequest? SampleAsked { get; private set; }
+        public MLoopTrainRequest? Trained { get; private set; }
+        public Exception? TrainThrows { get; init; }
+
+        public Task<MLoopSample> CreateSampleAsync(MLoopSampleRequest request, CancellationToken ct = default)
+        {
+            SampleAsked = request;
+            return Task.FromResult(new MLoopSample(".mloop/samples/m.csv", 10, 4, "y", "weight"));
+        }
     }
 
     private sealed class RecordingSink : IProvenanceSink

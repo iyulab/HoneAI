@@ -49,6 +49,12 @@ public interface IMLoopClient
     /// </summary>
     Task RecordFeedbackAsync(MLoopFeedback feedback, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Build a retraining set from the model's logged predictions and their feedback — the file a training
+    /// run takes in <see cref="MLoopTrainRequest.AdditionalDataPaths"/>.
+    /// </summary>
+    Task<MLoopSample> CreateSampleAsync(MLoopSampleRequest request, CancellationToken cancellationToken = default);
+
     /// <summary>Production model metadata, or <see langword="null"/> when the model or transport is unavailable.</summary>
     Task<MLoopModelInfo?> GetInfoAsync(string? model = null, CancellationToken cancellationToken = default);
 }

@@ -135,6 +135,10 @@ public sealed class HttpMLoopClient : IMLoopClient
             ["task"] = request.Task ?? string.Empty,
             ["name"] = request.Model,
         };
+        if (request.AdditionalDataPaths is { Count: > 0 } more)
+            body["additionalDataFiles"] = more;
+        if (!string.IsNullOrWhiteSpace(request.Weight))
+            body["weight"] = request.Weight;
 
         using var response = await _http.PostAsJsonAsync("train", body, JsonOptions, cancellationToken)
             .ConfigureAwait(false);
@@ -201,6 +205,28 @@ public sealed class HttpMLoopClient : IMLoopClient
             : null;
 
         return new MLoopModelInfo(name, task, ParseMetrics(root));
+    }
+
+    /// <inheritdoc />
+    public async Task<MLoopSample> CreateSampleAsync(MLoopSampleRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var body = new Dictionary<string, object?>
+        {
+            ["name"] = request.Model,
+            ["rows"] = request.Rows,
+            ["strategy"] = request.Strategy,
+        };
+        using var response = await _http.PostAsJsonAsync("samples", body, JsonOptions, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccess(response, "samples", cancellationToken).ConfigureAwait(false);
+        using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        var root = doc.RootElement;
+        return new MLoopSample(
+            String(root, "path") ?? throw new InvalidOperationException("MLoop /samples response carried no path."),
+            root.TryGetProperty("sampledCount", out var n) && n.TryGetInt32(out var rows) ? rows : 0,
+            root.TryGetProperty("labeledCount", out var l) && l.TryGetInt32(out var labeled) ? labeled : 0,
+            String(root, "labelColumn"),
+            String(root, "weightColumn"));
     }
 
     /// <inheritdoc />
