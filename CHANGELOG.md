@@ -6,6 +6,21 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Recheck probabilities from the promise.** `RecheckRate.Solve(targets, traffic)` derives the rate a
+  stable tier needs in a slice from what the consumer promised (`TrustTargets` — agreement p0,
+  detectable drop δ, must-catch miss limit m, deadline D, α, power, floor and ceiling) and what the
+  slice sees in one window (`SliceTraffic` — decisions, must-catch decisions caught). The miss term
+  ln(1/α)·(1 − m)/(m·C) is what zero drawn misses need to bound the conditional miss rate by m; the
+  agreement term is the fixed-sample size of the release test over the window's decisions. The
+  result says which term set it (`RateTerm`) and whether it hit the ceiling — a slice where risk is
+  rare stays with the tier above.
+- **Sharing a pool of rechecks.** `RecheckBudget.Allocate(budget, requests, floor)` keeps every
+  slice's floor first (a settled decision is never beyond recheck, even when the floors overrun the
+  pool — `OverBudget`), then funds slices in order of their possible misses, an unmeasured slice
+  first. A slice the pool could not fund is marked (`RateTerm.Budget`) and cannot meet its release
+  conditions — the shortfall leans toward quality.
+
 ## [0.4.0] - 2026-10-21
 
 ### Added
