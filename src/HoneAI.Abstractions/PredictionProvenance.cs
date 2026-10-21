@@ -105,4 +105,12 @@ public sealed record TierStep(string TierId, JudgeKind Kind, StepOutcome Outcome
 /// <param name="Probability">π — the probability the decision was drawn with.</param>
 /// <param name="Knob">Which knob set π.</param>
 /// <param name="Drawn">Whether it was drawn.</param>
-public sealed record SampleDraw(double Probability, string Knob, bool Drawn);
+public sealed record SampleDraw(double Probability, string Knob, bool Drawn)
+{
+    /// <summary>
+    /// Every knob's rate in force when the decision was drawn (π is the largest, floored). With
+    /// the decision id and snapshot version this tells which knobs alone would have drawn it — a
+    /// knob's own sub-sample, weighted by its own rate, estimates without the other knobs' tilt.
+    /// </summary>
+    public IReadOnlyDictionary<string, double>? KnobRates { get; init; }
+}

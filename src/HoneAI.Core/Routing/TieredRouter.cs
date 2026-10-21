@@ -208,7 +208,10 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
             Unverified = unverified,
         };
         return new RoutedDecision<TValue>(
-            decisionId, new TracedPrediction<TValue>(settled.Verdict.Value!, provenance), steps.ToArray());
+            decisionId, new TracedPrediction<TValue>(settled.Verdict.Value!, provenance), steps.ToArray())
+        {
+            DecidedAt = _options.Clock(),
+        };
     }
 
     private SampleDraw Draw(string decisionId, PolicySnapshot snapshot, PolicyEntry entry)
@@ -219,7 +222,10 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
         if (!(rate >= _options.MinimumSampleRate))
             (knob, rate) = ("floor", _options.MinimumSampleRate);
         rate = Math.Min(rate, 1.0);
-        return new SampleDraw(rate, knob, RecheckDraw.IsDrawn(decisionId, snapshot.Version, rate));
+        return new SampleDraw(rate, knob, RecheckDraw.IsDrawn(decisionId, snapshot.Version, rate))
+        {
+            KnobRates = entry.SampleRates is { Count: > 0 } all ? new Dictionary<string, double>(all) : null,
+        };
     }
 
     private async ValueTask<JudgeVerdict<TValue>> JudgeAsync(
@@ -281,7 +287,11 @@ public sealed record TieredRouterOptions
 /// <param name="Prediction">The settled value and its provenance.</param>
 /// <param name="Steps">Each tier's verdict and what became of it, lowest first.</param>
 public sealed record RoutedDecision<TValue>(
-    string DecisionId, ITracedPrediction<TValue> Prediction, IReadOnlyList<RoutedStep<TValue>> Steps);
+    string DecisionId, ITracedPrediction<TValue> Prediction, IReadOnlyList<RoutedStep<TValue>> Steps)
+{
+    /// <summary>When the decision was settled — the time the trust ledger windows it by.</summary>
+    public DateTimeOffset DecidedAt { get; init; }
+}
 
 /// <summary>One tier's verdict on a decision.</summary>
 /// <param name="Tier">The tier.</param>

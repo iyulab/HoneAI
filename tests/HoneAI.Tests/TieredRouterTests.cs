@@ -83,7 +83,8 @@ public class TieredRouterTests
         Assert.Equal("snap-1", p.SnapshotVersion);
         Assert.Equal("s1", p.SliceKey);
         Assert.Equal(0.7, p.Confidence);
-        Assert.Equal(new SampleDraw(0.2, "slice-watch", RecheckDraw.IsDrawn("d2", "snap-1", 0.2)), p.Sample);
+        Assert.Equal((0.2, "slice-watch", RecheckDraw.IsDrawn("d2", "snap-1", 0.2)), (p.Sample!.Probability, p.Sample.Knob, p.Sample.Drawn));
+        Assert.Equal(new Dictionary<string, double> { ["uniform"] = 0.05, ["slice-watch"] = 0.2 }, p.Sample.KnobRates);
         Assert.Single(p.Path!);
     }
 

@@ -53,6 +53,9 @@ public sealed record RecheckRecord
     /// <summary>The knob that set π.</summary>
     public string? Knob { get; init; }
 
+    /// <summary>Every knob's rate when the decision was drawn (<see cref="SampleDraw.KnobRates"/>).</summary>
+    public IReadOnlyDictionary<string, double>? KnobRates { get; init; }
+
     /// <summary>The policy snapshot the decision was made under.</summary>
     public string? SnapshotVersion { get; init; }
 

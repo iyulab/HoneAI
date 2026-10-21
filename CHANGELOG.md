@@ -20,6 +20,15 @@ All notable changes to HoneAI are documented here. The format follows
   ones counted in full — with an exact binomial upper bound that counts failed rechecks as misses.
   With no miss seen the bound is ln(1/α)/π misses: a few hundred settled decisions at π = 0.01
   cannot show a low miss rate.
+- **From the router to the ledger.** `RecheckRecords.From(decision, recheck, policy)` turns a drawn
+  decision and its blind recheck into a `RecheckRecord` (agreement by the settlement policy's
+  predicate, so a tolerance counts as it settles); `RecheckRecords.CaughtBy` names the tiers that
+  sent a must-catch decision up. `RoutedDecision.DecidedAt` carries the decision time.
+- **Per-knob counting.** `SampleDraw.KnobRates` (and `RecheckRecord.KnobRates`) keep every knob's
+  rate at the draw. Because a decision is drawn when one uniform number fixed by its id and
+  snapshot version falls under π, the decisions a single knob would have drawn are exactly those
+  under that knob's rate — `TrustLedger.Compute(…, knob: "uniform")` counts the promise on the
+  uniform knob's own sub-sample, free of the other knobs' tilt (`TrustLedger.KnobSubsample`).
 
 ## [0.3.0] - 2026-10-21
 

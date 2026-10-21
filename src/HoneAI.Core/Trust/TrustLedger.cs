@@ -41,7 +41,8 @@ public static class TrustLedger
         DateTimeOffset from,
         DateTimeOffset to,
         int caught = 0,
-        double confidence = DefaultConfidence)
+        double confidence = DefaultConfidence,
+        string? knob = null)
     {
         ArgumentNullException.ThrowIfNull(records);
         if (caught < 0)
@@ -52,6 +53,8 @@ public static class TrustLedger
         var window = records
             .Where(r => r.TierId == tierId && r.SliceKey == sliceKey && r.DecidedAt >= from && r.DecidedAt < to)
             .ToList();
+        if (knob is not null)
+            window = KnobSubsample(window, knob);
         foreach (var r in window)
         {
             if (!(r.Probability > 0 && r.Probability <= 1))
@@ -112,6 +115,28 @@ public static class TrustLedger
             MissRateUpper = missRateUpper,
             Confidence = confidence,
         };
+    }
+
+    /// <summary>
+    /// The records <paramref name="knob"/> alone would have drawn, each re-weighted at that knob's
+    /// rate. A decision is drawn when one uniform number — fixed by its id and snapshot version —
+    /// falls under π, the largest knob rate; it falls under a knob's own rate exactly when that knob
+    /// alone would have drawn it. So the sub-sample is a draw at the knob's rate, and the other
+    /// knobs' tilt drops out. Records without knob rates or a snapshot version cannot be placed and
+    /// are left out.
+    /// </summary>
+    public static List<RecheckRecord> KnobSubsample(IEnumerable<RecheckRecord> records, string knob)
+    {
+        var subsample = new List<RecheckRecord>();
+        foreach (var r in records)
+        {
+            if (r.KnobRates is null || r.SnapshotVersion is null || !r.KnobRates.TryGetValue(knob, out var rate) || rate <= 0)
+                continue;
+            rate = Math.Min(rate, 1.0);
+            if (HoneAI.Routing.RecheckDraw.Uniform(r.DecisionId, r.SnapshotVersion) < rate)
+                subsample.Add(r with { Probability = rate, Knob = knob });
+        }
+        return subsample;
     }
 
     /// <summary>Kish's effective sample size of weighted observations: (Σw)² / Σw².</summary>
