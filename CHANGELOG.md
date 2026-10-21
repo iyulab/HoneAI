@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-22
+
 ### Added
 - **Consensus judgment.** A decision that waited (`ConfirmationOutcome.NeedsConsensus`) is settled by two or more
   judges together: `ConsensusJudgment<T>` (the value, the participants, when, a reference to the grounds compared)
