@@ -6,6 +6,15 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Consensus judgment.** A decision that waited (`ConfirmationOutcome.NeedsConsensus`) is settled by two or more
+  judges together: `ConsensusJudgment<T>` (the value, the participants, when, a reference to the grounds compared)
+  goes to `LabelConfirmation.Settle`, which makes the label — at the decision's π, by the same rules as `Decide`;
+  every participant sits above the learner, two or more distinct, or it is refused. Its trust is
+  `LabelTrustDefaults.Consensus` (default 1 — a consensus is what teachers are measured against), recorded as
+  `LabelTrustBasis.Consensus`; `ConfirmedLabel.Participants` names who took part, and the MLoop sink's source reads
+  `llm+person-a (consensus)`.
+
 ## [0.6.0] - 2026-10-21
 
 ### Added

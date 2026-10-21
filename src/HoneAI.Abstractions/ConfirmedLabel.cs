@@ -16,6 +16,13 @@ public enum LabelTrustBasis
     /// weight the ledger stands behind from one that only orders the kinds.
     /// </summary>
     Default = 1,
+
+    /// <summary>
+    /// A consensus: two or more judges settled the value together, comparing their grounds
+    /// (<see cref="ConsensusJudgment{TValue}"/>). It is the answer teachers are measured against, so its trust
+    /// is set apart from any single judge's.
+    /// </summary>
+    Consensus = 2,
 }
 
 /// <summary>
@@ -39,10 +46,16 @@ public sealed record ConfirmedLabel<TValue>
     /// <summary>The confirmed value.</summary>
     public required TValue Value { get; init; }
 
-    /// <summary>The tier that confirmed it (<see cref="Tier.Id"/>) — for a person, their tier's anonymous key.</summary>
+    /// <summary>
+    /// The tier that confirmed it (<see cref="Tier.Id"/>) — for a person, their tier's anonymous key. For a
+    /// consensus, its <see cref="Participants"/> joined by <c>+</c> in the cost order.
+    /// </summary>
     public required string ConfirmedBy { get; init; }
 
-    /// <summary>The confirming tier's kind.</summary>
+    /// <summary>The tiers that reached a consensus, in the cost order; null for a label one judge confirmed.</summary>
+    public IReadOnlyList<string>? Participants { get; init; }
+
+    /// <summary>The confirming tier's kind — for a consensus, the kind of the participant highest in the cost order.</summary>
     public required JudgeKind Kind { get; init; }
 
     /// <summary>The confirming tier's version.</summary>
@@ -97,6 +110,31 @@ public enum ConfirmationOutcome
     /// never drawn, so no tier above saw it.
     /// </summary>
     NotALabel = 2,
+}
+
+/// <summary>
+/// The value two or more judges settled together for a decision whose judges above disagreed on a must-catch
+/// value (<see cref="ConfirmationOutcome.NeedsConsensus"/>) — by comparing their grounds, not by rank: neither
+/// original answer wins automatically, and the value may be neither. Reaching it (who sits down, how the grounds
+/// are shown) is the consumer's; HoneAI turns it into a label and keeps nothing.
+/// </summary>
+/// <typeparam name="TValue">The decision's value type.</typeparam>
+public sealed record ConsensusJudgment<TValue>
+{
+    /// <summary>The decision it settles.</summary>
+    public required string DecisionId { get; init; }
+
+    /// <summary>The value settled on.</summary>
+    public required TValue Value { get; init; }
+
+    /// <summary>The tiers that took part (<see cref="Tier.Id"/> — for a person, their tier's anonymous key). Two or more, distinct.</summary>
+    public required IReadOnlyList<string> Participants { get; init; }
+
+    /// <summary>When it was reached.</summary>
+    public required DateTimeOffset ReachedAt { get; init; }
+
+    /// <summary>What the grounds compared were, for the audit — a reference, not a transcript.</summary>
+    public string? Grounds { get; init; }
 }
 
 /// <summary>The decision on an upper answer, with the label when there is one.</summary>

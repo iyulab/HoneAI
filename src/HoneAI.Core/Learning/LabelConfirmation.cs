@@ -26,6 +26,12 @@ public sealed record LabelTrustDefaults
     /// <summary>The trust of a kind not in <see cref="ByKind"/>.</summary>
     public double Otherwise { get; init; } = 0.7;
 
+    /// <summary>
+    /// The trust of a consensus (<see cref="LabelConfirmation.Settle{TValue}"/>), in (0, 1] — 1 by default: a
+    /// consensus is the known answer teachers are measured against, so it is not counted below them.
+    /// </summary>
+    public double Consensus { get; init; } = 1.0;
+
     /// <summary>The default trust of <paramref name="kind"/>.</summary>
     public double Of(JudgeKind kind) => ByKind.TryGetValue(kind, out var trust) ? trust : Otherwise;
 }
@@ -34,7 +40,7 @@ public sealed record LabelTrustDefaults
 /// Decides whether answers from above a learning tier make a label for it, and with what weight — the one
 /// place the rules of the learning loop live: only a tier above may confirm; a settled decision is a label
 /// only when it was drawn for recheck, at its draw's π; judges above that disagree on a must-catch value
-/// wait for consensus; trust is the ledger's measurement, else the kind's default, said so.
+/// wait for consensus (<see cref="Settle{TValue}"/>); trust is the ledger's measurement, else the kind's default, said so.
 /// </summary>
 public static class LabelConfirmation
 {
@@ -84,19 +90,9 @@ public static class LabelConfirmation
         if (above.Count == 0)
             return new(ConfirmationOutcome.NotALabel, Reason: $"No answer from a tier above '{learner.Id}'.");
 
-        // π: a decision that went up to the confirming tier reached it with certainty; one a lower tier settled
-        // reached it only if drawn for recheck — and then with its draw's probability.
-        var settledBelow = decision.TierId is { } settledBy
-            && tiers.FirstOrDefault(t => t.Id == settledBy) is { } settler
-            && above.All(x => x.Tier.CostRank > settler.CostRank);
-        double probability = 1.0;
-        if (settledBelow)
-        {
-            if (decision.Sample is not { Drawn: true } draw)
-                return new(ConfirmationOutcome.NotALabel,
-                    Reason: $"Settled by '{decision.TierId}' and not drawn for recheck: no tier above saw it.");
-            probability = draw.Probability;
-        }
+        if (ReachProbability(decision, above.Select(x => x.Tier), tiers) is not { } probability)
+            return new(ConfirmationOutcome.NotALabel,
+                Reason: $"Settled by '{decision.TierId}' and not drawn for recheck: no tier above saw it.");
 
         // Judges above that disagree where one says must-catch: neither wins until a consensus judgment.
         var values = above.Select(x => x.Answer.Value).ToList();
@@ -127,6 +123,87 @@ public static class LabelConfirmation
             ConfirmedAt = confirmedAt,
             Annotations = annotations,
         });
+    }
+
+    /// <summary>
+    /// The label a consensus makes for <paramref name="learner"/>: the value <paramref name="consensus"/> settled
+    /// on, trusted as <see cref="LabelTrustDefaults.Consensus"/> (<see cref="LabelTrustBasis.Consensus"/>), at
+    /// the π the decision reached the participants with — the same rules as <see cref="Decide{TValue}"/>.
+    /// </summary>
+    /// <param name="decision">The provenance the decision left HoneAI with.</param>
+    /// <param name="consensus">The consensus. Its participants are two or more distinct tiers on the ladder.</param>
+    /// <param name="learner">The tier the label is for. Every participant sits above it.</param>
+    /// <param name="tiers">The ladder.</param>
+    /// <param name="defaults">The consensus trust; <see cref="LabelTrustDefaults.Standard"/> when null.</param>
+    /// <param name="annotations">The references the sinks need, as in <see cref="Decide{TValue}"/>.</param>
+    /// <exception cref="ArgumentException">
+    /// The consensus is not one: fewer than two distinct participants, a participant not on the ladder, or one at
+    /// or below the learner — a judge agreeing with itself is not evidence, and neither is the learner.
+    /// </exception>
+    public static Confirmation<TValue> Settle<TValue>(
+        PredictionProvenance decision,
+        ConsensusJudgment<TValue> consensus,
+        Tier learner,
+        IReadOnlyCollection<Tier> tiers,
+        LabelTrustDefaults? defaults = null,
+        IReadOnlyDictionary<string, string>? annotations = null)
+    {
+        ArgumentNullException.ThrowIfNull(decision);
+        ArgumentNullException.ThrowIfNull(consensus);
+        ArgumentNullException.ThrowIfNull(learner);
+        ArgumentNullException.ThrowIfNull(tiers);
+        ArgumentException.ThrowIfNullOrWhiteSpace(consensus.DecisionId, nameof(consensus));
+        defaults ??= LabelTrustDefaults.Standard;
+
+        var participants = new List<Tier>();
+        foreach (var id in consensus.Participants?.Distinct() ?? [])
+        {
+            var tier = tiers.FirstOrDefault(t => t.Id == id)
+                ?? throw new ArgumentException($"Consensus participant '{id}' is not a tier on the ladder.", nameof(consensus));
+            if (tier.CostRank <= learner.CostRank)
+                throw new ArgumentException(
+                    $"Consensus participant '{id}' does not sit above '{learner.Id}': a tier cannot confirm its own label.",
+                    nameof(consensus));
+            participants.Add(tier);
+        }
+        if (participants.Count < 2)
+            throw new ArgumentException(
+                $"A consensus takes two or more distinct judges; decision '{consensus.DecisionId}' names {participants.Count}.",
+                nameof(consensus));
+
+        if (ReachProbability(decision, participants, tiers) is not { } probability)
+            return new(ConfirmationOutcome.NotALabel,
+                Reason: $"Settled by '{decision.TierId}' and not drawn for recheck: no tier above saw it.");
+
+        var ordered = participants.OrderBy(t => t.CostRank).ThenBy(t => t.Id, StringComparer.Ordinal).ToList();
+        return new(ConfirmationOutcome.Confirmed, new ConfirmedLabel<TValue>
+        {
+            DecisionId = consensus.DecisionId,
+            SliceKey = decision.SliceKey,
+            Value = consensus.Value,
+            ConfirmedBy = string.Join('+', ordered.Select(t => t.Id)),
+            Participants = ordered.Select(t => t.Id).ToList(),
+            Kind = ordered[^1].Kind,
+            SnapshotVersion = decision.SnapshotVersion,
+            Probability = probability,
+            Trust = defaults.Consensus,
+            TrustBasis = LabelTrustBasis.Consensus,
+            ConfirmedAt = consensus.ReachedAt,
+            Annotations = annotations,
+        });
+    }
+
+    // π: a decision that went up to the confirming tiers reached them with certainty; one a lower tier settled
+    // reached them only if drawn for recheck — and then with its draw's probability. Null: settled, never drawn.
+    private static double? ReachProbability(
+        PredictionProvenance decision, IEnumerable<Tier> confirmers, IReadOnlyCollection<Tier> tiers)
+    {
+        var settledBelow = decision.TierId is { } settledBy
+            && tiers.FirstOrDefault(t => t.Id == settledBy) is { } settler
+            && confirmers.All(t => t.CostRank > settler.CostRank);
+        if (!settledBelow)
+            return 1.0;
+        return decision.Sample is { Drawn: true } draw ? draw.Probability : null;
     }
 
     private static (double Value, LabelTrustBasis Basis) TrustOf(

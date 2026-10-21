@@ -63,13 +63,18 @@ public sealed class MLoopFeedbackSink<TValue> : IConfirmedLabelSink<TValue>
 
     /// <summary>
     /// The feedback source: the confirming tier and its version, and whether its trust was measured —
-    /// <c>llm-central@3 (default trust)</c>. Lets a slice of the retraining set be told apart by who labelled it.
+    /// <c>llm-central@3 (default trust)</c>, or the participants of a consensus — <c>llm+person-a (consensus)</c>. Lets a slice of the retraining set be told apart by who labelled it.
     /// </summary>
     public static string SourceOf(ConfirmedLabel<TValue> label)
     {
         ArgumentNullException.ThrowIfNull(label);
         var version = string.IsNullOrEmpty(label.ConfirmedByVersion) ? string.Empty : "@" + label.ConfirmedByVersion;
-        var basis = label.TrustBasis == LabelTrustBasis.Default ? " (default trust)" : string.Empty;
+        var basis = label.TrustBasis switch
+        {
+            LabelTrustBasis.Default => " (default trust)",
+            LabelTrustBasis.Consensus => " (consensus)",
+            _ => string.Empty,
+        };
         return label.ConfirmedBy + version + basis;
     }
 }

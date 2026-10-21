@@ -131,7 +131,11 @@ A cheap tier gets better by learning from answers the tiers above it confirmed �
 - a decision that went up reached the confirming tier with certainty (π = 1); one the learner settled is
   a label only if it was drawn for recheck, at its draw's π;
 - judges above that disagree where one says must-catch produce no label (`NeedsConsensus`) — neither
-  side wins automatically;
+  side wins automatically. Two or more judges then settle it together, comparing their grounds; hand the
+  result (`ConsensusJudgment<T>`) to `LabelConfirmation.Settle` and it becomes the label, at the decision's π,
+  trusted as `LabelTrustDefaults.Consensus` (1 unless you set it — `LabelTrustBasis.Consensus`). How the judges
+  meet is yours; a consensus is also a known answer to plant for teachers (`PlantRecords.From`, truth source
+  `consensus`);
 - trust is the teacher ledger's measured accuracy for the confirming tier, else its kind's default
   (`LabelTrustDefaults`), and the label says which (`LabelTrustBasis`).
 

@@ -99,6 +99,74 @@ public class LabelConfirmationTests
         Assert.Null(result.Label);
     }
 
+    private static ConsensusJudgment<string> Consensus(string value, params string[] participants)
+        => new() { DecisionId = "d1", Value = value, Participants = participants, ReachedAt = Now, Grounds = "case-7" };
+
+    private static Confirmation<string> Settle(PredictionProvenance decision, ConsensusJudgment<string> consensus,
+        LabelTrustDefaults? defaults = null)
+        => LabelConfirmation.Settle(decision, consensus, Ml, Ladder, defaults,
+            annotations: new Dictionary<string, string> { [MLoopFeedbackSink<string>.PredictionIdAnnotation] = "p-1" });
+
+    [Fact]
+    public void AConsensus_SettlesTheDecisionThatWaited_AsItsOwnValue()
+    {
+        // The LLM said ok, the person danger; together they settled on minor — neither original answer won.
+        Assert.Equal(ConfirmationOutcome.NeedsConsensus,
+            Decide(SettledBy(Llm), [Answer(Llm, "ok"), Answer(Person, "danger")]).Outcome);
+
+        var result = Settle(SettledBy(Llm), Consensus("minor", "person-a", "llm"));
+
+        Assert.Equal(ConfirmationOutcome.Confirmed, result.Outcome);
+        var label = result.Label!;
+        Assert.Equal("minor", label.Value);
+        Assert.Equal("llm+person-a", label.ConfirmedBy);                 // the cost order, not the order given
+        Assert.Equal(["llm", "person-a"], label.Participants);
+        Assert.Equal(JudgeKind.Human, label.Kind);
+        Assert.Equal(LabelTrustBasis.Consensus, label.TrustBasis);
+        Assert.Equal(1.0, label.Trust);
+        Assert.Equal(1.0, label.Probability);
+        Assert.Equal("snap-1", label.SnapshotVersion);
+        Assert.Equal(Now, label.ConfirmedAt);
+    }
+
+    [Fact]
+    public void AConsensusOnASettledDecision_IsWeightedByItsDraw_AndItsTrustIsTheConsumers()
+    {
+        var result = Settle(SettledBy(Ml, new SampleDraw(0.5, "promise", Drawn: true)), Consensus("danger", "llm", "person-a"),
+            new LabelTrustDefaults { Consensus = 0.9 });
+
+        Assert.Equal(0.5, result.Label!.Probability);
+        Assert.Equal(1.8, result.Label.Weight, 12);
+    }
+
+    [Fact]
+    public void AConsensusOnASettledDecisionNeverDrawn_IsNotALabel()
+    {
+        var result = Settle(SettledBy(Ml, new SampleDraw(0.5, "promise", Drawn: false)), Consensus("ok", "llm", "person-a"));
+
+        Assert.Equal(ConfirmationOutcome.NotALabel, result.Outcome);
+    }
+
+    [Theory]
+    [InlineData("person-a", null)]          // one judge is not a consensus
+    [InlineData("person-a", "person-a")]    // nor is one judge named twice
+    [InlineData("person-a", "ml")]          // the learner cannot confirm its own label
+    [InlineData("person-a", "stranger")]    // a participant off the ladder
+    public void WhatIsNotAConsensus_IsRefused(string first, string? second)
+        => Assert.Throws<ArgumentException>(
+            () => Settle(SettledBy(Llm), Consensus("ok", second is null ? [first] : [first, second])));
+
+    [Fact]
+    public async Task TheMLoopSink_NamesAConsensusByItsParticipants()
+    {
+        var label = Settle(SettledBy(Llm), Consensus("minor", "llm", "person-a")).Label!;
+        var client = new FeedbackRecorder();
+
+        await new MLoopFeedbackSink<string>(client).SendAsync(label);
+
+        Assert.Equal("llm+person-a (consensus)", Assert.Single(client.Sent).Source);
+    }
+
     [Fact]
     public void JudgesAboveDisagreeingOnOrdinaryValues_TheMostTrustedStands()
     {
