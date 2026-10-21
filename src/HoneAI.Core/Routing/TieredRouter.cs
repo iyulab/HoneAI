@@ -196,6 +196,35 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
         return new RecheckResult<TValue>(decisionId, judge.Tier, verdict, _options.Clock());
     }
 
+    /// <summary>
+    /// Judge a settled decision again at <paramref name="tierId"/> <b>shown</b> the lower answer —
+    /// <paramref name="lowerAnswer"/>, rendered as the consumer's judges read it, under
+    /// <see cref="JudgeContext.LowerAnswerHint"/>. For one thing only: measuring, against a blind
+    /// <see cref="RecheckAsync"/> of the same decision, what seeing the lower answer does to the
+    /// teacher. The result is marked <see cref="RecheckResult{TValue}.Shown"/> and the ledger refuses
+    /// it — a recheck the ledger counts is blind.
+    /// </summary>
+    /// <exception cref="ArgumentException">The tier does not accept hints, so it would not see the answer.</exception>
+    public async Task<RecheckResult<TValue>> RecheckShownAsync(
+        TInput input, string decisionId, string tierId, string lowerAnswer, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(decisionId);
+        ArgumentNullException.ThrowIfNull(lowerAnswer);
+        var judge = _judges.FirstOrDefault(j => j.Tier.Id == tierId)
+            ?? throw new ArgumentException($"No tier '{tierId}' on this ladder.", nameof(tierId));
+        if (!judge.Tier.AcceptsHints)
+            throw new ArgumentException($"Tier '{tierId}' does not accept hints; it cannot be shown the lower answer.", nameof(tierId));
+        var context = new JudgeContext
+        {
+            DecisionId = decisionId,
+            SliceKey = _sliceKey.KeyOf(input),
+            IsRecheck = true,
+            Hints = new Dictionary<string, string>(StringComparer.Ordinal) { [JudgeContext.LowerAnswerHint] = lowerAnswer },
+        };
+        var verdict = await JudgeAsync(judge, input, context, cancellationToken).ConfigureAwait(false);
+        return new RecheckResult<TValue>(decisionId, judge.Tier, verdict, _options.Clock()) { Shown = true };
+    }
+
     private RoutedDecision<TValue> Settle(
         string decisionId, string slice, PolicySnapshot? snapshot, List<RoutedStep<TValue>> steps,
         RoutedStep<TValue> settled, SampleDraw? sample, bool unverified)
@@ -354,7 +383,11 @@ public sealed record RoutedStep<TValue>(
 /// <param name="Tier">The tier that rechecked it, with its version at the time.</param>
 /// <param name="Verdict">Its answer, or why it could not judge.</param>
 /// <param name="JudgedAt">When.</param>
-public sealed record RecheckResult<TValue>(string DecisionId, Tier Tier, JudgeVerdict<TValue> Verdict, DateTimeOffset JudgedAt);
+public sealed record RecheckResult<TValue>(string DecisionId, Tier Tier, JudgeVerdict<TValue> Verdict, DateTimeOffset JudgedAt)
+{
+    /// <summary>The tier was shown the lower answer (<see cref="TieredRouter{TInput,TValue}.RecheckShownAsync"/>) — a measurement, not a recheck.</summary>
+    public bool Shown { get; init; }
+}
 
 /// <summary>No tier settled a decision — every tier abstained, or held its answer back.</summary>
 public sealed class DecisionNotSettledException : Exception

@@ -7,6 +7,15 @@ All notable changes to HoneAI are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Measuring what showing the lower answer does.** Rechecks are blind by default because the
+  measurement literature says so; `TieredRouter.RecheckShownAsync(input, decisionId, tierId,
+  lowerAnswer)` judges the same decision shown the lower answer (under
+  `JudgeContext.LowerAnswerHint`, for a tier that accepts hints), and `AnchoringMeasure.Pair` /
+  `Compute` turn blind–shown pairs into an `AnchoringCell`: agreement with the lower answer blind and
+  shown, the moves each way with an exact McNemar p-value, and — on pairs whose answer is known —
+  accuracy blind and shown with its own p-value. A shown judgment is marked
+  `RecheckResult.Shown`, and `RecheckRecords.From` and `PlantRecords.From` refuse it: what the
+  ledger counts stays blind.
 - **Teacher qualification from planted items.** Agreement with a teacher is not correctness: a
   teacher that waves through what it should catch lifts a lower tier that does the same. Items whose
   answer is known (a consensus, a person's settled decision) are judged by the teacher through

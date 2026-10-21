@@ -25,6 +25,12 @@ public interface IJudge<in TInput, TValue>
 /// <summary>What a judge is told about the decision besides the input.</summary>
 public sealed record JudgeContext
 {
+    /// <summary>
+    /// The hint key under which a shown recheck carries the lower tier's answer — set only by the
+    /// paired measurement of what showing it does, never on a recheck the ledger counts.
+    /// </summary>
+    public const string LowerAnswerHint = "lower-answer";
+
     /// <summary>Identifier of the decision, stable across retries.</summary>
     public required string DecisionId { get; init; }
 

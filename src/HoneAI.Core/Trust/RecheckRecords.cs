@@ -17,13 +17,16 @@ public static class RecheckRecords
     /// settlement policy's predicate, so a tolerance or a same-side-of-a-limit rule counts the same
     /// way it settles.
     /// </summary>
-    /// <exception cref="ArgumentException">The decision was not drawn for recheck, or the recheck is of another decision.</exception>
+    /// <exception cref="ArgumentException">The decision was not drawn for recheck, the recheck is of another decision, or it was shown the lower answer.</exception>
     public static RecheckRecord From<TValue>(
         RoutedDecision<TValue> decision, RecheckResult<TValue> recheck, ISettlementPolicy<TValue> policy)
     {
         ArgumentNullException.ThrowIfNull(decision);
         ArgumentNullException.ThrowIfNull(recheck);
         ArgumentNullException.ThrowIfNull(policy);
+        if (recheck.Shown)
+            throw new ArgumentException(
+                "The recheck was shown the lower answer; only a blind recheck is counted in the ledger.", nameof(recheck));
         if (recheck.DecisionId != decision.DecisionId)
             throw new ArgumentException($"The recheck is of decision '{recheck.DecisionId}', not '{decision.DecisionId}'.", nameof(recheck));
 

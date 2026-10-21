@@ -113,6 +113,8 @@ public static class PlantRecords
         ArgumentNullException.ThrowIfNull(judgment);
         ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(sliceKey);
+        if (judgment.Shown)
+            throw new ArgumentException("The plant was judged shown the lower answer; a teacher is measured blind.", nameof(judgment));
         var verdict = judgment.Verdict;
         return new PlantRecord
         {
