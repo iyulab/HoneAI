@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
 ### Added
 - **Measuring what showing the lower answer does.** Rechecks are blind by default because the
   measurement literature says so; `TieredRouter.RecheckShownAsync(input, decisionId, tierId,
