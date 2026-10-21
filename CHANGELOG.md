@@ -24,6 +24,11 @@ All notable changes to HoneAI are documented here. The format follows
   p0 or drifted inputs → stable falls back to active. Every step says why (`LifecycleStep.Reason`).
   Releases wait for a person (`AwaitsApproval`) unless `LifecyclePolicy.AutoRelease` is on;
   tightening never waits.
+- **Issuing the snapshot.** `PolicySnapshotIssuer.Issue(version, now, slices, policy)` turns committed
+  standings and pool grants into the `PolicySnapshot` sites judge by: a shadow tier without rates, an
+  active tier's promise knob at `IssuePolicy.ActiveRate`, a stable tier's at its grant, other knobs
+  beside it, soft and hard expiry from the issue time — and `RateSetBy` on every entry, so "why this
+  π" is answered from the snapshot. The promise knob (`uniform` by default) cannot be set by hand.
 - `LedgerCell.MissRateLower` — the miss rate's lower bound, what demotion is judged on (a failed
   recheck counts as no miss here).
 - **Sharing a pool of rechecks.** `RecheckBudget.Allocate(budget, requests, floor)` keeps every
