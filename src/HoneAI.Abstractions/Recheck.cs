@@ -62,6 +62,9 @@ public sealed record RecheckRecord
     /// <summary>How the recheck came out.</summary>
     public required RecheckOutcome Outcome { get; init; }
 
+    /// <summary>The settling tier's confidence in the answer it settled, when it gave one.</summary>
+    public double? Confidence { get; init; }
+
     /// <summary>The tier above answered with a must-catch value. Meaningless when <see cref="Outcome"/> is <see cref="RecheckOutcome.UpperFailed"/>.</summary>
     public bool UpperMustCatch { get; init; }
 
@@ -148,4 +151,13 @@ public sealed record LedgerCell
 
     /// <summary>The confidence the interval and the bound are stated at.</summary>
     public required double Confidence { get; init; }
+
+    /// <summary>
+    /// Whether the settling tier's confidence ranks its mistakes: the 1/π-weighted probability that
+    /// a disagreed recheck carried lower confidence than an agreed one (ties count half). 0.5 is no
+    /// better than chance; it is what a tier must beat before abstaining on its least confident
+    /// answers means anything. Null without both an agreed and a disagreed recheck that carry a
+    /// confidence.
+    /// </summary>
+    public double? ConfidenceRankAuc { get; init; }
 }

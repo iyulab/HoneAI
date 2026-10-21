@@ -48,6 +48,7 @@ public static class RecheckRecords
             KnobRates = sample.KnobRates,
             SnapshotVersion = provenance.SnapshotVersion,
             Outcome = outcome,
+            Confidence = provenance.Confidence,
             UpperMustCatch = verdict.Answered && policy.MustCatch(verdict.Value!),
             CheckedBy = recheck.Tier.Id,
         };

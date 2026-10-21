@@ -156,6 +156,66 @@ public sealed class TrustLedgerTests : IDisposable
         => Assert.Throws<ArgumentException>(() =>
             TrustLedger.Compute([Record("x", pi, RecheckOutcome.Agreed)], "ml", "s", T0, T0.AddDays(1)));
 
+    private static RecheckRecord Ranked(string id, double pi, bool disagreed, double? confidence)
+        => Record(id, pi, disagreed ? RecheckOutcome.Disagreed : RecheckOutcome.Agreed) with { Confidence = confidence };
+
+    [Fact]
+    public void ConfidenceRankAuc_EqualsTheWeightedPairwiseCount()
+    {
+        var rng = new Random(5);
+        var records = Enumerable.Range(0, 300).Select(i =>
+        {
+            var disagreed = rng.NextDouble() < 0.2;
+            var confidence = Math.Round(disagreed ? rng.NextDouble() * 0.8 : 0.3 + rng.NextDouble() * 0.7, 1); // rounding makes ties
+            return Ranked($"r{i}", rng.NextDouble() < 0.5 ? 0.1 : 0.4, disagreed, confidence);
+        }).ToList();
+
+        double favorable = 0, total = 0;
+        foreach (var d in records.Where(r => r.Outcome == RecheckOutcome.Disagreed))
+            foreach (var a in records.Where(r => r.Outcome == RecheckOutcome.Agreed))
+            {
+                var w = (1 / d.Probability) * (1 / a.Probability);
+                total += w;
+                favorable += d.Confidence < a.Confidence ? w : d.Confidence == a.Confidence ? 0.5 * w : 0;
+            }
+
+        var cell = TrustLedger.Compute(records, "ml", "s", T0, T0.AddDays(1));
+
+        Assert.Equal(favorable / total, cell.ConfidenceRankAuc!.Value, 9);
+        Assert.True(cell.ConfidenceRankAuc > 0.7);
+    }
+
+    [Fact]
+    public void ConfidenceRankAuc_IsAHalfForConfidenceThatSaysNothing_AndLowWhenItIsBackwards()
+    {
+        var flat = Enumerable.Range(0, 40).Select(i => Ranked($"f{i}", 0.2, i % 4 == 0, 0.9)).ToList();
+        var backwards = Enumerable.Range(0, 40).Select(i => Ranked($"b{i}", 0.2, i % 4 == 0, i % 4 == 0 ? 0.95 : 0.6)).ToList();
+        var none = Enumerable.Range(0, 40).Select(i => Ranked($"n{i}", 0.2, i % 4 == 0, null)).ToList();
+
+        Assert.Equal(0.5, TrustLedger.Compute(flat, "ml", "s", T0, T0.AddDays(1)).ConfidenceRankAuc);
+        Assert.Equal(0.0, TrustLedger.Compute(backwards, "ml", "s", T0, T0.AddDays(1)).ConfidenceRankAuc);
+        Assert.Null(TrustLedger.Compute(none, "ml", "s", T0, T0.AddDays(1)).ConfidenceRankAuc);
+    }
+
+    [Fact]
+    public void TheRecentWindow_StandsForTheLastDecisions_AndShowsADriftTheCumulativeHides()
+    {
+        // 200 rechecks at π = 0.1, one an hour: the first 180 agree, the last 20 all disagree.
+        var records = Enumerable.Range(0, 200).Select(i =>
+            Record($"d{i}", 0.1, i < 180 ? RecheckOutcome.Agreed : RecheckOutcome.Disagreed, at: T0.AddHours(i))).ToList();
+        var asOf = T0.AddHours(200);
+
+        var start = TrustLedger.RecentWindowStart(records, "ml", "s", asOf, decisions: 100);
+        var recent = TrustLedger.Compute(records, "ml", "s", start!.Value, asOf);
+        var cumulative = TrustLedger.Compute(records, "ml", "s", T0, asOf);
+
+        Assert.Equal(T0.AddHours(190), start); // 10 rechecks × 1/0.1 = 100 decisions
+        Assert.Equal(10, recent.Rechecks);
+        Assert.Equal(0.0, recent.Agreement);
+        Assert.Equal(0.9, cumulative.Agreement!.Value, 9);
+        Assert.Null(TrustLedger.RecentWindowStart([], "ml", "s", asOf, 100));
+    }
+
     [Fact]
     public void NormalQuantile_MatchesKnownValues()
     {

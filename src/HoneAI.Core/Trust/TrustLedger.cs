@@ -114,6 +114,7 @@ public static class TrustLedger
             MissRate = missRate,
             MissRateUpper = missRateUpper,
             Confidence = confidence,
+            ConfidenceRankAuc = ConfidenceRankAuc(answered),
         };
     }
 
@@ -137,6 +138,69 @@ public static class TrustLedger
                 subsample.Add(r with { Probability = rate, Knob = knob });
         }
         return subsample;
+    }
+
+    /// <summary>
+    /// The window that stands for the last <paramref name="decisions"/> settled decisions before
+    /// <paramref name="asOf"/>: the most recent rechecks, taken until their 1/π weights add up to
+    /// <paramref name="decisions"/>. A cell over it is the "recent window" promise — a cumulative
+    /// promise lags a tier that has moved.
+    /// </summary>
+    /// <returns>The window start (the oldest decision time taken), or null when there is no recheck.</returns>
+    public static DateTimeOffset? RecentWindowStart(
+        IEnumerable<RecheckRecord> records, string tierId, string sliceKey, DateTimeOffset asOf, double decisions)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+        if (!(decisions > 0))
+            throw new ArgumentOutOfRangeException(nameof(decisions), decisions, "A window stands for a positive number of decisions.");
+        double covered = 0;
+        DateTimeOffset? start = null;
+        foreach (var r in records
+                     .Where(r => r.TierId == tierId && r.SliceKey == sliceKey && r.DecidedAt < asOf && r.Probability > 0)
+                     .OrderByDescending(r => r.DecidedAt))
+        {
+            start = r.DecidedAt;
+            covered += 1.0 / r.Probability;
+            if (covered >= decisions)
+                break;
+        }
+        return start;
+    }
+
+    /// <summary>
+    /// Weighted Mann–Whitney: the probability that a disagreed recheck's confidence is below an
+    /// agreed one's, each pair weighted by the product of the two 1/π weights; ties count half.
+    /// </summary>
+    public static double? ConfidenceRankAuc(IEnumerable<RecheckRecord> answered)
+    {
+        var ranked = answered
+            .Where(r => r.Confidence is { } c && !double.IsNaN(c) && r.Outcome != RecheckOutcome.UpperFailed)
+            .Select(r => (Confidence: r.Confidence!.Value, Weight: 1.0 / r.Probability, Disagreed: r.Outcome == RecheckOutcome.Disagreed))
+            .OrderBy(x => x.Confidence)
+            .ToList();
+        var disagreedTotal = ranked.Where(x => x.Disagreed).Sum(x => x.Weight);
+        var agreedTotal = ranked.Where(x => !x.Disagreed).Sum(x => x.Weight);
+        if (disagreedTotal == 0 || agreedTotal == 0)
+            return null;
+
+        // Sweep in confidence order: for each group of equal confidence, a disagreed record wins
+        // against every agreed record above it and ties against the ones level with it.
+        double agreedBelow = 0, favorable = 0;
+        for (var i = 0; i < ranked.Count;)
+        {
+            var j = i;
+            double groupAgreed = 0, groupDisagreed = 0;
+            while (j < ranked.Count && ranked[j].Confidence == ranked[i].Confidence)
+            {
+                if (ranked[j].Disagreed) groupDisagreed += ranked[j].Weight; else groupAgreed += ranked[j].Weight;
+                j++;
+            }
+            var agreedAbove = agreedTotal - agreedBelow - groupAgreed;
+            favorable += groupDisagreed * (agreedAbove + 0.5 * groupAgreed);
+            agreedBelow += groupAgreed;
+            i = j;
+        }
+        return favorable / (disagreedTotal * agreedTotal);
     }
 
     /// <summary>Kish's effective sample size of weighted observations: (Σw)² / Σw².</summary>

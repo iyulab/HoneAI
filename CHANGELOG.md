@@ -29,6 +29,13 @@ All notable changes to HoneAI are documented here. The format follows
   snapshot version falls under π, the decisions a single knob would have drawn are exactly those
   under that knob's rate — `TrustLedger.Compute(…, knob: "uniform")` counts the promise on the
   uniform knob's own sub-sample, free of the other knobs' tilt (`TrustLedger.KnobSubsample`).
+- **Is confidence worth abstaining on?** `LedgerCell.ConfidenceRankAuc` — the 1/π-weighted
+  probability that a disagreed recheck carried lower confidence than an agreed one (ties count
+  half; `RecheckRecord.Confidence` from the decision's provenance). A tier should beat 0.5 before
+  abstaining on its least confident answers means anything.
+- **Recent window.** `TrustLedger.RecentWindowStart(records, tier, slice, asOf, decisions)` finds the
+  window that stands for the last N settled decisions (recent rechecks until their 1/π weights add up
+  to N) — a cumulative promise lags a tier that has moved.
 
 ## [0.3.0] - 2026-10-21
 
