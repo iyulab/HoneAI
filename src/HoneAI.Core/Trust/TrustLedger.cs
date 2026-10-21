@@ -97,6 +97,13 @@ public static class TrustLedger
                 missRateUpper = Math.Max(missesUpper / (missesUpper + caught), missRate ?? 0);
         }
 
+        double? missRateLower = null;
+        if (missRate is not null)
+        {
+            var missesLower = misses.Count == 0 ? 0 : BinomialCountLowerBound(misses.Count, misses.Max(r => r.Probability), 1 - confidence);
+            missRateLower = missesLower + caught > 0 ? Math.Min(missesLower / (missesLower + caught), missRate.Value) : 0;
+        }
+
         return new LedgerCell
         {
             TierId = tierId,
@@ -113,6 +120,7 @@ public static class TrustLedger
             Caught = caught,
             MissRate = missRate,
             MissRateUpper = missRateUpper,
+            MissRateLower = missRateLower,
             Confidence = confidence,
             ConfidenceRankAuc = ConfidenceRankAuc(answered),
         };
@@ -258,6 +266,36 @@ public static class TrustLedger
             if (BinomialCdf(seen, mid, probability) > alpha) low = mid; else high = mid;
         }
         return low;
+    }
+
+    /// <summary>
+    /// The smallest count <c>M</c> such that seeing at least <paramref name="seen"/> of <c>M</c> events,
+    /// each seen with probability <paramref name="probability"/>, still has probability above
+    /// <paramref name="alpha"/>. One-sided exact binomial bound on how few there were.
+    /// </summary>
+    public static double BinomialCountLowerBound(int seen, double probability, double alpha)
+    {
+        if (seen < 0) throw new ArgumentOutOfRangeException(nameof(seen));
+        if (seen == 0 || probability >= 1) return seen;
+
+        // P(X ≥ seen | M) = 1 − P(X ≤ seen − 1 | M) rises with M; find the first M where it exceeds alpha.
+        bool Plausible(long m) => 1 - BinomialCdf(seen - 1, m, probability) > alpha;
+        long low = seen, high = seen;
+        while (!Plausible(high))
+        {
+            low = high;
+            high *= 2;
+            if (high > 1L << 40)
+                return double.PositiveInfinity;
+        }
+        if (high == seen)
+            return seen;
+        while (high - low > 1)
+        {
+            var mid = low + (high - low) / 2;
+            if (Plausible(mid)) high = mid; else low = mid;
+        }
+        return high;
     }
 
     /// <summary>P(X ≤ k) for X ~ Binomial(n, p), summed in log space.</summary>

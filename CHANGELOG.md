@@ -15,6 +15,17 @@ All notable changes to HoneAI are documented here. The format follows
   agreement term is the fixed-sample size of the release test over the window's decisions. The
   result says which term set it (`RateTerm`) and whether it hit the ceiling — a slice where risk is
   rare stays with the tier above.
+- **The lifecycle of a tier in a slice.** `TrustLifecycle.Release(standing, window, teacherQualified,
+  signals, policy, now)` judges a closed window: shadow → active on one window that meets every
+  condition (minimum dwell, effective sample, agreement lower bound ≥ p0 + ε, miss-rate upper bound
+  ≤ m, a qualified teacher, the tier above answering), active → stable on `StableWindows` in a row.
+  `TrustLifecycle.Tighten` judges a running cell at any time: a new tier version → shadow; a miss
+  rate shown above m or agreement shown under p0 − ε → shadow; a seen miss, agreement shown under
+  p0 or drifted inputs → stable falls back to active. Every step says why (`LifecycleStep.Reason`).
+  Releases wait for a person (`AwaitsApproval`) unless `LifecyclePolicy.AutoRelease` is on;
+  tightening never waits.
+- `LedgerCell.MissRateLower` — the miss rate's lower bound, what demotion is judged on (a failed
+  recheck counts as no miss here).
 - **Sharing a pool of rechecks.** `RecheckBudget.Allocate(budget, requests, floor)` keeps every
   slice's floor first (a settled decision is never beyond recheck, even when the floors overrun the
   pool — `OverBudget`), then funds slices in order of their possible misses, an unmeasured slice

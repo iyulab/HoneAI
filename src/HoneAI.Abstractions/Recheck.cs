@@ -155,6 +155,14 @@ public sealed record LedgerCell
     /// </summary>
     public double? MissRateUpper { get; init; }
 
+    /// <summary>
+    /// Lower bound on the conditional miss rate at the ledger's confidence — what a tier is demoted on
+    /// (a miss rate shown to exceed the limit, not merely not shown to be under it). Failed rechecks
+    /// count as no miss here, the opposite of <see cref="MissRateUpper"/>. Null under the same
+    /// conditions as <see cref="MissRate"/>; 0 when no miss was seen.
+    /// </summary>
+    public double? MissRateLower { get; init; }
+
     /// <summary>The confidence the interval and the bound are stated at.</summary>
     public required double Confidence { get; init; }
 

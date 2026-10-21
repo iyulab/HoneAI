@@ -115,6 +115,8 @@ public sealed class TrustLedgerTests : IDisposable
         Assert.Equal(0.2, cell.MissRate!.Value, 9);
         Assert.True(cell.MissRateUpper > cell.MissRate);
         Assert.True(withFailure.MissRateUpper > cell.MissRateUpper, "a failed recheck could hide a miss");
+        Assert.InRange(cell.MissRateLower!.Value, 0.0001, cell.MissRate!.Value);   // two seen at π = 0.1 show some misses
+        Assert.Equal(cell.MissRateLower, withFailure.MissRateLower);               // a failure is no miss for the lower bound
         Assert.Equal(cell.MissRate, withFailure.MissRate);
     }
 
