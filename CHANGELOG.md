@@ -19,11 +19,11 @@ All notable changes to HoneAI are documented here. The format follows
 - `IMLoopClient.RecordFeedbackAsync(MLoopFeedback)` (`POST /feedback` with source and weight), and
   `MLoopPredictionResult.PredictionId` — the id MLoop logged a prediction under, no longer mixed into the
   outputs.
-
 - **Retraining on confirmed labels.** `LifecycleRequest.Feedback` makes a `ModelLifecycle` run first build a
   retraining set from the model's feedback (`IMLoopClient.CreateSampleAsync` — MLoop `POST /samples`, the Export
   stage) and train on the data with it merged in, weighted by the set's weight column.
-  `MLoopTrainRequest` gains `AdditionalDataPaths` and `Weight`.
+  `MLoopTrainRequest` gains `AdditionalDataPaths` and `Weight`. Needs an MLoop server at 0.41.0 or later
+  (`POST /samples`, and `weight` · `additionalDataFiles` on `POST /train`).
 
 ### Changed
 - `IMLoopClient` gains `RecordFeedbackAsync` and `CreateSampleAsync` — an implementation of the interface adds them.
