@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-21
+
 ### Added
 - **Confirmed labels.** `LabelConfirmation.Decide` turns what tiers above a learning tier answered into a
   `ConfirmedLabel<T>` — or says why not (`ConfirmationOutcome`): only a tier above confirms; a settled
