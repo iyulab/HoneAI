@@ -26,6 +26,10 @@ All notable changes to HoneAI are documented here. The format follows
   Cohen's κ on the must-catch call (the spread of judges of one kind), and on known answers each judge's error
   rate, how far their errors coincide beyond independence (`ErrorOverlap`, with a hypergeometric
   `ErrorOverlapP`) and the must-catch items both missed.
+- **Repeat consistency.** `RepeatConsistency.Pair` records one input judged twice, blind, by one judge (the
+  second may be asked under another decision id); `Compute` gives the judge's `RepeatCell` — consistency,
+  must-catch flips, and on known answers the split of its errors into `SystematicErrorRate` (repeated wrong
+  answers) and `NoiseRate` (answers that moved), with `AccuracyWhenConsistent`.
 
 ### Changed
 - **Breaking:** `LabelConfirmation.Decide`'s `teacherCell` lookup takes a `JudgeIdentity` instead of a tier id, so

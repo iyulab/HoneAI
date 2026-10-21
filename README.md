@@ -114,6 +114,10 @@ A tier earns the right to settle a slice from rechecks, not from its own confide
    people) by Cohen's κ on the must-catch call; two of different kinds by whether their errors coincide on
    known answers (`ErrorOverlap` — 1 is independent — with an exact p-value) and how many must-catch items
    both missed, which is what a check of one by the other cannot catch.
+   `RepeatConsistency` asks one judge the same input twice, blind (the second time under another decision id,
+   so it cannot remember): how often it holds its answer and its must-catch call, and on known answers how its
+   errors split — `SystematicErrorRate` (the same wrong answer twice: a bias asking again will not average
+   away) against `NoiseRate` (the answer moved: a disagreeing repeat is a reason to send the item up).
 2. **Lifecycle** — `TrustLifecycle.Release` moves shadow → active → stable only at a window's end,
    on every condition at once; `TrustLifecycle.Tighten` moves back at any time (a new version, a
    seen miss, agreement shown low, drift — `StalenessWatch` reads MLoop's `GET /drift`).
