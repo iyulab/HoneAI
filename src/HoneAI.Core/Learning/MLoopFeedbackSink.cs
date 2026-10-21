@@ -75,6 +75,6 @@ public sealed class MLoopFeedbackSink<TValue> : IConfirmedLabelSink<TValue>
             LabelTrustBasis.Consensus => " (consensus)",
             _ => string.Empty,
         };
-        return label.ConfirmedBy + version + basis;
+        return new JudgeIdentity(label.ConfirmedBy, label.JudgedBy) + version + basis;
     }
 }

@@ -14,6 +14,18 @@ All notable changes to HoneAI are documented here. The format follows
   `LabelTrustDefaults.Consensus` (default 1 — a consensus is what teachers are measured against), recorded as
   `LabelTrustBasis.Consensus`; `ConfirmedLabel.Participants` names who took part, and the MLoop sink's source reads
   `llm+person-a (consensus)`.
+- **People on one rung, measured one by one.** A rung of people is one tier (the ladder's cost ranks are
+  distinct), but each person tires, disagrees and is right at their own rate. `JudgeIdentity(TierId, JudgedBy)`
+  names one judge within a tier; a judge reports who answered with `JudgeVerdict.Answer(..., judgedBy:)` (a
+  pseudonymous key — `ReviewDecision.ReviewerKey`), and it travels onto `PredictionProvenance.JudgedBy`,
+  `PlantRecord.JudgedBy` and `ConfirmedLabel.JudgedBy`. `TeacherLedger.Compute(..., judgedBy:)` reads one person's
+  cell (none: the rung pooled); plant stores record once per plant, tier and judge; a consensus's participants are
+  judges, so two people on one rung are a consensus.
+
+### Changed
+- **Breaking:** `LabelConfirmation.Decide`'s `teacherCell` lookup takes a `JudgeIdentity` instead of a tier id, so
+  a label one person confirmed is trusted by that person's plants. Migrate: `id => cellOf(id)` →
+  `judge => cellOf(judge.TierId)` keeps the per-tier behaviour; read `judge.JudgedBy` to go per person.
 
 ## [0.6.0] - 2026-10-21
 

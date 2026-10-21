@@ -15,10 +15,10 @@ public class TeacherLedgerTests
     private static readonly DateTimeOffset Now = new(2026, 10, 21, 9, 0, 0, TimeSpan.Zero);
 
     private static PlantRecord Plant(string id, bool truthMustCatch, PlantOutcome outcome, bool answeredMustCatch,
-        string slice = "s", int minutesAgo = 10, string tier = "teacher")
+        string slice = "s", int minutesAgo = 10, string tier = "teacher", string? judgedBy = null)
         => new()
         {
-            PlantId = id, TierId = tier, SliceKey = slice, JudgedAt = Now.AddMinutes(-minutesAgo),
+            PlantId = id, TierId = tier, JudgedBy = judgedBy, SliceKey = slice, JudgedAt = Now.AddMinutes(-minutesAgo),
             TruthMustCatch = truthMustCatch, Outcome = outcome, AnsweredMustCatch = answeredMustCatch,
         };
 
@@ -84,6 +84,41 @@ public class TeacherLedgerTests
     }
 
     [Fact]
+    public void OnARungOfPeople_EachPersonHasTheirOwnCell_AndTheRungPoolsThem()
+    {
+        var records = new[]
+        {
+            Plant("a", true, PlantOutcome.Correct, true, tier: "people", judgedBy: "p-1"),
+            Plant("b", true, PlantOutcome.Correct, true, tier: "people", judgedBy: "p-1"),
+            Plant("a", true, PlantOutcome.Wrong, false, tier: "people", judgedBy: "p-2"),   // the same plant, another person
+        };
+
+        var p1 = TeacherLedger.Compute(records, "people", Now.AddHours(-1), Now, judgedBy: "p-1");
+        var p2 = TeacherLedger.Compute(records, "people", Now.AddHours(-1), Now, judgedBy: "p-2");
+        var rung = TeacherLedger.Compute(records, "people", Now.AddHours(-1), Now);
+
+        Assert.Equal(("p-1", 2, 1.0), (p1.JudgedBy, p1.Plants, p1.Recall!.Value));
+        Assert.Equal(("p-2", 1, 0.0), (p2.JudgedBy, p2.Plants, p2.Recall!.Value));
+        Assert.Equal((null, 3), (rung.JudgedBy, rung.Plants));
+    }
+
+    [Fact]
+    public async Task APersonsAnswer_CarriesWhoJudged_OntoThePlantRecord()
+    {
+        var people = new Tier { Id = "people", Kind = JudgeKind.Human, Version = "1", CostRank = 3 };
+        var policy = SettlementPolicy.Categorical(new[] { "OK" }, new[] { "HIGH" });
+        var router = new TieredRouter<string, string>(
+            [Judge.From<string, string>(people, (_, _, _) => ValueTask.FromResult(JudgeVerdict<string>.Answer("HIGH", judgedBy: "p-9")))],
+            policy, SliceKey.From<string>("k", _ => "s"), id => id, () => null,
+            new TieredRouterOptions { Clock = () => Now });
+
+        var record = PlantRecords.From(await router.RecheckAsync("input", "plant-1", "people"), "HIGH", "s", policy);
+
+        Assert.Equal("p-9", record.JudgedBy);
+        Assert.Equal(PlantOutcome.Correct, record.Outcome);
+    }
+
+    [Fact]
     public async Task APlant_IsJudgedExactlyAsARealRecheck_AndRecordedAgainstItsKnownAnswer()
     {
         var ml = new Tier { Id = "ml", Kind = JudgeKind.Ml, Version = "1", CostRank = 1 };
@@ -111,7 +146,7 @@ public class TeacherLedgerTests
     }
 
     [Fact]
-    public async Task PlantStores_RecordOncePerPlantAndTier_AndReadByJudgedTime()
+    public async Task PlantStores_RecordOncePerPlantTierAndJudge_AndReadByJudgedTime()
     {
         var path = Path.Combine(Path.GetTempPath(), $"honeai-plants-{Guid.NewGuid():N}", "plants.jsonl");
         try
@@ -121,13 +156,16 @@ public class TeacherLedgerTests
                 Assert.True(await store.AppendAsync(Plant("p1", true, PlantOutcome.Correct, true)));
                 Assert.False(await store.AppendAsync(Plant("p1", true, PlantOutcome.Wrong, false)));   // redelivered
                 Assert.True(await store.AppendAsync(Plant("p2", false, PlantOutcome.Correct, false, minutesAgo: 120)));
+                Assert.True(await store.AppendAsync(Plant("p3", true, PlantOutcome.Correct, true, judgedBy: "x")));
+                Assert.True(await store.AppendAsync(Plant("p3", true, PlantOutcome.Wrong, false, judgedBy: "y")));   // another person, same plant
+                Assert.False(await store.AppendAsync(Plant("p3", true, PlantOutcome.Wrong, false, judgedBy: "y")));
 
                 var inWindow = new List<PlantRecord>();
                 await foreach (var r in store.ReadAsync("teacher", Now.AddHours(-1), Now))
                     inWindow.Add(r);
 
-                var only = Assert.Single(inWindow);
-                Assert.Equal(PlantOutcome.Correct, only.Outcome);
+                Assert.Equal(["p1", "p3", "p3"], inWindow.Select(r => r.PlantId).Order());
+                Assert.Equal(PlantOutcome.Correct, inWindow.Single(r => r.PlantId == "p1").Outcome);
             }
             // A second instance over the same file still sees what was written.
             Assert.False(await new JsonlPlantStore(path).AppendAsync(Plant("p1", true, PlantOutcome.Correct, true)));

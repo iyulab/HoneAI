@@ -16,7 +16,8 @@ public static class TeacherLedger
 {
     /// <summary>
     /// The cell for <paramref name="tierId"/> over [<paramref name="from"/>, <paramref name="to"/>),
-    /// in <paramref name="sliceKey"/> or across all slices when it is null.
+    /// in <paramref name="sliceKey"/> or across all slices when it is null, for one judge within the tier
+    /// (<paramref name="judgedBy"/> — a person on a rung of people) or every judge of it pooled when that is null.
     /// </summary>
     public static TeacherCell Compute(
         IEnumerable<PlantRecord> records,
@@ -24,14 +25,16 @@ public static class TeacherLedger
         DateTimeOffset from,
         DateTimeOffset to,
         string? sliceKey = null,
-        double confidence = TrustLedger.DefaultConfidence)
+        double confidence = TrustLedger.DefaultConfidence,
+        string? judgedBy = null)
     {
         ArgumentNullException.ThrowIfNull(records);
         if (confidence is <= 0 or >= 1)
             throw new ArgumentOutOfRangeException(nameof(confidence), confidence, "Confidence lies strictly between 0 and 1.");
 
         var window = records
-            .Where(r => r.TierId == tierId && r.JudgedAt >= from && r.JudgedAt < to && (sliceKey is null || r.SliceKey == sliceKey))
+            .Where(r => r.TierId == tierId && r.JudgedAt >= from && r.JudgedAt < to
+                && (sliceKey is null || r.SliceKey == sliceKey) && (judgedBy is null || r.JudgedBy == judgedBy))
             .ToList();
         var alpha = 1 - confidence;
 
@@ -47,6 +50,7 @@ public static class TeacherLedger
         return new TeacherCell
         {
             TierId = tierId,
+            JudgedBy = judgedBy,
             SliceKey = sliceKey,
             WindowStart = from,
             WindowEnd = to,
@@ -120,6 +124,7 @@ public static class PlantRecords
         {
             PlantId = judgment.DecisionId,
             TierId = judgment.Tier.Id,
+            JudgedBy = verdict.JudgedBy,
             TierVersion = judgment.Tier.Version,
             SliceKey = sliceKey,
             JudgedAt = judgment.JudgedAt,

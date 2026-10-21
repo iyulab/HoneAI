@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using HoneAI;
@@ -29,7 +30,7 @@ public class LabelConfirmationTests
 
     private static Confirmation<string> Decide(
         PredictionProvenance decision, IReadOnlyList<ITracedPrediction<string>> answers,
-        Func<string, TeacherCell?>? cells = null, Tier? learner = null)
+        Func<JudgeIdentity, TeacherCell?>? cells = null, Tier? learner = null)
         => LabelConfirmation.Decide("d1", decision, answers, learner ?? Ml, Ladder, Policy, cells ?? (_ => null), Now,
             annotations: new Dictionary<string, string> { [MLoopFeedbackSink<string>.PredictionIdAnnotation] = "p-1" });
 
@@ -100,7 +101,11 @@ public class LabelConfirmationTests
     }
 
     private static ConsensusJudgment<string> Consensus(string value, params string[] participants)
-        => new() { DecisionId = "d1", Value = value, Participants = participants, ReachedAt = Now, Grounds = "case-7" };
+        => new()
+        {
+            DecisionId = "d1", Value = value, ReachedAt = Now, Grounds = "case-7",
+            Participants = participants.Select(p => p.Split('/') is [var tier, var who] ? new JudgeIdentity(tier, who) : new JudgeIdentity(p)).ToList(),
+        };
 
     private static Confirmation<string> Settle(PredictionProvenance decision, ConsensusJudgment<string> consensus,
         LabelTrustDefaults? defaults = null)
@@ -120,7 +125,7 @@ public class LabelConfirmationTests
         var label = result.Label!;
         Assert.Equal("minor", label.Value);
         Assert.Equal("llm+person-a", label.ConfirmedBy);                 // the cost order, not the order given
-        Assert.Equal(["llm", "person-a"], label.Participants);
+        Assert.Equal([new JudgeIdentity("llm"), new JudgeIdentity("person-a")], label.Participants);
         Assert.Equal(JudgeKind.Human, label.Kind);
         Assert.Equal(LabelTrustBasis.Consensus, label.TrustBasis);
         Assert.Equal(1.0, label.Trust);
@@ -156,6 +161,49 @@ public class LabelConfirmationTests
         => Assert.Throws<ArgumentException>(
             () => Settle(SettledBy(Llm), Consensus("ok", second is null ? [first] : [first, second])));
 
+    private static readonly Tier People = new() { Id = "people", Kind = JudgeKind.Human, Version = "1", CostRank = 4 };
+    private static readonly Tier[] LadderWithPeople = [Ml, Llm, Person, People];
+
+    private static ITracedPrediction<string> PersonAnswer(string who, string value)
+        => new TracedPrediction<string>(value, new PredictionProvenance
+        {
+            Kind = JudgeKind.Human, TierId = People.Id, TierVersion = People.Version, JudgedBy = who,
+        });
+
+    [Fact]
+    public void OnARungOfPeople_EachPersonIsTrustedByTheirOwnPlants()
+    {
+        // Two people share one rung; the ledger measured p-1 at 0.95 and p-2 at 0.7. They disagree on an ordinary
+        // value: p-1's answer stands, weighted by p-1's own accuracy — not by the rung's.
+        var cells = (JudgeIdentity id) => id switch
+        {
+            { TierId: "people", JudgedBy: "p-1" } => Cell("people", 30, 0.95),
+            { TierId: "people", JudgedBy: "p-2" } => Cell("people", 30, 0.7),
+            _ => null,
+        };
+        var result = LabelConfirmation.Decide("d1", SettledBy(People), [PersonAnswer("p-2", "ok"), PersonAnswer("p-1", "minor")],
+            Ml, LadderWithPeople, Policy, cells, Now);
+
+        var label = result.Label!;
+        Assert.Equal("minor", label.Value);
+        Assert.Equal("people", label.ConfirmedBy);
+        Assert.Equal("p-1", label.JudgedBy);
+        Assert.Equal(0.95, label.Trust);
+        Assert.Equal(LabelTrustBasis.Measured, label.TrustBasis);
+        Assert.Equal("people/p-1@1", MLoopFeedbackSink<string>.SourceOf(label));
+    }
+
+    [Fact]
+    public void TwoPeopleOnOneRung_AreAConsensus_OnePersonTwiceIsNot()
+    {
+        var label = LabelConfirmation.Settle(SettledBy(People), Consensus("danger", "people/p-2", "people/p-1"), Ml, LadderWithPeople).Label!;
+
+        Assert.Equal("people/p-1+people/p-2", label.ConfirmedBy);
+        Assert.Equal(JudgeKind.Human, label.Kind);
+        Assert.Throws<ArgumentException>(
+            () => LabelConfirmation.Settle(SettledBy(People), Consensus("danger", "people/p-1", "people/p-1"), Ml, LadderWithPeople));
+    }
+
     [Fact]
     public async Task TheMLoopSink_NamesAConsensusByItsParticipants()
     {
@@ -180,7 +228,7 @@ public class LabelConfirmationTests
     public void MeasuredTrust_ReplacesTheKindsDefault()
     {
         // The ledger measured the LLM at 0.6 on planted items — below the person's default and its own.
-        var result = Decide(SettledBy(Llm), [Answer(Llm, "minor")], cells: id => id == "llm" ? Cell("llm", 40, 0.6) : null);
+        var result = Decide(SettledBy(Llm), [Answer(Llm, "minor")], cells: id => id.TierId == "llm" ? Cell("llm", 40, 0.6) : null);
 
         Assert.Equal(0.6, result.Label!.Trust);
         Assert.Equal(LabelTrustBasis.Measured, result.Label.TrustBasis);

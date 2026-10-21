@@ -47,13 +47,19 @@ public sealed record ConfirmedLabel<TValue>
     public required TValue Value { get; init; }
 
     /// <summary>
-    /// The tier that confirmed it (<see cref="Tier.Id"/>) — for a person, their tier's anonymous key. For a
-    /// consensus, its <see cref="Participants"/> joined by <c>+</c> in the cost order.
+    /// The tier that confirmed it (<see cref="Tier.Id"/>). For a consensus, its <see cref="Participants"/> joined
+    /// by <c>+</c> in the cost order.
     /// </summary>
     public required string ConfirmedBy { get; init; }
 
-    /// <summary>The tiers that reached a consensus, in the cost order; null for a label one judge confirmed.</summary>
-    public IReadOnlyList<string>? Participants { get; init; }
+    /// <summary>
+    /// Which judge within the confirming tier answered (<see cref="JudgeIdentity.JudgedBy"/>) — the person's
+    /// pseudonymous key on a rung of people. Null for a tier that is one judge, and for a consensus.
+    /// </summary>
+    public string? JudgedBy { get; init; }
+
+    /// <summary>The judges that reached a consensus, in the cost order; null for a label one judge confirmed.</summary>
+    public IReadOnlyList<JudgeIdentity>? Participants { get; init; }
 
     /// <summary>The confirming tier's kind — for a consensus, the kind of the participant highest in the cost order.</summary>
     public required JudgeKind Kind { get; init; }
@@ -127,8 +133,11 @@ public sealed record ConsensusJudgment<TValue>
     /// <summary>The value settled on.</summary>
     public required TValue Value { get; init; }
 
-    /// <summary>The tiers that took part (<see cref="Tier.Id"/> — for a person, their tier's anonymous key). Two or more, distinct.</summary>
-    public required IReadOnlyList<string> Participants { get; init; }
+    /// <summary>
+    /// The judges that took part — two or more, distinct. Two people on one rung are two judges
+    /// (<see cref="JudgeIdentity.JudgedBy"/>), as are judges of two tiers.
+    /// </summary>
+    public required IReadOnlyList<JudgeIdentity> Participants { get; init; }
 
     /// <summary>When it was reached.</summary>
     public required DateTimeOffset ReachedAt { get; init; }

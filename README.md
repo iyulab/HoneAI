@@ -107,7 +107,9 @@ A tier earns the right to settle a slice from rechecks, not from its own confide
 1. **Ledger** — `TrustLedger.Compute` turns the window's blind rechecks into a `LedgerCell`:
    1/π-weighted agreement with its interval, the conditional must-catch miss rate with both bounds,
    the tier above's failures, the effective sample size. `TeacherLedger` measures the teacher on
-   planted items whose answer is known.
+   planted items whose answer is known — on a rung of people, each person on their own plants: the
+   person's judge answers with `judgedBy` (a pseudonymous key, never a name), and `Compute(..., judgedBy:)`
+   reads that person's cell, or the rung pooled without it.
 2. **Lifecycle** — `TrustLifecycle.Release` moves shadow → active → stable only at a window's end,
    on every condition at once; `TrustLifecycle.Tighten` moves back at any time (a new version, a
    seen miss, agreement shown low, drift — `StalenessWatch` reads MLoop's `GET /drift`).
@@ -131,13 +133,14 @@ A cheap tier gets better by learning from answers the tiers above it confirmed �
 - a decision that went up reached the confirming tier with certainty (π = 1); one the learner settled is
   a label only if it was drawn for recheck, at its draw's π;
 - judges above that disagree where one says must-catch produce no label (`NeedsConsensus`) — neither
-  side wins automatically. Two or more judges then settle it together, comparing their grounds; hand the
+  side wins automatically. Two or more judges — two people on one rung count as two — then settle it together, comparing their grounds; hand the
   result (`ConsensusJudgment<T>`) to `LabelConfirmation.Settle` and it becomes the label, at the decision's π,
   trusted as `LabelTrustDefaults.Consensus` (1 unless you set it — `LabelTrustBasis.Consensus`). How the judges
   meet is yours; a consensus is also a known answer to plant for teachers (`PlantRecords.From`, truth source
   `consensus`);
-- trust is the teacher ledger's measured accuracy for the confirming tier, else its kind's default
-  (`LabelTrustDefaults`), and the label says which (`LabelTrustBasis`).
+- trust is the teacher ledger's measured accuracy for the confirming judge — the tier, or the person on a
+  rung of people (`JudgeIdentity`) — else its kind's default (`LabelTrustDefaults`), and the label says which
+  (`LabelTrustBasis`).
 
 The label's `Weight` is trust / π. Send it to each engine's `IConfirmedLabelSink<T>`:
 `MLoopFeedbackSink<T>` records it as weighted feedback on the ML tier's MLoop prediction

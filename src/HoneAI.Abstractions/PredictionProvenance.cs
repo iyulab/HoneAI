@@ -22,6 +22,9 @@ public sealed record PredictionProvenance
     /// <summary>That tier's version at the time.</summary>
     public string? TierVersion { get; init; }
 
+    /// <summary>Which judge within the tier answered (<see cref="JudgeIdentity.JudgedBy"/>); null for a tier that is one judge.</summary>
+    public string? JudgedBy { get; init; }
+
     /// <summary>
     /// Which trust-loop role produced the answer, when an agent played one. <see langword="null"/>
     /// when no role was bound.

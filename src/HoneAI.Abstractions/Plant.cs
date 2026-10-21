@@ -26,11 +26,17 @@ public enum PlantOutcome
 /// </summary>
 public sealed record PlantRecord
 {
-    /// <summary>The planted item's id — with <see cref="TierId"/>, the key it is recorded under once.</summary>
+    /// <summary>The planted item's id — with <see cref="TierId"/> and <see cref="JudgedBy"/>, the key it is recorded under once.</summary>
     public required string PlantId { get; init; }
 
     /// <summary>The teacher that judged it.</summary>
     public required string TierId { get; init; }
+
+    /// <summary>
+    /// Which judge within the tier judged it — the person, on a rung of people, so each is measured on their own
+    /// plants. Null for a tier that is one judge.
+    /// </summary>
+    public string? JudgedBy { get; init; }
 
     /// <summary>The item's slice.</summary>
     public required string SliceKey { get; init; }
@@ -57,7 +63,7 @@ public sealed record PlantRecord
 /// <summary>Where planted-item judgments are kept and read back — the counterpart of <see cref="IRecheckStore"/> for teachers.</summary>
 public interface IPlantStore
 {
-    /// <summary>Records <paramref name="record"/> unless one for the same plant and tier exists; returns whether it was recorded.</summary>
+    /// <summary>Records <paramref name="record"/> unless one for the same plant, tier and judge exists; returns whether it was recorded.</summary>
     ValueTask<bool> AppendAsync(PlantRecord record, CancellationToken cancellationToken = default);
 
     /// <summary>The records of <paramref name="tierId"/> judged in [<paramref name="from"/>, <paramref name="to"/>), every slice.</summary>
@@ -74,6 +80,9 @@ public interface IPlantStore
 public sealed record TeacherCell
 {
     public required string TierId { get; init; }
+
+    /// <summary>The judge within the tier the cell is restricted to; null for every judge of the tier pooled.</summary>
+    public string? JudgedBy { get; init; }
 
     /// <summary>The slice the cell is restricted to; null for all of them.</summary>
     public string? SliceKey { get; init; }

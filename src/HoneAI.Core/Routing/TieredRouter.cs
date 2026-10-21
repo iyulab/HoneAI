@@ -234,6 +234,7 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
             Kind = settled.Tier.Kind,
             TierId = settled.Tier.Id,
             TierVersion = settled.Tier.Version,
+            JudgedBy = settled.Verdict.JudgedBy,
             Confidence = settled.Verdict.Confidence,
             Rationale = settled.Verdict.Rationale,
             SliceKey = slice,

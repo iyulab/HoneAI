@@ -22,6 +22,22 @@ public interface IJudge<in TInput, TValue>
     ValueTask<JudgeVerdict<TValue>> JudgeAsync(TInput input, JudgeContext context, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Who answered: a tier, and — when the tier is many judges answering in turn, as people on one rung are —
+/// which of them (<see cref="JudgedBy"/>). Trust is measured per identity: two people on the same rung tire,
+/// disagree and are right at different rates, and a label one of them confirmed is weighted by theirs.
+/// </summary>
+/// <param name="TierId">The tier (<see cref="Tier.Id"/>).</param>
+/// <param name="JudgedBy">
+/// Which judge within the tier — a pseudonymous key for a person (<see cref="ReviewDecision.ReviewerKey"/>),
+/// never a name. Null for a tier that is one judge.
+/// </param>
+public sealed record JudgeIdentity(string TierId, string? JudgedBy = null)
+{
+    /// <summary><c>tier</c>, or <c>tier/judge</c> for a judge within a tier.</summary>
+    public override string ToString() => JudgedBy is null ? TierId : $"{TierId}/{JudgedBy}";
+}
+
 /// <summary>What a judge is told about the decision besides the input.</summary>
 public sealed record JudgeContext
 {
@@ -80,6 +96,12 @@ public sealed record JudgeVerdict<TValue>
     public string? Rationale { get; private init; }
 
     /// <summary>
+    /// Which judge within the tier answered (<see cref="JudgeIdentity.JudgedBy"/>) — the person, for a rung of
+    /// people. Null for a tier that is one judge.
+    /// </summary>
+    public string? JudgedBy { get; private init; }
+
+    /// <summary>
     /// What this judge can pass up to a tier that accepts hints when the decision goes up — what it
     /// narrowed the answer to, for instance. Never its answer.
     /// </summary>
@@ -87,10 +109,12 @@ public sealed record JudgeVerdict<TValue>
 
     /// <summary>An answer.</summary>
     public static JudgeVerdict<TValue> Answer(
-        TValue value, double? confidence = null, string? rationale = null, IReadOnlyDictionary<string, string>? hints = null)
-        => new() { Answered = true, Value = value, Confidence = confidence, Rationale = rationale, Hints = hints };
+        TValue value, double? confidence = null, string? rationale = null, IReadOnlyDictionary<string, string>? hints = null,
+        string? judgedBy = null)
+        => new() { Answered = true, Value = value, Confidence = confidence, Rationale = rationale, Hints = hints, JudgedBy = judgedBy };
 
     /// <summary>An abstention, with the reason.</summary>
-    public static JudgeVerdict<TValue> Abstain(string reason, IReadOnlyDictionary<string, string>? hints = null)
-        => new() { Answered = false, Rationale = reason, Hints = hints };
+    public static JudgeVerdict<TValue> Abstain(
+        string reason, IReadOnlyDictionary<string, string>? hints = null, string? judgedBy = null)
+        => new() { Answered = false, Rationale = reason, Hints = hints, JudgedBy = judgedBy };
 }

@@ -50,10 +50,10 @@ public sealed class InMemoryRecheckStore : IRecheckStore
 /// </remarks>
 public sealed class JsonlRecheckStore : IRecheckStore
 {
-    private readonly JsonlKeyedLog<RecheckRecord> _log;
+    private readonly JsonlKeyedLog<RecheckRecord, (string, string)> _log;
 
     /// <param name="path">JSONL file (created on first write, with parent directories).</param>
-    public JsonlRecheckStore(string path) => _log = new JsonlKeyedLog<RecheckRecord>(path, r => (r.DecisionId, r.TierId));
+    public JsonlRecheckStore(string path) => _log = new JsonlKeyedLog<RecheckRecord, (string, string)>(path, r => (r.DecisionId, r.TierId));
 
     /// <inheritdoc />
     public ValueTask<bool> AppendAsync(RecheckRecord record, CancellationToken cancellationToken = default)
@@ -75,13 +75,13 @@ public sealed class JsonlRecheckStore : IRecheckStore
 /// <summary>In-memory <see cref="IPlantStore"/> — for tests, examples and a single process.</summary>
 public sealed class InMemoryPlantStore : IPlantStore
 {
-    private readonly ConcurrentDictionary<(string PlantId, string TierId), PlantRecord> _records = new();
+    private readonly ConcurrentDictionary<(string PlantId, string TierId, string? JudgedBy), PlantRecord> _records = new();
 
     /// <inheritdoc />
     public ValueTask<bool> AppendAsync(PlantRecord record, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(record);
-        return ValueTask.FromResult(_records.TryAdd((record.PlantId, record.TierId), record));
+        return ValueTask.FromResult(_records.TryAdd((record.PlantId, record.TierId, record.JudgedBy), record));
     }
 
     /// <inheritdoc />
@@ -100,13 +100,13 @@ public sealed class InMemoryPlantStore : IPlantStore
     }
 }
 
-/// <summary>File-backed <see cref="IPlantStore"/>: one JSON line per judged plant, append-only, once per plant and tier.</summary>
+/// <summary>File-backed <see cref="IPlantStore"/>: one JSON line per judged plant, append-only, once per plant, tier and judge.</summary>
 public sealed class JsonlPlantStore : IPlantStore
 {
-    private readonly JsonlKeyedLog<PlantRecord> _log;
+    private readonly JsonlKeyedLog<PlantRecord, (string, string, string?)> _log;
 
     /// <param name="path">JSONL file (created on first write, with parent directories).</param>
-    public JsonlPlantStore(string path) => _log = new JsonlKeyedLog<PlantRecord>(path, r => (r.PlantId, r.TierId));
+    public JsonlPlantStore(string path) => _log = new JsonlKeyedLog<PlantRecord, (string, string, string?)>(path, r => (r.PlantId, r.TierId, r.JudgedBy));
 
     /// <inheritdoc />
     public ValueTask<bool> AppendAsync(PlantRecord record, CancellationToken cancellationToken = default)
@@ -130,7 +130,7 @@ public sealed class JsonlPlantStore : IPlantStore
 /// process (appends are serialized by an async lock; processes do not coordinate); the keys already
 /// written are read once, on the first append.
 /// </summary>
-internal sealed class JsonlKeyedLog<T> where T : class
+internal sealed class JsonlKeyedLog<T, TKey> where T : class
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -139,11 +139,11 @@ internal sealed class JsonlKeyedLog<T> where T : class
     };
 
     private readonly string _path;
-    private readonly Func<T, (string, string)> _keyOf;
+    private readonly Func<T, TKey> _keyOf;
     private readonly SemaphoreSlim _lock = new(1, 1);
-    private HashSet<(string, string)>? _keys;
+    private HashSet<TKey>? _keys;
 
-    public JsonlKeyedLog(string path, Func<T, (string, string)> keyOf)
+    public JsonlKeyedLog(string path, Func<T, TKey> keyOf)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         _path = path;

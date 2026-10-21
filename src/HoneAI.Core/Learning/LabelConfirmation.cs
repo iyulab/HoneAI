@@ -53,7 +53,10 @@ public static class LabelConfirmation
     /// <param name="learner">The tier the label is for. An answer from it, or from below it, confirms nothing.</param>
     /// <param name="tiers">The ladder — where each answering tier sits.</param>
     /// <param name="policy">Which answers agree, and which are must-catch.</param>
-    /// <param name="teacherCell">The teacher ledger's cell for a tier, or <see langword="null"/> when it has none.</param>
+    /// <param name="teacherCell">
+    /// The teacher ledger's cell for a judge — a tier, or a person within a rung of people
+    /// (<see cref="TeacherLedger.Compute"/> with <c>judgedBy</c>) — or <see langword="null"/> when it has none.
+    /// </param>
     /// <param name="confirmedAt">When the label is confirmed.</param>
     /// <param name="defaults">Trust for an unmeasured judge; <see cref="LabelTrustDefaults.Standard"/> when null.</param>
     /// <param name="annotations">
@@ -67,7 +70,7 @@ public static class LabelConfirmation
         Tier learner,
         IReadOnlyCollection<Tier> tiers,
         ISettlementPolicy<TValue> policy,
-        Func<string, TeacherCell?> teacherCell,
+        Func<JudgeIdentity, TeacherCell?> teacherCell,
         DateTimeOffset confirmedAt,
         LabelTrustDefaults? defaults = null,
         IReadOnlyDictionary<string, string>? annotations = null)
@@ -103,7 +106,7 @@ public static class LabelConfirmation
 
         // The most trusted confirmer's answer stands (on a tie, the one higher in the cost order).
         var scored = above
-            .Select(x => (x.Answer, x.Tier, Trust: TrustOf(x.Tier, teacherCell, defaults)))
+            .Select(x => (x.Answer, x.Tier, Trust: TrustOf(x.Tier, x.Answer.Provenance.JudgedBy, teacherCell, defaults)))
             .OrderByDescending(x => x.Trust.Value)
             .ThenByDescending(x => x.Tier.CostRank)
             .First();
@@ -114,6 +117,7 @@ public static class LabelConfirmation
             SliceKey = decision.SliceKey,
             Value = scored.Answer.Value,
             ConfirmedBy = scored.Tier.Id,
+            JudgedBy = scored.Answer.Provenance.JudgedBy,
             Kind = scored.Tier.Kind,
             ConfirmedByVersion = scored.Answer.Provenance.TierVersion ?? scored.Tier.Version,
             SnapshotVersion = decision.SnapshotVersion,
@@ -131,14 +135,14 @@ public static class LabelConfirmation
     /// the π the decision reached the participants with — the same rules as <see cref="Decide{TValue}"/>.
     /// </summary>
     /// <param name="decision">The provenance the decision left HoneAI with.</param>
-    /// <param name="consensus">The consensus. Its participants are two or more distinct tiers on the ladder.</param>
+    /// <param name="consensus">The consensus. Its participants are two or more distinct judges of tiers on the ladder.</param>
     /// <param name="learner">The tier the label is for. Every participant sits above it.</param>
     /// <param name="tiers">The ladder.</param>
     /// <param name="defaults">The consensus trust; <see cref="LabelTrustDefaults.Standard"/> when null.</param>
     /// <param name="annotations">The references the sinks need, as in <see cref="Decide{TValue}"/>.</param>
     /// <exception cref="ArgumentException">
-    /// The consensus is not one: fewer than two distinct participants, a participant not on the ladder, or one at
-    /// or below the learner — a judge agreeing with itself is not evidence, and neither is the learner.
+    /// The consensus is not one: fewer than two distinct participants, a participant whose tier is not on the
+    /// ladder, or one at or below the learner — a judge agreeing with itself is not evidence, and neither is the learner.
     /// </exception>
     public static Confirmation<TValue> Settle<TValue>(
         PredictionProvenance decision,
@@ -155,35 +159,39 @@ public static class LabelConfirmation
         ArgumentException.ThrowIfNullOrWhiteSpace(consensus.DecisionId, nameof(consensus));
         defaults ??= LabelTrustDefaults.Standard;
 
-        var participants = new List<Tier>();
-        foreach (var id in consensus.Participants?.Distinct() ?? [])
+        var participants = new List<(JudgeIdentity Judge, Tier Tier)>();
+        foreach (var judge in consensus.Participants?.Distinct() ?? [])
         {
-            var tier = tiers.FirstOrDefault(t => t.Id == id)
-                ?? throw new ArgumentException($"Consensus participant '{id}' is not a tier on the ladder.", nameof(consensus));
+            ArgumentNullException.ThrowIfNull(judge, nameof(consensus));
+            var tier = tiers.FirstOrDefault(t => t.Id == judge.TierId)
+                ?? throw new ArgumentException($"Consensus participant '{judge}' is not on a tier of the ladder.", nameof(consensus));
             if (tier.CostRank <= learner.CostRank)
                 throw new ArgumentException(
-                    $"Consensus participant '{id}' does not sit above '{learner.Id}': a tier cannot confirm its own label.",
+                    $"Consensus participant '{judge}' does not sit above '{learner.Id}': a tier cannot confirm its own label.",
                     nameof(consensus));
-            participants.Add(tier);
+            participants.Add((judge, tier));
         }
         if (participants.Count < 2)
             throw new ArgumentException(
                 $"A consensus takes two or more distinct judges; decision '{consensus.DecisionId}' names {participants.Count}.",
                 nameof(consensus));
 
-        if (ReachProbability(decision, participants, tiers) is not { } probability)
+        if (ReachProbability(decision, participants.Select(p => p.Tier), tiers) is not { } probability)
             return new(ConfirmationOutcome.NotALabel,
                 Reason: $"Settled by '{decision.TierId}' and not drawn for recheck: no tier above saw it.");
 
-        var ordered = participants.OrderBy(t => t.CostRank).ThenBy(t => t.Id, StringComparer.Ordinal).ToList();
+        var ordered = participants
+            .OrderBy(p => p.Tier.CostRank)
+            .ThenBy(p => p.Judge.ToString(), StringComparer.Ordinal)
+            .ToList();
         return new(ConfirmationOutcome.Confirmed, new ConfirmedLabel<TValue>
         {
             DecisionId = consensus.DecisionId,
             SliceKey = decision.SliceKey,
             Value = consensus.Value,
-            ConfirmedBy = string.Join('+', ordered.Select(t => t.Id)),
-            Participants = ordered.Select(t => t.Id).ToList(),
-            Kind = ordered[^1].Kind,
+            ConfirmedBy = string.Join('+', ordered.Select(p => p.Judge)),
+            Participants = ordered.Select(p => p.Judge).ToList(),
+            Kind = ordered[^1].Tier.Kind,
             SnapshotVersion = decision.SnapshotVersion,
             Probability = probability,
             Trust = defaults.Consensus,
@@ -207,8 +215,8 @@ public static class LabelConfirmation
     }
 
     private static (double Value, LabelTrustBasis Basis) TrustOf(
-        Tier tier, Func<string, TeacherCell?> teacherCell, LabelTrustDefaults defaults) =>
-        teacherCell(tier.Id) is { Plants: > 0, Accuracy: { } accuracy }
+        Tier tier, string? judgedBy, Func<JudgeIdentity, TeacherCell?> teacherCell, LabelTrustDefaults defaults) =>
+        teacherCell(new JudgeIdentity(tier.Id, judgedBy)) is { Plants: > 0, Accuracy: { } accuracy }
             ? (accuracy, LabelTrustBasis.Measured)
             : (defaults.Of(tier.Kind), LabelTrustBasis.Default);
 }
