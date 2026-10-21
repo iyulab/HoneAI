@@ -52,6 +52,28 @@ public static class PolicySnapshotJson
                         w.WriteNumber(knob, rate);
                     w.WriteEndObject();
                 }
+                if (e.Selection is { Count: > 0 } selection)
+                {
+                    w.WriteStartObject("selection");
+                    foreach (var (knob, sel) in selection.OrderBy(r => r.Key, StringComparer.Ordinal))
+                    {
+                        w.WriteStartObject(knob);
+                        w.WriteString("shape", sel.Shape.ToString());
+                        w.WriteStartArray("calibration");
+                        foreach (var bin in sel.Calibration.OrderBy(b => b.UpTo))
+                        {
+                            w.WriteStartObject();
+                            w.WriteNumber("upTo", bin.UpTo);
+                            w.WriteNumber("probability", bin.Probability);
+                            w.WriteEndObject();
+                        }
+                        w.WriteEndArray();
+                        w.WriteNumber("meanScore", sel.MeanScore);
+                        w.WriteNumber("uniformMix", sel.UniformMix);
+                        w.WriteEndObject();
+                    }
+                    w.WriteEndObject();
+                }
                 if (e.AbstainQuantile is { } q)
                     w.WriteNumber("abstainQuantile", q);
                 if (e.RateSetBy is { } by)

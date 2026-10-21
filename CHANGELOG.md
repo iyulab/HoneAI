@@ -7,6 +7,20 @@ All notable changes to HoneAI are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Selection: a recheck probability per decision.** A recheck spent re-confirming a right answer
+  buys little; `PolicyEntry.Selection` tilts a knob's rate toward the decisions worth checking
+  without changing how many it draws. The consumer supplies what it knows through
+  `ISelectionSignals<TInput, TValue>` — a raw `Risk` (any scale, higher = likelier wrong), a
+  `Weight` (how bad a mistake would be) and a `Cluster` — and sees every tier's verdict on the way up
+  (`SelectionContext`), shadow tiers included. A `KnobSelection` maps the risk through a measured
+  calibration (`RiskBin`s) to p, scores it by the knob's `SelectionShape` — `Variance` √(p(1−p)) for
+  agreement, `WeightedVariance` w·√(p(1−p)) for misses of what matters, `WeightedRisk` w·p for label
+  harvesting — and draws at `rate × ((1 − τ) · score ÷ meanScore + τ)`, capped at 1, floored as
+  before. Every decision keeps a rate above zero and the per-decision rates are recorded in
+  `SampleDraw.KnobRates`, so 1/π counts stay unbiased; the tilt changes only their precision. An
+  uncalibrated signal draws uniformly, a signal source that throws leaves the draw untilted, and
+  `SampleDraw.Signal` keeps the signal for every settled decision so the calibration can be fitted
+  from what was decided. The canonical snapshot JSON and its hash include the selection.
 - **Recheck records and the trust ledger** (first part of the sampler-and-ledger stage).
   `RecheckRecord` — a settled decision that was drawn, its π and knob, its decision time, and how
   the blind recheck came out (`Agreed`, `Disagreed`, `UpperFailed`) and whether the tier above

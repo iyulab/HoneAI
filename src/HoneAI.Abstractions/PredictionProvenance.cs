@@ -108,9 +108,16 @@ public sealed record TierStep(string TierId, JudgeKind Kind, StepOutcome Outcome
 public sealed record SampleDraw(double Probability, string Knob, bool Drawn)
 {
     /// <summary>
-    /// Every knob's rate in force when the decision was drawn (π is the largest, floored). With
+    /// Every knob's rate for this decision, after any selection tilt (π is the largest, floored). With
     /// the decision id and snapshot version this tells which knobs alone would have drawn it — a
     /// knob's own sub-sample, weighted by its own rate, estimates without the other knobs' tilt.
     /// </summary>
     public IReadOnlyDictionary<string, double>? KnobRates { get; init; }
+
+    /// <summary>
+    /// The selection signal the rates were tilted by, when there was one — recorded for every
+    /// settled decision, drawn or not, so the calibration and the mean score can be fitted from
+    /// what was decided rather than only from what was rechecked.
+    /// </summary>
+    public SelectionSignal? Signal { get; init; }
 }

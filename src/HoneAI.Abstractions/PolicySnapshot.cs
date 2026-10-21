@@ -58,10 +58,17 @@ public sealed record PolicyEntry
     public required TrustState State { get; init; }
 
     /// <summary>
-    /// Recheck probability per knob (for example a uniform share and a slice-watch share). The
-    /// probability a settled decision is drawn with is the largest of them.
+    /// Recheck probability per knob (for example a uniform share and a slice-watch share) — the
+    /// expected rate, which <see cref="Selection"/> may tilt per decision. The probability a settled
+    /// decision is drawn with is the largest of its knobs' rates.
     /// </summary>
     public IReadOnlyDictionary<string, double>? SampleRates { get; init; }
+
+    /// <summary>
+    /// How a knob tilts its rate toward the decisions worth checking, by knob name. A knob without
+    /// an entry draws every decision at its rate.
+    /// </summary>
+    public IReadOnlyDictionary<string, KnobSelection>? Selection { get; init; }
 
     /// <summary>Share of its least confident answers the tier abstains on, when set.</summary>
     public double? AbstainQuantile { get; init; }

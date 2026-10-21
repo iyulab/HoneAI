@@ -29,6 +29,7 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
     private readonly Func<TInput, string> _decisionIdOf;
     private readonly Func<PolicySnapshot?> _snapshot;
     private readonly TieredRouterOptions _options;
+    private readonly ISelectionSignals<TInput, TValue>? _signals;
     private (PolicySnapshot Snapshot, Dictionary<(string, string), PolicyEntry> Entries)? _index;
 
     /// <param name="judges">The tiers. Ordered by <see cref="Tier.CostRank"/>; ids and ranks must be distinct.</param>
@@ -37,14 +38,21 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
     /// <param name="decisionIdOf">The decision's identifier — stable across retries of the same input.</param>
     /// <param name="snapshot">The policy in force; <see langword="null"/> means none yet (every slice in shadow).</param>
     /// <param name="options">Timeouts, the recheck floor, the clock.</param>
+    /// <param name="signals">
+    /// What the consumer knows of each decision's risk and meaning, for the snapshot's selection to
+    /// tilt the draw by (<see cref="PolicyEntry.Selection"/>). Without it every decision is drawn at
+    /// its knobs' rates.
+    /// </param>
     public TieredRouter(
         IEnumerable<IJudge<TInput, TValue>> judges,
         ISettlementPolicy<TValue> policy,
         ISliceKey<TInput> sliceKey,
         Func<TInput, string> decisionIdOf,
         Func<PolicySnapshot?> snapshot,
-        TieredRouterOptions? options = null)
+        TieredRouterOptions? options = null,
+        ISelectionSignals<TInput, TValue>? signals = null)
     {
+        _signals = signals;
         ArgumentNullException.ThrowIfNull(judges);
         _judges = judges.OrderBy(j => j.Tier.CostRank).ToArray();
         if (_judges.Length == 0)
@@ -154,7 +162,7 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
 
             var settled = new RoutedStep<TValue>(tier, verdict, StepOutcome.Settled, null, state, passHints);
             steps.Add(settled);
-            return Settle(decisionId, slice, snapshot, steps, settled, Draw(decisionId, snapshot!, entry!), unverified: false);
+            return Settle(decisionId, slice, snapshot, steps, settled, Draw(input, decisionId, slice, snapshot!, entry!, settled, steps), unverified: false);
         }
 
         if (candidate is not null)
@@ -164,7 +172,7 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
             var settled = candidate with { Outcome = StepOutcome.Settled, Detail = "policy snapshot expired; no tier above answered" };
             steps[index] = settled;
             var entry = Find(snapshot!, candidate.Tier.Id, slice);
-            return Settle(decisionId, slice, snapshot, steps, settled, Draw(decisionId, snapshot!, entry!), unverified: true);
+            return Settle(decisionId, slice, snapshot, steps, settled, Draw(input, decisionId, slice, snapshot!, entry!, settled, steps), unverified: true);
         }
 
         throw new DecisionNotSettledException(decisionId, steps.Select(ToTierStep).ToArray());
@@ -214,18 +222,56 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
         };
     }
 
-    private SampleDraw Draw(string decisionId, PolicySnapshot snapshot, PolicyEntry entry)
+    private SampleDraw Draw(
+        TInput input, string decisionId, string slice, PolicySnapshot snapshot, PolicyEntry entry,
+        RoutedStep<TValue> settled, List<RoutedStep<TValue>> steps)
     {
-        var (knob, rate) = entry.SampleRates is { Count: > 0 } rates
-            ? rates.OrderByDescending(r => r.Value).ThenBy(r => r.Key, StringComparer.Ordinal).Select(r => (r.Key, r.Value)).First()
-            : ("none", 0.0);
-        if (!(rate >= _options.MinimumSampleRate))
-            (knob, rate) = ("floor", _options.MinimumSampleRate);
-        rate = Math.Min(rate, 1.0);
-        return new SampleDraw(rate, knob, RecheckDraw.IsDrawn(decisionId, snapshot.Version, rate))
+        var signal = SignalOf(input, decisionId, slice, settled, steps);
+
+        // Each knob's rate for this decision: its expected rate, tilted by its selection when it has one.
+        Dictionary<string, double>? knobRates = null;
+        if (entry.SampleRates is { Count: > 0 } rates)
         {
-            KnobRates = entry.SampleRates is { Count: > 0 } all ? new Dictionary<string, double>(all) : null,
+            knobRates = new Dictionary<string, double>(rates.Count, StringComparer.Ordinal);
+            foreach (var (name, rate) in rates)
+                knobRates[name] = SelectionScore.Rate(rate, entry.Selection?.GetValueOrDefault(name), signal);
+        }
+
+        var (knob, probability) = knobRates is { Count: > 0 }
+            ? knobRates.OrderByDescending(r => r.Value).ThenBy(r => r.Key, StringComparer.Ordinal).Select(r => (r.Key, r.Value)).First()
+            : ("none", 0.0);
+        if (!(probability >= _options.MinimumSampleRate))
+            (knob, probability) = ("floor", _options.MinimumSampleRate);
+        probability = Math.Min(probability, 1.0);
+        return new SampleDraw(probability, knob, RecheckDraw.IsDrawn(decisionId, snapshot.Version, probability))
+        {
+            KnobRates = knobRates,
+            Signal = signal,
         };
+    }
+
+    private SelectionSignal? SignalOf(
+        TInput input, string decisionId, string slice, RoutedStep<TValue> settled, List<RoutedStep<TValue>> steps)
+    {
+        if (_signals is null)
+            return null;
+        try
+        {
+            return _signals.SignalOf(input, new SelectionContext<TValue>
+            {
+                DecisionId = decisionId,
+                SliceKey = slice,
+                Tier = settled.Tier,
+                Value = settled.Verdict.Value!,
+                Confidence = settled.Verdict.Confidence,
+                Verdicts = steps.Select(s => (s.Tier, s.Verdict)).ToArray(),
+            });
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A failing signal source must not fail a decision: it is drawn at the knobs' own rates.
+            return null;
+        }
     }
 
     private async ValueTask<JudgeVerdict<TValue>> JudgeAsync(
