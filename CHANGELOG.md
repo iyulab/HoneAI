@@ -29,6 +29,13 @@ All notable changes to HoneAI are documented here. The format follows
   active tier's promise knob at `IssuePolicy.ActiveRate`, a stable tier's at its grant, other knobs
   beside it, soft and hard expiry from the issue time — and `RateSetBy` on every entry, so "why this
   π" is answered from the snapshot. The promise knob (`uniform` by default) cannot be set by hand.
+- **Staleness from MLoop's drift.** `IMLoopClient.GetDriftAsync(MLoopDriftRequest)` reads MLoop's
+  `GET /drift` (`HttpMLoopClient`) into `MLoopDrift` — measured or not and why, every input column's
+  PSI and level (a free-text column as its length and unseen-word share, MLoop 0.40+), the answers'
+  drift, and one report per slice value. `StalenessWatch.Drifted(drift, level, sliceValue)` is the
+  `LiveSignals.Drifted` a stable tier tightens on; a window MLoop could not measure is no evidence
+  and does not read as drift, and a level this client does not know reads as moved.
+  **Breaking:** an own `IMLoopClient` implementation needs the new member.
 - `LedgerCell.MissRateLower` — the miss rate's lower bound, what demotion is judged on (a failed
   recheck counts as no miss here).
 - **Sharing a pool of rechecks.** `RecheckBudget.Allocate(budget, requests, floor)` keeps every

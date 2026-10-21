@@ -36,6 +36,13 @@ public interface IMLoopClient
     /// <summary>Promote an experiment to production for the given model.</summary>
     Task PromoteAsync(string model, string experimentId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// How far the production model's recent inputs and answers have moved from what it was trained
+    /// on — the staleness signal a tier's standing tightens on. A window MLoop could not measure comes
+    /// back with <see cref="MLoopDrift.Measured"/> false and the reason.
+    /// </summary>
+    Task<MLoopDrift> GetDriftAsync(MLoopDriftRequest request, CancellationToken cancellationToken = default);
+
     /// <summary>Production model metadata, or <see langword="null"/> when the model or transport is unavailable.</summary>
     Task<MLoopModelInfo?> GetInfoAsync(string? model = null, CancellationToken cancellationToken = default);
 }

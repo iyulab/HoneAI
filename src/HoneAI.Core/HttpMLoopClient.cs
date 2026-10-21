@@ -200,6 +200,67 @@ public sealed class HttpMLoopClient : IMLoopClient
         return new MLoopModelInfo(name, task, ParseMetrics(root));
     }
 
+    /// <inheritdoc />
+    public async Task<MLoopDrift> GetDriftAsync(MLoopDriftRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var query = new List<string>();
+        if (!string.IsNullOrWhiteSpace(request.Model))
+            query.Add("name=" + Uri.EscapeDataString(request.Model));
+        if (request.Rows is { } rows)
+            query.Add("rows=" + rows.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        if (!string.IsNullOrWhiteSpace(request.SliceBy))
+            query.Add("sliceBy=" + Uri.EscapeDataString(request.SliceBy));
+        var uri = "drift" + (query.Count == 0 ? string.Empty : "?" + string.Join("&", query));
+
+        using var response = await _http.GetAsync(uri, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccess(response, "drift", cancellationToken).ConfigureAwait(false);
+        using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        var root = doc.RootElement;
+
+        Dictionary<string, MLoopDriftReport>? slices = null;
+        if (root.TryGetProperty("slices", out var s) && s.ValueKind == JsonValueKind.Array)
+        {
+            slices = new Dictionary<string, MLoopDriftReport>(StringComparer.Ordinal);
+            foreach (var slice in s.EnumerateArray())
+                if (String(slice, "value") is { } value && ParseDriftReport(slice) is { } report)
+                    slices[value] = report;
+        }
+        return new MLoopDrift(
+            String(root, "status") ?? "Unknown",
+            String(root, "experimentId"),
+            String(root, "message") ?? string.Empty,
+            ParseDriftReport(root),
+            slices);
+    }
+
+    private static MLoopDriftReport? ParseDriftReport(JsonElement holder)
+    {
+        if (!holder.TryGetProperty("drift", out var d) || d.ValueKind != JsonValueKind.Object)
+            return null;
+        var features = d.TryGetProperty("features", out var f) && f.ValueKind == JsonValueKind.Array
+            ? f.EnumerateArray().Select(ParseColumnDrift).OfType<MLoopColumnDrift>().ToList()
+            : [];
+        var prediction = d.TryGetProperty("prediction", out var p) ? ParseColumnDrift(p) : null;
+        return new MLoopDriftReport(
+            d.TryGetProperty("rows", out var r) && r.TryGetInt32(out var n) ? n : 0,
+            Level(String(d, "level")),
+            features,
+            prediction);
+    }
+
+    private static MLoopColumnDrift? ParseColumnDrift(JsonElement e)
+        => e.ValueKind == JsonValueKind.Object && String(e, "column") is { } column
+            ? new MLoopColumnDrift(column, e.TryGetProperty("psi", out var psi) && psi.TryGetDouble(out var x) ? x : 0, Level(String(e, "level")))
+            : null;
+
+    // An unknown level reads as the highest: a newer server's word for "moved" must not read as "stable".
+    private static MLoopDriftLevel Level(string? text)
+        => Enum.TryParse<MLoopDriftLevel>(text, ignoreCase: true, out var level) && Enum.IsDefined(level) ? level : MLoopDriftLevel.Significant;
+
+    private static string? String(JsonElement e, string name)
+        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
     private static IReadOnlyDictionary<string, double>? ParseMetrics(JsonElement root)
     {
         if (!root.TryGetProperty("metrics", out var m) || m.ValueKind != JsonValueKind.Object)

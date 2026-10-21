@@ -67,3 +67,59 @@ public sealed record MLoopModelInfo(
     string Model,
     string? Task = null,
     IReadOnlyDictionary<string, double>? Metrics = null);
+
+/// <summary>Request for how far a production model's recent inputs and answers have moved (MLoop <c>GET /drift</c>).</summary>
+/// <param name="Model">Target model name; <see langword="null"/> uses MLoop's default model.</param>
+/// <param name="Rows">How many of the most recent logged predictions to compare; <see langword="null"/> for MLoop's default.</param>
+/// <param name="SliceBy">An input column to report drift per value of — typically the column a slice key is built from.</param>
+public sealed record MLoopDriftRequest(string? Model = null, int? Rows = null, string? SliceBy = null);
+
+/// <summary>How far a distribution moved, by MLoop's reading of the population stability index.</summary>
+public enum MLoopDriftLevel
+{
+    /// <summary>PSI under 0.1.</summary>
+    None = 0,
+
+    /// <summary>PSI from 0.1 to 0.25.</summary>
+    Moderate = 1,
+
+    /// <summary>PSI of 0.25 or more.</summary>
+    Significant = 2,
+}
+
+/// <summary>One column's — or the answers' — drift.</summary>
+/// <param name="Column">The column, or MLoop's name for the answers.</param>
+/// <param name="Psi">Its population stability index against the training profile.</param>
+/// <param name="Level">How MLoop reads it.</param>
+public sealed record MLoopColumnDrift(string Column, double Psi, MLoopDriftLevel Level);
+
+/// <summary>A window's drift: the inputs' columns (most moved first) and the model's answers.</summary>
+/// <param name="Rows">Logged predictions compared.</param>
+/// <param name="Level">The level of the most moved input column.</param>
+/// <param name="Features">Every profiled input column, most moved first.</param>
+/// <param name="Prediction">The answers' drift; <see langword="null"/> when the model was trained without an answer profile.</param>
+public sealed record MLoopDriftReport(int Rows, MLoopDriftLevel Level, IReadOnlyList<MLoopColumnDrift> Features, MLoopColumnDrift? Prediction)
+{
+    /// <summary>The inputs or the answers moved at least to <paramref name="level"/>.</summary>
+    public bool MovedAtLeast(MLoopDriftLevel level) => Level >= level || Prediction?.Level >= level;
+}
+
+/// <summary>
+/// The drift of a production model: measured or not (and why), the overall report, and one report per
+/// slice value when asked.
+/// </summary>
+/// <param name="Status">MLoop's status — <c>Measured</c>, <c>NoProduction</c>, <c>NoProfile</c> or <c>TooFewRows</c>.</param>
+/// <param name="ExperimentId">The production experiment the window was compared against.</param>
+/// <param name="Message">MLoop's one-line reading.</param>
+/// <param name="Report">The overall report; <see langword="null"/> unless measured.</param>
+/// <param name="Slices">Report per value of the slice column; <see langword="null"/> unless asked.</param>
+public sealed record MLoopDrift(
+    string Status,
+    string? ExperimentId,
+    string Message,
+    MLoopDriftReport? Report,
+    IReadOnlyDictionary<string, MLoopDriftReport>? Slices = null)
+{
+    /// <summary>The window was compared. Anything else is no evidence either way — not "no drift".</summary>
+    public bool Measured => Status == "Measured" && Report is not null;
+}

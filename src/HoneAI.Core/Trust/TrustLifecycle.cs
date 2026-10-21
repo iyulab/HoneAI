@@ -182,3 +182,21 @@ public static class TrustLifecycle
     private static LifecycleStep Releasing(SliceStanding from, SliceStanding to, string reason, LifecyclePolicy policy)
         => new(from.State, to.State, reason, !policy.AutoRelease, to);
 }
+
+/// <summary>Reads MLoop's drift of a model as the staleness signal of the tier it serves.</summary>
+public static class StalenessWatch
+{
+    /// <summary>
+    /// Whether the model's inputs or answers moved at least to <paramref name="level"/> — in the slice
+    /// value <paramref name="sliceValue"/> when MLoop reported one for it, else overall. A window MLoop
+    /// could not measure is not drift: it is no evidence, and the ledger's own numbers still tighten.
+    /// </summary>
+    public static bool Drifted(MLoopDrift drift, MLoopDriftLevel level = MLoopDriftLevel.Significant, string? sliceValue = null)
+    {
+        ArgumentNullException.ThrowIfNull(drift);
+        if (!drift.Measured)
+            return false;
+        var report = sliceValue is not null && drift.Slices?.TryGetValue(sliceValue, out var slice) == true ? slice : drift.Report!;
+        return report.MovedAtLeast(level);
+    }
+}
