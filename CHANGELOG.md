@@ -21,6 +21,11 @@ All notable changes to HoneAI are documented here. The format follows
   `PlantRecord.JudgedBy` and `ConfirmedLabel.JudgedBy`. `TeacherLedger.Compute(..., judgedBy:)` reads one person's
   cell (none: the rung pooled); plant stores record once per plant, tier and judge; a consensus's participants are
   judges, so two people on one rung are a consensus.
+- **Double checks.** `DoubleCheckMeasure.Pair` records one decision judged blind by two judges (unordered,
+  scored against a known answer when there is one); `Compute` gives the pair's `DoubleCheckCell` — agreement,
+  Cohen's κ on the must-catch call (the spread of judges of one kind), and on known answers each judge's error
+  rate, how far their errors coincide beyond independence (`ErrorOverlap`, with a hypergeometric
+  `ErrorOverlapP`) and the must-catch items both missed.
 
 ### Changed
 - **Breaking:** `LabelConfirmation.Decide`'s `teacherCell` lookup takes a `JudgeIdentity` instead of a tier id, so

@@ -110,6 +110,10 @@ A tier earns the right to settle a slice from rechecks, not from its own confide
    planted items whose answer is known — on a rung of people, each person on their own plants: the
    person's judge answers with `judgedBy` (a pseudonymous key, never a name), and `Compute(..., judgedBy:)`
    reads that person's cell, or the rung pooled without it.
+   `DoubleCheckMeasure` reads two judges' blind answers to the same decisions: two of one kind (two
+   people) by Cohen's κ on the must-catch call; two of different kinds by whether their errors coincide on
+   known answers (`ErrorOverlap` — 1 is independent — with an exact p-value) and how many must-catch items
+   both missed, which is what a check of one by the other cannot catch.
 2. **Lifecycle** — `TrustLifecycle.Release` moves shadow → active → stable only at a window's end,
    on every condition at once; `TrustLifecycle.Tighten` moves back at any time (a new version, a
    seen miss, agreement shown low, drift — `StalenessWatch` reads MLoop's `GET /drift`).
