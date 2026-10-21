@@ -172,31 +172,37 @@ public static class TrustLedger
     /// agreed one's, each pair weighted by the product of the two 1/π weights; ties count half.
     /// </summary>
     public static double? ConfidenceRankAuc(IEnumerable<RecheckRecord> answered)
-    {
-        var ranked = answered
+        => RankAuc(answered
             .Where(r => r.Confidence is { } c && !double.IsNaN(c) && r.Outcome != RecheckOutcome.UpperFailed)
-            .Select(r => (Confidence: r.Confidence!.Value, Weight: 1.0 / r.Probability, Disagreed: r.Outcome == RecheckOutcome.Disagreed))
-            .OrderBy(x => x.Confidence)
-            .ToList();
+            .Select(r => (-r.Confidence!.Value, 1.0 / r.Probability, r.Outcome == RecheckOutcome.Disagreed)));
+
+    /// <summary>
+    /// Weighted Mann–Whitney over scored observations: the probability that a disagreed one scores
+    /// above an agreed one, each pair weighted by the product of their weights; ties count half.
+    /// Null without both a disagreed and an agreed observation.
+    /// </summary>
+    public static double? RankAuc(IEnumerable<(double Score, double Weight, bool Disagreed)> observations)
+    {
+        ArgumentNullException.ThrowIfNull(observations);
+        var ranked = observations.OrderBy(x => x.Score).ToList();
         var disagreedTotal = ranked.Where(x => x.Disagreed).Sum(x => x.Weight);
         var agreedTotal = ranked.Where(x => !x.Disagreed).Sum(x => x.Weight);
         if (disagreedTotal == 0 || agreedTotal == 0)
             return null;
 
-        // Sweep in confidence order: for each group of equal confidence, a disagreed record wins
-        // against every agreed record above it and ties against the ones level with it.
+        // Sweep in score order: for each group of equal score, a disagreed observation wins against
+        // every agreed one below it and ties against the ones level with it.
         double agreedBelow = 0, favorable = 0;
         for (var i = 0; i < ranked.Count;)
         {
             var j = i;
             double groupAgreed = 0, groupDisagreed = 0;
-            while (j < ranked.Count && ranked[j].Confidence == ranked[i].Confidence)
+            while (j < ranked.Count && ranked[j].Score == ranked[i].Score)
             {
                 if (ranked[j].Disagreed) groupDisagreed += ranked[j].Weight; else groupAgreed += ranked[j].Weight;
                 j++;
             }
-            var agreedAbove = agreedTotal - agreedBelow - groupAgreed;
-            favorable += groupDisagreed * (agreedAbove + 0.5 * groupAgreed);
+            favorable += groupDisagreed * (agreedBelow + 0.5 * groupAgreed);
             agreedBelow += groupAgreed;
             i = j;
         }

@@ -49,6 +49,8 @@ public static class RecheckRecords
             SnapshotVersion = provenance.SnapshotVersion,
             Outcome = outcome,
             Confidence = provenance.Confidence,
+            Risk = sample.Signal?.Risk,
+            Weight = sample.Signal?.Weight,
             UpperMustCatch = verdict.Answered && policy.MustCatch(verdict.Value!),
             CheckedBy = recheck.Tier.Id,
         };

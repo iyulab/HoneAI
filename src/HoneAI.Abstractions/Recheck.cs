@@ -65,6 +65,12 @@ public sealed record RecheckRecord
     /// <summary>The settling tier's confidence in the answer it settled, when it gave one.</summary>
     public double? Confidence { get; init; }
 
+    /// <summary>The selection signal's raw risk for the decision (<see cref="SelectionSignal.Risk"/>), when there was one — what a calibration is fitted on.</summary>
+    public double? Risk { get; init; }
+
+    /// <summary>The selection signal's weight for the decision (<see cref="SelectionSignal.Weight"/>), when there was a signal.</summary>
+    public double? Weight { get; init; }
+
     /// <summary>The tier above answered with a must-catch value. Meaningless when <see cref="Outcome"/> is <see cref="RecheckOutcome.UpperFailed"/>.</summary>
     public bool UpperMustCatch { get; init; }
 

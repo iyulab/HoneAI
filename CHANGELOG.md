@@ -7,6 +7,17 @@ All notable changes to HoneAI are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Fitting the selection from what was measured.** `SelectionFit.Fit(rechecks, decided, shape)`
+  gives a knob's `KnobSelection`: the calibration from the answered rechecks — bins of equal
+  effective size by raw risk, each bin's 1/π-weighted disagreement rate shrunk toward the overall
+  rate (a small bin cannot claim zero) and made non-decreasing in risk (pool adjacent violators);
+  the mean score from every settled decision's signal (one without a risk scores the mean, so the
+  knob keeps its expected rate); and τ from the calibrated risk's AUC on held-out rechecks (the two
+  halves of a stable split by decision id score each other): at or below chance τ = 1, else
+  max(0.1, 1 − 2·(AUC − 0.5)). Short evidence (under 100 rechecks or 10 disagreements, by default)
+  leaves the knob uncalibrated — uniform — and `SelectionFitResult.Reason` says why.
+  `RecheckRecord.Risk` / `Weight` carry the signal from the draw; `TrustLedger.RankAuc` is the
+  weighted Mann–Whitney both the ledger and the fit use.
 - **Selection: a recheck probability per decision.** A recheck spent re-confirming a right answer
   buys little; `PolicyEntry.Selection` tilts a knob's rate toward the decisions worth checking
   without changing how many it draws. The consumer supplies what it knows through
