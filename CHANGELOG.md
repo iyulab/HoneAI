@@ -18,6 +18,11 @@ All notable changes to HoneAI are documented here. The format follows
   and disagreed counts) and the tier is calibrated (`SliceWindow.Calibrated`); `TrustController`
   applies it to `SliceWindow.AbstainQuantile`. A confidence that runs against correctness never
   earns it.
+- **What a standing inherits.** `SliceStanding.Refined(parent, policy)` — a slice cut from an old one
+  by a refined key inherits its standing and dwell, a stable parent's child coming back as active one
+  window short of stable. `LiveSignals.VersionProvenNoWorse` — a tier's new version shown no worse on
+  the same weighted evaluation set (MLoop's `evaluate --against`) starts active instead of in
+  shadow, never above where the old version stood.
 - **Recheck probabilities from the promise.** `RecheckRate.Solve(targets, traffic)` derives the rate a
   stable tier needs in a slice from what the consumer promised (`TrustTargets` — agreement p0,
   detectable drop δ, must-catch miss limit m, deadline D, α, power, floor and ceiling) and what the

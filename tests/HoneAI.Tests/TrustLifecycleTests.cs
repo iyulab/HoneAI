@@ -168,3 +168,55 @@ public class MissRateLowerBoundTests
         Assert.True(1 - TrustLedger.BinomialCdf(2, (long)low - 1, 0.1) <= 0.05);
     }
 }
+
+public class StandingInheritanceTests
+{
+    private static readonly DateTimeOffset Start = new(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly LifecyclePolicy Policy = new()
+    {
+        Targets = new TrustTargets { Agreement = 0.95, DetectableDrop = 0.03, MissLimit = 0.02, Deadline = TimeSpan.FromDays(7) },
+        Margin = 0.01, MinimumEffectiveSample = 300, MinimumDwell = TimeSpan.FromDays(7), StableWindows = 3,
+    };
+
+    private static LedgerCell Cell() => new()
+    {
+        TierId = "ml", SliceKey = "s", WindowStart = Start, WindowEnd = Start.AddDays(7),
+        Rechecks = 500, UpperFailures = 0, EffectiveSampleSize = 500, Agreement = 0.98, AgreementLower = 0.97, AgreementUpper = 0.99,
+        MissesEstimated = 0, Caught = 400, MissRate = 0, MissRateUpper = 0.01, MissRateLower = 0, Confidence = 0.95,
+    };
+
+    [Fact]
+    public void ARefinedSliceOfAStableParent_IsActive_OneWindowShortOfStable()
+    {
+        var child = SliceStanding.Refined(new SliceStanding(TrustState.Stable, Start, "v1"), Policy);
+
+        Assert.Equal(TrustState.Active, child.State);
+        Assert.Equal(Start, child.Since);                                       // the dwell is inherited
+        var step = TrustLifecycle.Release(child, Cell(), true, new LiveSignals("v1"), Policy, Start.AddDays(14));
+        Assert.Equal(TrustState.Stable, step.To);                               // one window of its own
+    }
+
+    [Fact]
+    public void ARefinedSliceOfAShadowOrActiveParent_KeepsItsStanding()
+    {
+        var active = new SliceStanding(TrustState.Active, Start, "v1", PassingWindows: 1);
+
+        Assert.Equal(active, SliceStanding.Refined(active, Policy));
+        Assert.Equal(TrustState.Shadow, SliceStanding.Refined(SliceStanding.New("v1", Start), Policy).State);
+    }
+
+    [Fact]
+    public void ANewVersionShownNoWorse_StartsActive_NotStable()
+    {
+        var stable = new SliceStanding(TrustState.Stable, Start, "v1");
+
+        var proven = TrustLifecycle.Tighten(stable, Cell(), new LiveSignals("v2", VersionProvenNoWorse: true), Policy, Start.AddDays(1));
+        var unproven = TrustLifecycle.Tighten(stable, Cell(), new LiveSignals("v2"), Policy, Start.AddDays(1));
+
+        Assert.Equal(TrustState.Active, proven.To);
+        Assert.Equal("v2", proven.Standing.TierVersion);
+        Assert.Equal(TrustState.Shadow, unproven.To);
+        // Never above where the old version stood.
+        Assert.Equal(TrustState.Shadow, TrustLifecycle.Tighten(SliceStanding.New("v1", Start), Cell(), new LiveSignals("v2", VersionProvenNoWorse: true), Policy, Start).To);
+    }
+}

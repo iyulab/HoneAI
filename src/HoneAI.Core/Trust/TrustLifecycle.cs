@@ -46,6 +46,24 @@ public sealed record SliceStanding(TrustState State, DateTimeOffset Since, strin
 {
     /// <summary>A new slice, or a tier's new version: shadow from <paramref name="now"/>.</summary>
     public static SliceStanding New(string tierVersion, DateTimeOffset now) => new(TrustState.Shadow, now, tierVersion);
+
+    /// <summary>
+    /// The standing of a slice cut from <paramref name="parent"/> by a refined slice key — one whose
+    /// slices each lie inside one old slice. The child inherits the parent's standing and dwell but is
+    /// rechecked at the active rate until it shows itself once: a stable parent's child is active one
+    /// window short of stable, an active parent's child keeps its run. A key change that is not a
+    /// refinement starts every slice in shadow (<see cref="New"/>), and is a person's decision.
+    /// </summary>
+    public static SliceStanding Refined(SliceStanding parent, LifecyclePolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(parent);
+        ArgumentNullException.ThrowIfNull(policy);
+        return parent.State switch
+        {
+            TrustState.Stable => parent with { State = TrustState.Active, PassingWindows = Math.Max(0, policy.StableWindows - 1) },
+            _ => parent,
+        };
+    }
 }
 
 /// <summary>
@@ -62,7 +80,12 @@ public sealed record LifecycleStep(TrustState From, TrustState To, string Reason
 /// <summary>Live signals that the world a tier was measured in has moved.</summary>
 /// <param name="TierVersion">The tier's current version.</param>
 /// <param name="Drifted">Its inputs or answers have moved (a PSI, a CUSUM, a falling recent window).</param>
-public sealed record LiveSignals(string TierVersion, bool Drifted = false);
+/// <param name="VersionProvenNoWorse">
+/// A new version was shown no worse than the one it replaces, on the same weighted evaluation set
+/// (for an ML tier, MLoop's paired comparison <c>evaluate --against</c>). It then starts active
+/// instead of in shadow — never stable, and never above where the old version stood.
+/// </param>
+public sealed record LiveSignals(string TierVersion, bool Drifted = false, bool VersionProvenNoWorse = false);
 
 /// <summary>
 /// The lifecycle of a tier in a slice — shadow, active, stable — judged on the trust ledger.
@@ -80,7 +103,8 @@ public sealed record LiveSignals(string TierVersion, bool Drifted = false);
 /// <b>Tightening</b> (<see cref="Tighten"/>) may happen at any time, on a running cell. Looking at a
 /// running cell again and again inflates a fixed-confidence bound's error, so the cell passed in
 /// should be computed at a stricter confidence than release uses — a union bound over the looks
-/// standing in for a confidence sequence. A new tier version → shadow. A must-catch miss shown
+/// standing in for a confidence sequence. A new tier version → shadow, or active when it was shown
+/// no worse than the old one (<see cref="LiveSignals.VersionProvenNoWorse"/>). A must-catch miss shown
 /// above m, or agreement shown under p0 − ε → shadow. A single seen miss, agreement shown under p0,
 /// or drifted inputs → stable falls back to active, where it is rechecked at the active rate.
 /// </para>
@@ -129,7 +153,12 @@ public static class TrustLifecycle
         var m = policy.Targets.MissLimit;
 
         if (!string.Equals(signals.TierVersion, standing.TierVersion, StringComparison.Ordinal))
-            return Tightening(standing, SliceStanding.New(signals.TierVersion, now), $"tier version changed ({standing.TierVersion} → {signals.TierVersion})");
+        {
+            var changed = $"tier version changed ({standing.TierVersion} → {signals.TierVersion})";
+            return signals.VersionProvenNoWorse && standing.State != TrustState.Shadow
+                ? Tightening(standing, new SliceStanding(TrustState.Active, now, signals.TierVersion), changed + "; shown no worse, so active")
+                : Tightening(standing, SliceStanding.New(signals.TierVersion, now), changed);
+        }
         if (standing.State == TrustState.Shadow)
             return Stay(standing, "shadow");
 
