@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-21
+
 ### Added
 - **Closing a window.** `TrustController.Close(version, now, slices, policy)` judges every tier in
   every slice, derives the rate each needs, shares each pool — active tiers' rechecks first, then
