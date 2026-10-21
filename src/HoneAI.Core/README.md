@@ -16,6 +16,10 @@ contracts. No third-party dependencies.
 - **`PolicySnapshotJson`** — the canonical JSON of a policy snapshot (entries by tier and slice, rates
   by knob, times in UTC) and its SHA-256 content hash, for carrying a snapshot to a judging site and
   checking it is the one issued. Signing is the consumer's.
+- **`HoneAI.Trust`** — earning the right to settle: `TrustLedger` / `TeacherLedger` (what rechecks
+  and planted items show), `TrustLifecycle` (shadow → active → stable, and back), `RecheckRate` (the
+  recheck probability a promise needs), `RecheckBudget` (sharing the tier above's capacity),
+  `PolicySnapshotIssuer`, and `TrustController.Close`, which runs them in order at a window's end.
 - **`Judge.From` / `Judge.Constant` / `MemoryJudge<,>`** — reference judges: a function, a constant,
   a memory of settled answers (`System1`).
 - **`SettlementPolicy`** / **`SliceKey`** — categorical, tolerance and specification-limit policies;

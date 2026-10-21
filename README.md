@@ -100,11 +100,33 @@ tier's verdict) and the decision goes up. A judge that throws or times out has
 abstained. When the snapshot's hard expiry has passed, lower tiers go up; if
 nothing above answers, the answer is used and marked `Unverified`.
 
+### Earning trust (`HoneAI.Trust`)
+
+A tier earns the right to settle a slice from rechecks, not from its own confidence. Each window:
+
+1. **Ledger** — `TrustLedger.Compute` turns the window's blind rechecks into a `LedgerCell`:
+   1/π-weighted agreement with its interval, the conditional must-catch miss rate with both bounds,
+   the tier above's failures, the effective sample size. `TeacherLedger` measures the teacher on
+   planted items whose answer is known.
+2. **Lifecycle** — `TrustLifecycle.Release` moves shadow → active → stable only at a window's end,
+   on every condition at once; `TrustLifecycle.Tighten` moves back at any time (a new version, a
+   seen miss, agreement shown low, drift — `StalenessWatch` reads MLoop's `GET /drift`).
+3. **Rate** — `RecheckRate.Solve` derives the recheck probability a stable tier needs from what you
+   promise (`TrustTargets`: agreement, detectable drop, miss limit, deadline) and the slice's traffic.
+4. **Pool** — `RecheckBudget.Allocate` shares the tier above's capacity, floors first, the largest
+   possible misses next.
+5. **Snapshot** — `PolicySnapshotIssuer.Issue` writes the `PolicySnapshot` the router judges by,
+   each entry saying what set its rate.
+
+`TrustController.Close` runs 2–5 in that order for every tier and slice. Releases wait for a person
+(`LifecycleStep.AwaitsApproval`) unless `LifecyclePolicy.AutoRelease` is on; tightening never waits.
+Every number a promise is made of — targets, margins, deadlines, budgets — is yours to set.
+
 ### Talking to an MLoop model server (`HttpMLoopClient`)
 
 [`MLoop`](https://github.com/iyulab/MLoop) is an open-source AutoML CLI/server
 for ML.NET. `HttpMLoopClient` implements `IMLoopClient` over its REST API
-(`/predict`, `/train`, `/jobs/{id}`, `/promote`, `/info`), returning
+(`/predict`, `/train`, `/jobs/{id}`, `/promote`, `/info`, `/drift`), returning
 predictions already stamped with `JudgeKind.Ml` provenance — wrap it in a judge to make it a tier.
 
 ### Audit trail (`IProvenanceSink`)

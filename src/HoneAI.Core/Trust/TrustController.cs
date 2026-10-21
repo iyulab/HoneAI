@@ -1,0 +1,133 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace HoneAI.Trust;
+
+/// <summary>One tier in one slice at a window's end: where it stands and what the window showed.</summary>
+/// <param name="TierId">The tier.</param>
+/// <param name="SliceKey">The slice.</param>
+/// <param name="Pool">The pool of tier-above capacity its rechecks come from (a tenant's share, a person's hours).</param>
+/// <param name="Standing">Its committed standing.</param>
+/// <param name="Window">The ledger cell over the closed window.</param>
+/// <param name="TeacherQualified">The tier above is qualified to teach it.</param>
+/// <param name="Signals">Its live signals (version, drift).</param>
+/// <param name="Traffic">What the slice is expected to see in the next window.</param>
+public sealed record SliceWindow(
+    string TierId, string SliceKey, string Pool, SliceStanding Standing, LedgerCell Window,
+    bool TeacherQualified, LiveSignals Signals, SliceTraffic Traffic)
+{
+    /// <summary>Rates of knobs other than the promise knob.</summary>
+    public IReadOnlyDictionary<string, double>? OtherKnobRates { get; init; }
+
+    /// <summary>How knobs tilt toward decisions worth checking.</summary>
+    public IReadOnlyDictionary<string, KnobSelection>? Selection { get; init; }
+
+    /// <summary>The abstain quantile, where the ledger showed the tier's confidence ranks its mistakes.</summary>
+    public double? AbstainQuantile { get; init; }
+}
+
+/// <summary>Everything the controller applies. People set all of it.</summary>
+/// <param name="Lifecycle">How standings move.</param>
+/// <param name="Issue">How snapshots are issued.</param>
+/// <param name="PoolBudgets">Rechecks per window each pool holds.</param>
+public sealed record ControllerPolicy(LifecyclePolicy Lifecycle, IssuePolicy Issue, IReadOnlyDictionary<string, double> PoolBudgets);
+
+/// <summary>What the controller decided for one tier in one slice.</summary>
+/// <param name="TierId">The tier.</param>
+/// <param name="SliceKey">The slice.</param>
+/// <param name="Step">The lifecycle's judgement. A release that awaits approval is not in the snapshot.</param>
+/// <param name="Committed">The standing the snapshot was issued with.</param>
+/// <param name="Need">The recheck probability the promise needs here.</param>
+/// <param name="Grant">The pool's grant, for a stable tier.</param>
+public sealed record SliceOutcome(string TierId, string SliceKey, LifecycleStep Step, SliceStanding Committed, RecheckRateChoice Need, BudgetGrant? Grant);
+
+/// <summary>A window's close: the snapshot to send to sites, what each slice got and why, and each pool's sharing.</summary>
+public sealed record ControllerStep(PolicySnapshot Snapshot, IReadOnlyList<SliceOutcome> Slices, IReadOnlyDictionary<string, BudgetAllocation> Pools)
+{
+    /// <summary>Releases a person must approve before they take effect.</summary>
+    public IEnumerable<SliceOutcome> AwaitingApproval => Slices.Where(s => s.Step.AwaitsApproval);
+}
+
+/// <summary>
+/// Closes a window: judges every tier in every slice (<see cref="TrustLifecycle"/>), derives the
+/// rate each needs (<see cref="RecheckRate"/>), shares each pool (<see cref="RecheckBudget"/>) and
+/// issues the snapshot (<see cref="PolicySnapshotIssuer"/>) — in that order, from what the ledger
+/// shows and what people set, with nothing kept between calls. Storing standings is the caller's.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A release that awaits approval keeps the old standing in the snapshot; once approved, the caller
+/// commits <see cref="LifecycleStep.Standing"/> and issues again. Tightening is committed at once.
+/// </para>
+/// <para>
+/// Active tiers draw at the active rate, and those rechecks come out of their pool first; stable
+/// tiers share the rest, the largest possible misses first. A tier's possible misses are read from
+/// its window: the miss-rate upper bound u over C caught decisions bounds the misses at u·C/(1 − u);
+/// a tier without the bound is unmeasured and is funded first.
+/// </para>
+/// </remarks>
+public static class TrustController
+{
+    /// <summary>Closes the window ending at <paramref name="now"/> and issues snapshot <paramref name="version"/>.</summary>
+    public static ControllerStep Close(
+        string version, DateTimeOffset now, IReadOnlyList<SliceWindow> slices, ControllerPolicy policy, string? sliceKeyVersion = null)
+    {
+        ArgumentNullException.ThrowIfNull(slices);
+        ArgumentNullException.ThrowIfNull(policy);
+        if (slices.GroupBy(s => (s.TierId, s.SliceKey)).FirstOrDefault(g => g.Count() > 1) is { } repeated)
+            throw new ArgumentException($"Tier '{repeated.Key.TierId}' in slice '{repeated.Key.SliceKey}' is closed twice.", nameof(slices));
+        if (slices.Select(s => s.Pool).FirstOrDefault(p => !policy.PoolBudgets.ContainsKey(p)) is { } unknown)
+            throw new ArgumentException($"Pool '{unknown}' has no budget.", nameof(slices));
+
+        var judged = slices.Select(s =>
+        {
+            var step = TrustLifecycle.Release(s.Standing, s.Window, s.TeacherQualified, s.Signals, policy.Lifecycle, now);
+            var committed = step.AwaitsApproval ? s.Standing : step.Standing;
+            return (Slice: s, Step: step, Committed: committed, Need: RecheckRate.Solve(policy.Lifecycle.Targets, s.Traffic));
+        }).ToList();
+
+        var pools = new Dictionary<string, BudgetAllocation>(StringComparer.Ordinal);
+        var grants = new Dictionary<(string, string), BudgetGrant>();
+        foreach (var pool in judged.GroupBy(j => j.Slice.Pool, StringComparer.Ordinal))
+        {
+            var activeSpend = pool.Where(j => j.Committed.State == TrustState.Active)
+                .Sum(j => policy.Issue.ActiveRate * j.Slice.Traffic.Decisions);
+            var requests = pool.Where(j => j.Committed.State == TrustState.Stable)
+                .Select(j => new BudgetRequest(Key(j.Slice), j.Slice.Traffic.Decisions, j.Need, Exposure(j.Slice.Window)))
+                .ToList();
+            var allocation = RecheckBudget.Allocate(Math.Max(0, policy.PoolBudgets[pool.Key] - activeSpend), requests, policy.Lifecycle.Targets.RateFloor);
+            pools[pool.Key] = allocation with { Budget = policy.PoolBudgets[pool.Key], Spent = allocation.Spent + activeSpend };
+            foreach (var grant in allocation.Grants)
+            {
+                var slice = pool.First(j => Key(j.Slice) == grant.SliceKey).Slice;
+                grants[(slice.TierId, slice.SliceKey)] = grant with { SliceKey = slice.SliceKey };
+            }
+        }
+
+        var snapshot = PolicySnapshotIssuer.Issue(version, now,
+            judged.Select(j => new SliceIssue(j.Slice.TierId, j.Slice.SliceKey, j.Committed, grants.GetValueOrDefault((j.Slice.TierId, j.Slice.SliceKey)))
+            {
+                OtherKnobRates = j.Slice.OtherKnobRates,
+                Selection = j.Slice.Selection,
+                AbstainQuantile = j.Slice.AbstainQuantile,
+            }).ToList(),
+            policy.Issue, sliceKeyVersion);
+
+        var outcomes = judged
+            .Select(j => new SliceOutcome(j.Slice.TierId, j.Slice.SliceKey, j.Step, j.Committed, j.Need, grants.GetValueOrDefault((j.Slice.TierId, j.Slice.SliceKey))))
+            .ToList();
+        return new ControllerStep(snapshot, outcomes, pools);
+    }
+
+    private static string Key(SliceWindow s) => s.TierId + "\u001f" + s.SliceKey;
+
+    /// <summary>Upper bound on the must-catch decisions a tier may be missing per window: u·C/(1 − u); null when unmeasured.</summary>
+    public static double? Exposure(LedgerCell window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        if (window.MissRateUpper is not { } u)
+            return null;
+        return u >= 1 ? double.PositiveInfinity : u * window.Caught / (1 - u);
+    }
+}

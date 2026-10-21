@@ -7,6 +7,11 @@ All notable changes to HoneAI are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Closing a window.** `TrustController.Close(version, now, slices, policy)` judges every tier in
+  every slice, derives the rate each needs, shares each pool — active tiers' rechecks first, then
+  stable tiers by possible misses (u·C/(1 − u) from the window, an unmeasured tier first) — and
+  issues the snapshot. A release awaiting approval keeps the old standing in the snapshot
+  (`ControllerStep.AwaitingApproval`); tightening is committed at once. The README walks the loop.
 - **Recheck probabilities from the promise.** `RecheckRate.Solve(targets, traffic)` derives the rate a
   stable tier needs in a slice from what the consumer promised (`TrustTargets` — agreement p0,
   detectable drop δ, must-catch miss limit m, deadline D, α, power, floor and ceiling) and what the
