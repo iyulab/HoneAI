@@ -6,6 +6,21 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Recheck records and the trust ledger** (first part of the sampler-and-ledger stage).
+  `RecheckRecord` — a settled decision that was drawn, its π and knob, its decision time, and how
+  the blind recheck came out (`Agreed`, `Disagreed`, `UpperFailed`) and whether the tier above
+  answered with a must-catch value. `IRecheckStore` records a decision once per tier (a redelivery
+  does not count twice) and reads by decision time, so a late result lands in the window of the
+  decision it belongs to; `InMemoryRecheckStore` and `JsonlRecheckStore` are reference stores.
+- `TrustLedger.Compute` gives one `LedgerCell` (tier × slice × window): agreement weighted by 1/π
+  (Horvitz–Thompson — unbiased however the draw was tilted), a Wilson interval on the Kish effective
+  sample size with every failed recheck counted as a disagreement at the lower end and an agreement
+  at the upper end, and the conditional must-catch miss rate — misses estimated at 1/π each, caught
+  ones counted in full — with an exact binomial upper bound that counts failed rechecks as misses.
+  With no miss seen the bound is ln(1/α)/π misses: a few hundred settled decisions at π = 0.01
+  cannot show a low miss rate.
+
 ## [0.3.0] - 2026-10-21
 
 ### Changed — breaking
