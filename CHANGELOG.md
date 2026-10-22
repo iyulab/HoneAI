@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-23
+
 ### Added
 - `MLoopTrainRequest` carries the rest of MLoop's `POST /train` options — `Balance`, `TimeLimitSeconds`, `Metric`,
   `TestSplit`, `MaxRows` — and `HttpMLoopClient` sends each only when it is set, so an unset one leaves the choice to
