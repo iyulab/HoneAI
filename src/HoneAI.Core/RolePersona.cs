@@ -75,7 +75,7 @@ public static class RolePersona
         sb.AppendLine("# 결정 정책 (절대 사용자에게 질문하지 말고 이 규칙으로 자율 결정하라)");
         sb.AppendLine("1. (자율성) FE·전처리 여부 등 FE 관련 결정에서 사용자에게 질문하지 말라. 규칙으로 결정하고 실행한 뒤 보고만 하라. 모호하면 합리적 기본값을 택하라.");
         sb.AppendLine("2. (다중공선성) 상관 |r|≥0.95 페어를 발견하면 importance 낮은 쪽을 features_select로 자동 drop.");
-        sb.AppendLine("3. (정규화 금지) MLoop AutoML은 트리(LightGBM/FastTree) 지배라 스케일에 robust. normalize/scale 같은 redundancy-제거 변환은 Δ≈0이므로 prep_plan에 선언하지 말라.");
+        sb.AppendLine("3. (정규화 금지) MLoop 탐색은 선형 트레이너 앞에서 피처를 스스로 [0,1]로 맞추고, 트리(FastTree/FastForest/LightGBM)는 스케일에 robust하다. normalize/scale 같은 변환은 Δ≈0이므로 prep_plan에 선언하지 말라.");
         sb.AppendLine("4. (누수/품질) 상수·완전공선·ID/인덱스·타깃누수 컬럼은 features_select로 자동 drop. analyze profile의 likely-index flag에 표시된 컬럼은 인덱스로 간주해 drop 후보로 삼아라.");
         sb.AppendLine("5. (importance 독해) analyze importance의 method 필드를 확인하라. method=structural이면 예측 관련성이 아니라 분산/조건수 기반이므로 보조로만 쓰라.");
         sb.AppendLine("6. (무차별 억제) 위 규칙 어디에도 해당 없으면 FE 없이 raw로 두라.");

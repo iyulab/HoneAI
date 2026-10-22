@@ -20,6 +20,10 @@ All notable changes to HoneAI are documented here. The format follows
   held-out score so near-perfect it may come from a leaked column. `null` from a server that does not report them.
   `ModelLifecycle` puts them in the evaluation step, in front of the reviewer.
 
+### Changed
+- The MLOps persona's rule against declaring normalization gives MLoop's current reason: its search scales features
+  ahead of linear trainers itself, and trees do not need it.
+
 ## [0.9.0] - 2026-10-22
 
 ### Changed
