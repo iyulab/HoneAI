@@ -6,6 +6,12 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- `HoneAI.Agents` depends on `IronHive.Agent` 0.71.0 (was 0.3.0). The old engine brought in
+  `SQLitePCLRaw.lib.e_sqlite3` 2.1.11 transitively (High, GHSA-2m69-gcr7-jv3q); the new dependency graph has no
+  known advisories. `Microsoft.Extensions.AI` and `.Abstractions` move to 10.11.0 and
+  `Microsoft.Extensions.Logging.Abstractions` to 10.0.13 — the floors the new engine declares.
+
 ## [0.8.0] - 2026-10-22
 
 ### Added
