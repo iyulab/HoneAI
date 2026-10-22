@@ -23,6 +23,7 @@ env:
 jobs:
   build-and-test:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -51,14 +52,15 @@ jobs:
     - name: Build
       run: dotnet build HoneAI.slnx --configuration Release --no-restore
 
-    # The import-boundary tests (HoneAI.Tests/ImportBoundaryTests) run here —
-    # this is the CI guard for roadmap/13 0-4 (one-way deps, zero-dep contract floor,
-    # no MLoop ProjectReference). CI uploads no artifacts (resource policy).
+    # The import-boundary tests (HoneAI.Tests/ImportBoundaryTests) run here — the guard for
+    # one-way dependencies, the zero-dependency contract floor and no MLoop ProjectReference.
+    # CI uploads no artifacts.
     - name: Test
       run: dotnet test HoneAI.slnx --configuration Release --no-build --verbosity normal
 
   security-scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
 
@@ -75,6 +77,11 @@ jobs:
       run: |
         dotnet restore HoneAI.slnx
         dotnet list HoneAI.slnx package --vulnerable --include-transitive 2>&1 | tee vulnerability-report.txt
-        if grep -q "has the following vulnerable packages" vulnerability-report.txt; then
-          echo "::warning::Vulnerable packages detected. Review vulnerability-report.txt"
+        # A High or Critical advisory fails the job; Moderate and Low are reported. A warning alone was
+        # read by no one: a High advisory reached a published package that way.
+        if grep -Eq '^\s*>.*\b(High|Critical)\b' vulnerability-report.txt; then
+          echo "::error::High or Critical vulnerable package. See the report above."
+          exit 1
+        elif grep -q "has the following vulnerable packages" vulnerability-report.txt; then
+          echo "::warning::Vulnerable packages detected (Moderate or Low). See the report above."
         fi
