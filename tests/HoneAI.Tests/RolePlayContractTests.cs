@@ -5,7 +5,7 @@ using Xunit;
 namespace HoneAI.Tests;
 
 /// <summary>
-/// Pins the role-play contract shapes (design spec §3): <see cref="AgentRole"/> as the
+/// Pins the role-play contract shapes: <see cref="AgentRole"/> as the
 /// trust-loop seat identifier, <see cref="RoleContext"/> as the opaque domain-colour slot,
 /// and <see cref="PredictionProvenance.Role"/> as a first-class provenance field. These
 /// assert the declared contract is consumable; role <i>execution</i> (ironhive IAgent
@@ -16,7 +16,7 @@ public class RolePlayContractTests
     [Fact]
     public void AgentRole_CoversTheSixVisionRoles()
     {
-        // §3.4 LLM 역할표 + 멀티에이전트 — the six declared seats are all present.
+        // the six declared seats are all present.
         var roles = new[]
         {
             AgentRole.Translator, AgentRole.Orchestrator, AgentRole.DomainExpert,

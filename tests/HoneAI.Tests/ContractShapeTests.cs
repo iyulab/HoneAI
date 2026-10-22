@@ -6,8 +6,8 @@ using Xunit;
 namespace HoneAI.Tests;
 
 /// <summary>
-/// Pins the Phase 0 contract shapes to the consumer surfaces they generalize
-/// (back-derivation §3.5). These are not behaviour tests — they assert the declared
+/// Pins the Phase 0 contract shapes to the consumer surfaces they generalize.
+/// These are not behaviour tests — they assert the declared
 /// contract is consumable and carries the fields the two consumers independently built.
 /// </summary>
 public class ContractShapeTests

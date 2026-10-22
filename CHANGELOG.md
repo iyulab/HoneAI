@@ -347,7 +347,7 @@ relocated from the now-deprecated `mloop-agent` package).
   - `ReasoningLayer` (L0~L3 ladder), `PredictionProvenance` + `ITracedPrediction<T>`
     ("a prediction without provenance must not compile").
   - `IReasoningRouter<,>` ①, `IMLoopClient` ④, `IHitlGate` ③, `IModelLifecycle` ⑤,
-    `IProvenanceSink` ② — the five rule-of-two surfaces from the consumer back-derivation.
+    `IProvenanceSink` ② — the five surfaces at least two applications had each built for themselves.
 - Import-boundary tests (declared-graph + runtime) and a CI workflow that runs them
   (build/test on ubuntu/windows/macos + vulnerable-package scan).
 

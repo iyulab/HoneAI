@@ -9,7 +9,7 @@ using Xunit;
 namespace HoneAI.Tests;
 
 /// <summary>
-/// Enforces the Phase 0 import boundary (roadmap/13 0-4, §2.1/§6.1): contracts carry
+/// Enforces the Phase 0 import boundary: contracts carry
 /// zero dependencies, and the dependency direction is one-way (Core → Abstractions,
 /// never the reverse), with MLoop consumed over transport rather than by reference.
 /// </summary>

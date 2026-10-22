@@ -8,7 +8,7 @@ namespace HoneAI.Tests;
 /// Pins the DomainExpert persona skeleton (stage ①): domain-neutral text with the
 /// consumer's <see cref="RoleContext.Domain"/> injected, the task adapted when present,
 /// and not-yet-staged roles surfaced as an explicit <see cref="NotSupportedException"/>
-/// rather than a silent empty persona (design spec §2/§3/§5).
+/// rather than a silent empty persona.
 /// </summary>
 public class RolePersonaTests
 {
