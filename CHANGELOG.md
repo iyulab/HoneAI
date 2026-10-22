@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-22
+
 ### Changed
 - **Breaking: human review is stored state, and a lifecycle run is resumable.** `IHitlGate` awaited a decision in
   process memory, and `ModelLifecycle.StartAsync` held one call open from training through a review that can take
