@@ -22,11 +22,7 @@ namespace HoneAI;
 /// </remarks>
 public sealed class JsonlProvenanceSink : IProvenanceSink
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        Converters = { new JsonStringEnumConverter() },
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    private static readonly JsonSerializerOptions JsonOptions = JsonlFile.Options;
 
     private readonly string _path;
     private readonly Func<DateTimeOffset> _clock;
@@ -49,16 +45,11 @@ public sealed class JsonlProvenanceSink : IProvenanceSink
         ArgumentNullException.ThrowIfNull(provenance);
 
         var record = new ProvenanceRecord(subjectId, provenance, _clock());
-        var line = JsonSerializer.Serialize(record, JsonOptions);
 
         await _appendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var dir = Path.GetDirectoryName(_path);
-            if (!string.IsNullOrEmpty(dir))
-                Directory.CreateDirectory(dir);
-            await File.AppendAllTextAsync(_path, line + Environment.NewLine, Encoding.UTF8, cancellationToken)
-                .ConfigureAwait(false);
+            await JsonlFile.AppendAsync(_path, record, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -80,7 +71,16 @@ public sealed class JsonlProvenanceSink : IProvenanceSink
             if (string.IsNullOrWhiteSpace(line))
                 continue;
 
-            var node = JsonNode.Parse(line);
+            JsonNode? node;
+            try
+            {
+                node = JsonNode.Parse(line);
+            }
+            catch (JsonException)
+            {
+                // A line cut short by a crash mid-append: the record it carried was never written.
+                continue;
+            }
             if (node is JsonObject { } obj && obj["provenance"] is JsonObject provenance)
                 UpgradeLegacyProvenance(provenance);
             var record = node.Deserialize<ProvenanceRecord>(JsonOptions);

@@ -12,7 +12,7 @@ namespace HoneAI.Tests;
 /// Enforces the additive-only compatibility policy for the contract floor — the
 /// types a consumer can take on their own, with no other HoneAI package:
 /// <see cref="ITracedPrediction{T}"/>, <see cref="PredictionProvenance"/>,
-/// <see cref="IHitlGate"/>, <see cref="IJudge{TInput,TValue}"/>, <see cref="JudgeKind"/>. Within 0.x these may grow
+/// <see cref="IReviewStore"/>, <see cref="IJudge{TInput,TValue}"/>, <see cref="JudgeKind"/>. Within 0.x these may grow
 /// (a nullable property, an enum value, a default interface method) but must not change
 /// in a way that breaks code already written against them.
 /// </summary>
@@ -81,18 +81,19 @@ public class ContractFloorCompatibilityTests
     }
 
     [Fact]
-    public void IHitlGate_AbstractMembersArePinned()
+    public void IReviewStore_AbstractMembersArePinned()
     {
-        // A consumer that implements the gate over its own store must keep compiling.
+        // A consumer that implements the review store over its own database must keep compiling.
         // New capability goes in as a default interface method, which IsAbstract excludes.
-        var abstractMembers = typeof(IHitlGate)
+        // (0.9.0 re-declared this floor: the in-memory wait IHitlGate became the stored review IReviewStore.)
+        var abstractMembers = typeof(IReviewStore)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance)
             .Where(m => m.IsAbstract)
             .Select(m => m.Name)
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "AwaitDecisionAsync", "Submit" }, abstractMembers);
+        Assert.Equal(new[] { "DecideAsync", "GetAsync", "ListPendingAsync", "OpenAsync" }, abstractMembers);
     }
 
     [Fact]

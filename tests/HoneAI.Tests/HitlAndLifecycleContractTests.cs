@@ -7,7 +7,7 @@ namespace HoneAI.Tests;
 /// <summary>
 /// Pins the Phase 0 HITL (③) and lifecycle (⑤) contract record/enum shapes: a review decision
 /// and a train → evaluate → review → promote step machine, the shapes applications hand-write
-/// today. Gate <em>behaviour</em> is covered by <see cref="InMemoryHitlGateTests"/> against the production implementation.
+/// today. Review <em>behaviour</em> is covered by <see cref="ReviewStoreTests"/> against the reference implementations.
 /// </summary>
 public class HitlAndLifecycleContractTests
 {

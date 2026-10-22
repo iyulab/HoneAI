@@ -6,6 +6,31 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Breaking: human review is stored state, and a lifecycle run is resumable.** `IHitlGate` awaited a decision in
+  process memory, and `ModelLifecycle.StartAsync` held one call open from training through a review that can take
+  days, keeping the run only in memory — a restart, or a review decided in another process (a queue worker trains, a
+  web request approves), lost both. Now:
+  - `IReviewStore` replaces `IHitlGate`: `OpenAsync` (idempotent — returns the review already open),
+    `DecideAsync` (the first decision stands; `null` for an unknown id), `GetAsync`, `ListPendingAsync`; a
+    `ReviewRecord` carries the subject, when it opened and when it was decided. `WaitForDecisionAsync` polls a
+    store for a caller that holds a process for the review anyway. Reference implementations
+    `InMemoryReviewStore` and `JsonlReviewStore` (an append-only event file processes on one machine can share)
+    replace `InMemoryHitlGate`.
+  - `IModelLifecycle.StartAsync` drives a run to its open review and returns (`waiting_review`) instead of
+    waiting; `ResumeAsync(runId)` continues it — promotes on an approval, settles on a rejection, stays waiting
+    while undecided, and polls the recorded job again for a run interrupted while training. `LifecycleRun` carries
+    the request, review id, job id, experiment id and `UpdatedAt`; it is saved after every step to an
+    `ILifecycleStore` (`InMemoryLifecycleStore` by default, `JsonlLifecycleStore` on file).
+  - Migration: `new ModelLifecycle(mloop, hitl, sink)` → `new ModelLifecycle(mloop, reviews, runs, sink)`; where a
+    reviewer called `gate.Submit(id, decision)`, call `reviews.DecideAsync(id, decision)` and then
+    `lifecycle.ResumeAsync(runId)` (the review's `Subject` is the run id when the lifecycle opened it).
+
+### Fixed
+- A JSONL file whose last line a crash cut short lost the next line appended to it — glued to the torn one — and
+  `JsonlProvenanceSink.ReadAsync` stopped at the torn line. Appends now start on a fresh line and reads skip a
+  torn one.
+
 ### Security
 - `HoneAI.Agents` depends on `IronHive.Agent` 0.71.0 (was 0.3.0). The old engine brought in
   `SQLitePCLRaw.lib.e_sqlite3` 2.1.11 transitively (High, GHSA-2m69-gcr7-jv3q); the new dependency graph has no

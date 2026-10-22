@@ -23,9 +23,9 @@ your own adapters or want to depend on the contracts without the implementations
   slice; a snapshot carries each slice's state and recheck probabilities to the judging site.
 - **`IReasoningRouter<TQuery, TResult>`** — routes a query up the tiers, cheapest first.
 - **`IMLoopClient`** — transport-neutral client for a running MLoop instance (HTTP or MCP-stdio).
-- **`IHitlGate`** / **`ReviewDecision`** — async human-in-the-loop review gate keyed by review id.
+- **`IReviewStore`** / **`ReviewDecision`** / **`ReviewRecord`** — human review as stored state: opened, decided once, read by id.
 - **`IProvenanceSink`** / **`ProvenanceRecord`** — append-only audit trail for predictions.
-- **`IModelLifecycle`** — orchestrates export→init→inspect→train→evaluate→review→promote.
+- **`IModelLifecycle`** / **`ILifecycleStore`** — a resumable train→evaluate→review→promote run and where it is kept between steps.
 - **`AgentRole`** / **`RoleContext`** — the trust-loop role an agent plays, stamped onto provenance.
 
 ## Design boundary
@@ -43,12 +43,12 @@ floor**, the types you can take on their own without any other HoneAI package:
 |---|---|
 | `ITracedPrediction<T>` | exactly `Value` and `Provenance` |
 | `PredictionProvenance` | only `Kind` is `required`; every other member is optional (nullable or `bool`) |
-| `IHitlGate` | `AwaitDecisionAsync` and `Submit` are the only abstract members; new capability arrives as a default interface method |
+| `IReviewStore` | `OpenAsync`, `DecideAsync`, `GetAsync` and `ListPendingAsync` are the only abstract members; new capability arrives as a default interface method |
 | `IJudge<TInput, TValue>` | `Tier` and `JudgeAsync` are the only abstract members |
 | `JudgeKind` | `Theory=0`, `Statistics=1`, `Ml=2`, `Llm=3`, `System1=4`, `Vlm=5`, `Human=6` keep their numbers (persisted provenance depends on them) |
 
 These may grow, but code written against them today keeps compiling: an object initializer,
-a custom `IHitlGate` or `IJudge` implementation, or a switch over `JudgeKind` will not be broken
+a custom `IReviewStore` or `IJudge` implementation, or a switch over `JudgeKind` will not be broken
 by a minor release. `ContractFloorCompatibilityTests` in the repository enforces the table above;
 a deliberate exception is a documented breaking change with a CHANGELOG migration note.
 
@@ -58,10 +58,16 @@ per-tier `Path` (see the CHANGELOG for the migration). Persisted records written
 read: the JSONL sink maps `sourceLayer` to `kind`, `AutoMl` to `Ml` and `Frontier` to `Llm`, and
 keeps the old agreement and review flags as `legacy:` annotations.
 
+**0.9.0 was another**: `IHitlGate` — a decision awaited in process memory — became `IReviewStore`, a
+stored review, so a review survives a restart and a process boundary. Open the review with
+`OpenAsync` where you called `AwaitDecisionAsync`, decide with `DecideAsync` where you called
+`Submit`, and continue a lifecycle run with `IModelLifecycle.ResumeAsync` (see the CHANGELOG).
+
 Three things the floor does **not** promise: `Confidence` is expected in `[0.0, 1.0]` but not
-validated by the contract (the producing layer is responsible); the in-process
-`InMemoryHitlGate` in `HoneAI.Core` is single-process by design — a review that must
-survive a process or request boundary needs an `IHitlGate` over your own store; and
+validated by the contract (the producing layer is responsible); the reference review stores in
+`HoneAI.Core` are for tests and small deployments — `InMemoryReviewStore` lives and dies with its
+process, `JsonlReviewStore` reads its whole file per call — so operational reviews belong in an
+`IReviewStore` over your own database; and
 `PredictionProvenance.Annotations` carries **opaque scalar strings**, which the middleware
 never parses. A structured annotation value is encoded by the consumer that writes it, in a
 form safe for arbitrary content — JSON being the natural choice. Joining a list with a

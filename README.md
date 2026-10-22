@@ -37,8 +37,8 @@ It is built on four ideas:
 
 | Package | What it contains | Dependencies |
 |---|---|---|
-| `HoneAI.Abstractions` | Contracts only: `IJudge<,>`, `Tier`, `JudgeKind`, `ISettlementPolicy<>`, `ISliceKey<>`, `PolicySnapshot`, `PredictionProvenance`, `ITracedPrediction<T>`, `IReasoningRouter<,>`, `IMLoopClient`, `IProvenanceSink`, `IHitlGate`, `IModelLifecycle`, `AgentRole` | none |
-| `HoneAI.Core` | Reference implementations: `TieredRouter<,>`, `RecheckDraw`, `MemoryJudge<,>`, `SettlementPolicy`, `HttpMLoopClient`, `JsonlProvenanceSink`, `InMemoryHitlGate`, `ModelLifecycle`, `RolePersona` | none (third-party-free) |
+| `HoneAI.Abstractions` | Contracts only: `IJudge<,>`, `Tier`, `JudgeKind`, `ISettlementPolicy<>`, `ISliceKey<>`, `PolicySnapshot`, `PredictionProvenance`, `ITracedPrediction<T>`, `IReasoningRouter<,>`, `IMLoopClient`, `IProvenanceSink`, `IReviewStore`, `IModelLifecycle`, `ILifecycleStore`, `AgentRole` | none |
+| `HoneAI.Core` | Reference implementations: `TieredRouter<,>`, `RecheckDraw`, `MemoryJudge<,>`, `SettlementPolicy`, `HttpMLoopClient`, `JsonlProvenanceSink`, `InMemoryReviewStore`, `JsonlReviewStore`, `InMemoryLifecycleStore`, `JsonlLifecycleStore`, `ModelLifecycle`, `RolePersona` | none (third-party-free) |
 | `HoneAI.Agents` | An MLOps agent loop that drives the [MLoop](https://github.com/iyulab/MLoop) CLI through [mloop-mcp](https://github.com/iyulab/mloop-mcp) tools, using any `Microsoft.Extensions.AI` `IChatClient` | IronHive.Agent, ModelContextProtocol |
 
 `HoneAI.Core` reaches ML backends over transport (HTTP), never as an SDK
@@ -178,17 +178,32 @@ predictions already stamped with `JudgeKind.Ml` provenance — wrap it in a judg
 `JsonlProvenanceSink` appends every provenance stamp to a JSONL file — an
 append-only, grep-friendly record of what answered and why.
 
-### Human review gate (`IHitlGate`)
+### Human review (`IReviewStore`)
 
-`InMemoryHitlGate` provides an async submit → await → release flow: a pipeline
-submits a flagged prediction and awaits; a reviewer (UI, chat-ops, CLI)
-releases it with an approve/reject decision.
+A review is stored state, not a wait in memory: a producer opens it, a reviewer (UI,
+chat-ops, CLI) decides it — in another process, hours or days later — and anyone reads
+it. Open and decide are idempotent by review id; the first decision stands.
+`InMemoryReviewStore` and `JsonlReviewStore` are reference implementations; operational
+storage (a database table) implements the interface. `WaitForDecisionAsync` is there for a
+caller that holds a process for the review anyway.
 
 ### Model lifecycle (`IModelLifecycle`)
 
-`ModelLifecycle` orchestrates a full retraining pass — train → poll job →
-human review → promote — with step tracking and optional provenance recording,
-composed from the primitives above.
+`ModelLifecycle` orchestrates a retraining pass — train → poll job → human review →
+promote — as a **resumable run**. `StartAsync` drives it to the open review and returns
+(`waiting_review`); once the review is decided, `ResumeAsync(runId)` promotes (or stops on a
+rejection). Every step is saved to an `ILifecycleStore`, so a run started by a queue worker is
+finished by whichever process resumes it — after a restart too — and a run interrupted while
+training resumes by polling its recorded job instead of training again.
+
+```csharp
+var reviews = new JsonlReviewStore("reviews.jsonl");
+var lifecycle = new ModelLifecycle(mloop, reviews, new JsonlLifecycleStore("runs.jsonl"));
+var run = await lifecycle.StartAsync(new LifecycleRequest(training));       // → waiting_review
+// … later, wherever the reviewer is:
+await reviews.DecideAsync(run.ReviewId!, new ReviewDecision("approve", ReviewerKey: "r-7"));
+await lifecycle.ResumeAsync(run.RunId);                                       // → promoted, completed
+```
 
 ### Agent roles
 
@@ -213,7 +228,7 @@ warnings-as-errors.
 
 Early development (0.x). APIs may still change between minor versions, with one
 carve-out: the **contract floor** — `ITracedPrediction<T>`, `PredictionProvenance`,
-`IHitlGate`, `IJudge<,>`, `JudgeKind` — is **additive-only** within 0.x. Those types may
+`IReviewStore`, `IJudge<,>`, `JudgeKind` — is **additive-only** within 0.x. Those types may
 gain a nullable property, an enum value, or a default interface method, but not a new
 `required` member, a new abstract interface member, or a renumbered enum value.
 `ContractFloorCompatibilityTests` enforces this; a deliberate exception ships with a
