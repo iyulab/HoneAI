@@ -5,10 +5,9 @@ using Xunit;
 namespace HoneAI.Tests;
 
 /// <summary>
-/// Pins the Phase 0 HITL (③) and lifecycle (⑤) contract record/enum shapes to the
-/// consumer surfaces they generalize — SMI.AIMS's <c>ReviewDecision</c> and
-/// <c>MLoopPipelineService</c> step machine (back-derivation §3.5). Gate <em>behaviour</em>
-/// is covered by <see cref="InMemoryHitlGateTests"/> against the production implementation.
+/// Pins the Phase 0 HITL (③) and lifecycle (⑤) contract record/enum shapes: a review decision
+/// and a train → evaluate → review → promote step machine, the shapes applications hand-write
+/// today. Gate <em>behaviour</em> is covered by <see cref="InMemoryHitlGateTests"/> against the production implementation.
 /// </summary>
 public class HitlAndLifecycleContractTests
 {

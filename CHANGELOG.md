@@ -368,5 +368,5 @@ relocated from the now-deprecated `mloop-agent` package).
 - `HoneAI.Core` carries no third-party package dependencies; MLoop is reached over
   transport (HTTP), never referenced as an SDK.
 - Deferred: MCP transport (`IMLoopClient` over mloop-mcp stdio) — a second transport for ④.
-- Consumer adoption proof (R-7 — U-Vision / SMI.AIMS shedding their hand-written code) is
-  out of this repo's scope; contracts are grounded against both consumers' exact shapes.
+- Showing applications replace their hand-written review and lifecycle code with these contracts is
+  outside this repository; the contracts follow the shapes such code takes.
