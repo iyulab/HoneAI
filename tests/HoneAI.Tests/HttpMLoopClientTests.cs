@@ -137,7 +137,8 @@ public class HttpMLoopClientTests
         var handler = new StubHandler(request => request.RequestUri!.AbsolutePath.EndsWith("job-1")
             ? Json(HttpStatusCode.OK, """
                 { "jobId": "job-1", "status": "Completed", "experimentId": "exp-4", "promoted": false,
-                  "keptInStagingReason": "promote: false was requested" }
+                  "keptInStagingReason": "promote: false was requested",
+                  "warnings": ["Near-perfect on held-out rows (auc 1.0000)"] }
                 """)
             : Json(HttpStatusCode.OK, """{ "jobId": "job-2", "status": "Failed", "statusMessage": "Label column 'y' not found" }"""));
         var client = Client(handler);
@@ -147,7 +148,9 @@ public class HttpMLoopClientTests
 
         Assert.Equal(false, kept!.Promoted);
         Assert.Equal("promote: false was requested", kept.KeptInStagingReason);
+        Assert.Equal(["Near-perfect on held-out rows (auc 1.0000)"], kept.Warnings);
         Assert.Null(failed!.Promoted);                                      // not reported: unknown, not «no»
+        Assert.Null(failed.Warnings);
         Assert.Equal("Label column 'y' not found", failed.StatusMessage);
     }
 

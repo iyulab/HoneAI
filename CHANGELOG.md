@@ -16,6 +16,9 @@ All notable changes to HoneAI are documented here. The format follows
   when the server does not say — unknown, not «no».
 - `ModelLifecycle` records why a training job failed (`StatusMessage`), and notes at evaluation when MLoop promoted an
   experiment the run asked to keep in staging (a server older than 0.42 ignores the request).
+- `MLoopJob.Warnings`, read from `GET /jobs/{id}`'s `warnings`: MLoop's diagnostics about the trained model, such as a
+  held-out score so near-perfect it may come from a leaked column. `null` from a server that does not report them.
+  `ModelLifecycle` puts them in the evaluation step, in front of the reviewer.
 
 ## [0.9.0] - 2026-10-22
 

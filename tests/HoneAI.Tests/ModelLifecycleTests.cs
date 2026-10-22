@@ -212,6 +212,17 @@ public class ModelLifecycleTests : IDisposable
     }
 
     [Fact]
+    public async Task MLoopsWarnings_AreInFrontOfTheReviewer()
+    {
+        var mloop = new FakeMLoop { Warnings = ["Near-perfect on held-out rows (auc 1.0000)"] };
+
+        var run = await Lifecycle(mloop, new InMemoryReviewStore()).StartAsync(new LifecycleRequest(Train));
+
+        var evaluate = run.Steps.Single(s => s.Stage == LifecycleStage.Evaluate);
+        Assert.Contains("MLoop warns: Near-perfect on held-out rows", evaluate.Detail);
+    }
+
+    [Fact]
     public async Task ProvenanceSink_RecordsEachStage()
     {
         var mloop = new FakeMLoop { CompletedExperimentId = "exp-9" };
@@ -252,10 +263,11 @@ public class ModelLifecycleTests : IDisposable
 
         public string? StatusMessage { get; init; }
         public bool? ReportsPromoted { get; init; }
+        public IReadOnlyList<string>? Warnings { get; init; }
 
         public Task<MLoopJob?> GetJobAsync(string jobId, CancellationToken ct = default)
             => Task.FromResult<MLoopJob?>(new MLoopJob(jobId, FinalStatus, CompletedExperimentId,
-                new Dictionary<string, double> { ["auc"] = 0.9 }, ReportsPromoted, StatusMessage: StatusMessage));
+                new Dictionary<string, double> { ["auc"] = 0.9 }, ReportsPromoted, StatusMessage: StatusMessage, Warnings: Warnings));
 
         public Task PromoteAsync(string model, string experimentId, CancellationToken ct = default)
         {

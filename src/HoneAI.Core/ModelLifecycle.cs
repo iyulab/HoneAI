@@ -175,6 +175,9 @@ public sealed class ModelLifecycle : IModelLifecycle
                 var detail = DescribeMetrics(job.Metrics);
                 if (job.Promoted == true)
                     detail = (detail is null ? string.Empty : detail + "; ") + "MLoop already promoted this experiment — the server ignored promote=false";
+                // MLoop's warnings about the model belong in front of the reviewer who decides on it.
+                if (job.Warnings is { Count: > 0 } warnings)
+                    detail = (detail is null ? string.Empty : detail + "; ") + "MLoop warns: " + string.Join("; ", warnings);
                 run = await RecordAsync(run with { ExperimentId = job.ExperimentId }, LifecycleStage.Evaluate, "completed",
                     detail, JudgeKind.Ml, cancellationToken).ConfigureAwait(false);
             }

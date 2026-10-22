@@ -187,8 +187,12 @@ public sealed class HttpMLoopClient : IMLoopClient
             ? p.GetBoolean()
             : null;
 
+        IReadOnlyList<string>? warnings = root.TryGetProperty("warnings", out var w) && w.ValueKind == JsonValueKind.Array
+            ? [.. w.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!)]
+            : null;
+
         return new MLoopJob(id, status, experimentId, metrics, promoted,
-            String(root, "keptInStagingReason"), String(root, "statusMessage"));
+            String(root, "keptInStagingReason"), String(root, "statusMessage"), warnings);
     }
 
     /// <inheritdoc />

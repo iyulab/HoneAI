@@ -111,6 +111,10 @@ public sealed record MLoopSample(string Path, int Rows, int LabeledRows, string?
 /// </param>
 /// <param name="KeptInStagingReason">Why the experiment stayed in staging, when it did.</param>
 /// <param name="StatusMessage">What MLoop says about the job's status — why it failed, when it did.</param>
+/// <param name="Warnings">
+/// MLoop's diagnostics about the trained model — a held-out score so near-perfect it may come from a leaked column, an
+/// accuracy that hides a class. Empty when there are none; <see langword="null"/> from a server that does not report them.
+/// </param>
 public sealed record MLoopJob(
     string Id,
     string Status,
@@ -118,7 +122,8 @@ public sealed record MLoopJob(
     IReadOnlyDictionary<string, double>? Metrics = null,
     bool? Promoted = null,
     string? KeptInStagingReason = null,
-    string? StatusMessage = null);
+    string? StatusMessage = null,
+    IReadOnlyList<string>? Warnings = null);
 
 /// <summary>Metadata for a production MLoop model.</summary>
 /// <param name="Model">Model name.</param>
