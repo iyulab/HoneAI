@@ -330,9 +330,12 @@ public class RecheckAndSnapshotTests
 
     private static readonly PolicyEntry A = new()
     {
-        TierId = "edge-ml", SliceKey = "t-1", State = TrustState.Active,
+        TierId = "edge-ml",
+        SliceKey = "t-1",
+        State = TrustState.Active,
         SampleRates = new Dictionary<string, double> { ["uniform"] = 0.05, ["miss"] = 0.31 },
-        AbstainQuantile = 0.05, RateSetBy = "miss",
+        AbstainQuantile = 0.05,
+        RateSetBy = "miss",
     };
     private static readonly PolicyEntry B = new() { TierId = "edge-ml", SliceKey = "t-0", State = TrustState.Shadow };
 

@@ -5,7 +5,7 @@ using Xunit;
 namespace HoneAI.Tests;
 
 /// <summary>
-/// Pins the Phase 0 HITL (③) and lifecycle (⑤) contract record/enum shapes: a review decision
+/// Pins the human-review and lifecycle contract record/enum shapes: a review decision
 /// and a train → evaluate → review → promote step machine, the shapes applications hand-write
 /// today. Review <em>behaviour</em> is covered by <see cref="ReviewStoreTests"/> against the reference implementations.
 /// </summary>
@@ -14,7 +14,7 @@ public class HitlAndLifecycleContractTests
     [Fact]
     public void LifecycleStage_OrdersExportToPromote()
     {
-        // One-to-one with SMI StepType export|init|info|train|evaluate|review|promote.
+        // The stages run export, init, info, train, evaluate, review, promote — in that order.
         Assert.Equal(0, (int)LifecycleStage.Export);
         Assert.Equal(5, (int)LifecycleStage.Review);
         Assert.Equal(6, (int)LifecycleStage.Promote);
@@ -29,7 +29,7 @@ public class HitlAndLifecycleContractTests
         Assert.Equal("approve", d.Verdict);
         Assert.Equal("looks good", d.Comment);
 
-        // Comment is optional (SMI SubmitReview comment is nullable).
+        // A decision may come without a comment.
         Assert.Null(new ReviewDecision("reject").Comment);
     }
 

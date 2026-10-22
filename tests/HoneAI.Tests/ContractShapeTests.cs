@@ -6,9 +6,9 @@ using Xunit;
 namespace HoneAI.Tests;
 
 /// <summary>
-/// Pins the Phase 0 contract shapes to the consumer surfaces they generalize.
+/// Pins the contract shapes to the application surfaces they generalize.
 /// These are not behaviour tests — they assert the declared
-/// contract is consumable and carries the fields the two consumers independently built.
+/// contract is consumable and carries the fields applications built independently before it existed.
 /// </summary>
 public class ContractShapeTests
 {
@@ -105,7 +105,7 @@ public class ContractShapeTests
     [Fact]
     public void MLoopContracts_ExposePredictTrainPromoteInfoVocabulary()
     {
-        // ④ transport-neutral client vocabulary, grounded in MloopClassifier / MLoopMcpService.
+        // Transport-neutral client vocabulary: predict, train, promote, info.
         var req = new MLoopPredictionRequest(
             new Dictionary<string, object?> { ["temp"] = 36.5 }, Model: "default");
         var result = new MLoopPredictionResult(new Dictionary<string, object?> { ["label"] = "NG" });

@@ -9,15 +9,14 @@ using Xunit;
 namespace HoneAI.Tests;
 
 /// <summary>
-/// Enforces the Phase 0 import boundary: contracts carry
+/// Enforces the import boundary: contracts carry
 /// zero dependencies, and the dependency direction is one-way (Core → Abstractions,
 /// never the reverse), with MLoop consumed over transport rather than by reference.
 /// </summary>
 /// <remarks>
 /// The declared-graph checks parse the <c>.csproj</c> files: an import boundary is about
 /// the <em>declared</em> dependency graph the build allows, and that survives the C#
-/// compiler eliding references it doesn't yet use (Phase 0 Core barely touches the
-/// contracts). The runtime checks complement them by catching transitive pull-in.
+/// compiler eliding references it does not use. The runtime checks complement them by catching transitive pull-in.
 /// </remarks>
 public class ImportBoundaryTests
 {
@@ -61,7 +60,7 @@ public class ImportBoundaryTests
     [Fact]
     public void NoProject_ReferencesMLoopByProjectReference()
     {
-        // Phase 0: MLoop is consumed over transport (HTTP/MCP), never duplicated or
+        // MLoop is consumed over transport (HTTP/MCP), never duplicated or
         // pulled in by ProjectReference. Catches a declared reference even before any
         // type from it is used.
         foreach (var rel in new[]
@@ -75,7 +74,7 @@ public class ImportBoundaryTests
                 .ToArray();
 
             Assert.True(mloopRefs.Length == 0,
-                $"{rel} must not ProjectReference MLoop in Phase 0: {string.Join(", ", mloopRefs)}");
+                $"{rel} must not ProjectReference MLoop: {string.Join(", ", mloopRefs)}");
         }
     }
 

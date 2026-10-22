@@ -18,8 +18,14 @@ public class TeacherLedgerTests
         string slice = "s", int minutesAgo = 10, string tier = "teacher", string? judgedBy = null)
         => new()
         {
-            PlantId = id, TierId = tier, JudgedBy = judgedBy, SliceKey = slice, JudgedAt = Now.AddMinutes(-minutesAgo),
-            TruthMustCatch = truthMustCatch, Outcome = outcome, AnsweredMustCatch = answeredMustCatch,
+            PlantId = id,
+            TierId = tier,
+            JudgedBy = judgedBy,
+            SliceKey = slice,
+            JudgedAt = Now.AddMinutes(-minutesAgo),
+            TruthMustCatch = truthMustCatch,
+            Outcome = outcome,
+            AnsweredMustCatch = answeredMustCatch,
         };
 
     [Theory]

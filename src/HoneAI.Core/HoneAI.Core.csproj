@@ -15,11 +15,9 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
-  <!-- IMPORT BOUNDARY: HoneAI references downward only
-       (HoneAI -> MLoop/agent), never the reverse. MLoop is consumed over
-       transport (HTTP/MCP), NOT duplicated.
-       Phase 0 depends on Abstractions alone; the MLoop/IChatClient bindings
-       arrive with the Phase 1 primitive extractions. -->
+  <!-- IMPORT BOUNDARY: HoneAI references downward only (HoneAI -> MLoop), never the
+       reverse. MLoop is consumed over transport (HTTP/MCP), not duplicated and not
+       referenced as a project. -->
   <ItemGroup>
     <ProjectReference Include="../HoneAI.Abstractions/HoneAI.Abstractions.csproj" />
   </ItemGroup>

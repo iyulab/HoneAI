@@ -7,7 +7,7 @@ namespace HoneAI.Tests;
 
 public class RecheckRateTests
 {
-    private static readonly TrustTargets Aims = new()
+    private static readonly TrustTargets Targets = new()
     {
         Agreement = 0.95,
         DetectableDrop = 0.03,
@@ -19,13 +19,13 @@ public class RecheckRateTests
     public void TheAgreementTest_NeedsTheTextbookSampleSize()
     {
         // (1.645 + 0.842)² · 0.95 · 0.05 / 0.03² ≈ 326
-        Assert.Equal(326.3, RecheckRate.RechecksForAgreement(Aims), 0);
+        Assert.Equal(326.3, RecheckRate.RechecksForAgreement(Targets), 0);
     }
 
     [Fact]
     public void ABigSliceWithCommonRisk_IsSetByWhicheverTermNeedsMore()
     {
-        var choice = RecheckRate.Solve(Aims, new SliceTraffic(Decisions: 20_000, Caught: 3_000));
+        var choice = RecheckRate.Solve(Targets, new SliceTraffic(Decisions: 20_000, Caught: 3_000));
 
         // miss: ln 20 · 0.98 / (0.02 · 3000) ≈ 0.049; agreement: 326 / 20000 ≈ 0.016
         Assert.Equal(RateTerm.Miss, choice.SetBy);
@@ -36,7 +36,7 @@ public class RecheckRateTests
     [Fact]
     public void WithFewDecisions_TheAgreementTestSetsTheRate()
     {
-        var choice = RecheckRate.Solve(Aims, new SliceTraffic(Decisions: 1_000, Caught: 3_000));
+        var choice = RecheckRate.Solve(Targets, new SliceTraffic(Decisions: 1_000, Caught: 3_000));
 
         Assert.Equal(RateTerm.Agreement, choice.SetBy);
         Assert.Equal(0.326, choice.Rate, 3);
@@ -46,12 +46,12 @@ public class RecheckRateTests
     public void ASliceWhereRiskIsRare_IsCapped_AndStaysUp()
     {
         // Zero misses cannot show 2% until about 147 must-catch decisions were caught in the window.
-        Assert.False(RecheckRate.Solve(Aims, new SliceTraffic(100_000, 147)).Capped);
-        var rare = RecheckRate.Solve(Aims, new SliceTraffic(100_000, 146));
+        Assert.False(RecheckRate.Solve(Targets, new SliceTraffic(100_000, 147)).Capped);
+        var rare = RecheckRate.Solve(Targets, new SliceTraffic(100_000, 146));
         Assert.True(rare.Capped);
         Assert.Equal(1.0, rare.Rate);
 
-        var none = RecheckRate.Solve(Aims, new SliceTraffic(100_000, 0));
+        var none = RecheckRate.Solve(Targets, new SliceTraffic(100_000, 0));
         Assert.True(none.Capped);
         Assert.True(double.IsPositiveInfinity(none.MissTerm));
     }
@@ -59,7 +59,7 @@ public class RecheckRateTests
     [Fact]
     public void TheRate_NeverFallsBelowTheFloor()
     {
-        var easy = Aims with { MissLimit = 0.5, DetectableDrop = 0.5 };
+        var easy = Targets with { MissLimit = 0.5, DetectableDrop = 0.5 };
 
         var choice = RecheckRate.Solve(easy, new SliceTraffic(1_000_000, 1_000_000));
 
@@ -71,11 +71,11 @@ public class RecheckRateTests
     [InlineData(0.0)]
     [InlineData(1.0)]
     public void TargetsOutsideTheOpenInterval_AreRefused(double missLimit)
-        => Assert.Throws<ArgumentOutOfRangeException>(() => RecheckRate.Solve(Aims with { MissLimit = missLimit }, new SliceTraffic(10, 10)));
+        => Assert.Throws<ArgumentOutOfRangeException>(() => RecheckRate.Solve(Targets with { MissLimit = missLimit }, new SliceTraffic(10, 10)));
 
     [Fact]
     public void AZeroFloor_IsRefused()
-        => Assert.Throws<ArgumentOutOfRangeException>(() => RecheckRate.Solve(Aims with { RateFloor = 0 }, new SliceTraffic(10, 10)));
+        => Assert.Throws<ArgumentOutOfRangeException>(() => RecheckRate.Solve(Targets with { RateFloor = 0 }, new SliceTraffic(10, 10)));
 }
 
 public class RecheckBudgetTests

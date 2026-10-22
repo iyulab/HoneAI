@@ -26,16 +26,16 @@ public sealed class TrustLedgerTests : IDisposable
 
     private static RecheckRecord Record(string id, double pi, RecheckOutcome outcome, bool mustCatch = false,
         DateTimeOffset? at = null, string tier = "ml", string slice = "s") => new()
-    {
-        DecisionId = id,
-        TierId = tier,
-        SliceKey = slice,
-        DecidedAt = at ?? T0.AddMinutes(1),
-        Probability = pi,
-        Outcome = outcome,
-        UpperMustCatch = mustCatch,
-        Knob = "uniform",
-    };
+        {
+            DecisionId = id,
+            TierId = tier,
+            SliceKey = slice,
+            DecidedAt = at ?? T0.AddMinutes(1),
+            Probability = pi,
+            Outcome = outcome,
+            UpperMustCatch = mustCatch,
+            Knob = "uniform",
+        };
 
     [Fact]
     public void Agreement_UnderATiltedDraw_IsUnbiased_WhereTheRawShareIsNot()

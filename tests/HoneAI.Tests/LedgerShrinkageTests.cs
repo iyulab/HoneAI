@@ -13,9 +13,17 @@ public class LedgerShrinkageTests
     private static LedgerCell Cell(string slice, double? agreement, double n, string tier = "ml")
         => new()
         {
-            TierId = tier, SliceKey = slice, WindowStart = Now.AddDays(-7), WindowEnd = Now,
-            Rechecks = (int)n, UpperFailures = 0, EffectiveSampleSize = n, Agreement = agreement,
-            MissesEstimated = 0, Caught = 0, Confidence = 0.95,
+            TierId = tier,
+            SliceKey = slice,
+            WindowStart = Now.AddDays(-7),
+            WindowEnd = Now,
+            Rechecks = (int)n,
+            UpperFailures = 0,
+            EffectiveSampleSize = n,
+            Agreement = agreement,
+            MissesEstimated = 0,
+            Caught = 0,
+            Confidence = 0.95,
         };
 
     private static string? GroupOf(string slice) => slice.Split(':') is [var group, _] ? group : null;

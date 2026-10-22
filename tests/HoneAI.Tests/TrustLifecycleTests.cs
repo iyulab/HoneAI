@@ -175,14 +175,30 @@ public class StandingInheritanceTests
     private static readonly LifecyclePolicy Policy = new()
     {
         Targets = new TrustTargets { Agreement = 0.95, DetectableDrop = 0.03, MissLimit = 0.02, Deadline = TimeSpan.FromDays(7) },
-        Margin = 0.01, MinimumEffectiveSample = 300, MinimumDwell = TimeSpan.FromDays(7), StableWindows = 3,
+        Margin = 0.01,
+        MinimumEffectiveSample = 300,
+        MinimumDwell = TimeSpan.FromDays(7),
+        StableWindows = 3,
     };
 
     private static LedgerCell Cell() => new()
     {
-        TierId = "ml", SliceKey = "s", WindowStart = Start, WindowEnd = Start.AddDays(7),
-        Rechecks = 500, UpperFailures = 0, EffectiveSampleSize = 500, Agreement = 0.98, AgreementLower = 0.97, AgreementUpper = 0.99,
-        MissesEstimated = 0, Caught = 400, MissRate = 0, MissRateUpper = 0.01, MissRateLower = 0, Confidence = 0.95,
+        TierId = "ml",
+        SliceKey = "s",
+        WindowStart = Start,
+        WindowEnd = Start.AddDays(7),
+        Rechecks = 500,
+        UpperFailures = 0,
+        EffectiveSampleSize = 500,
+        Agreement = 0.98,
+        AgreementLower = 0.97,
+        AgreementUpper = 0.99,
+        MissesEstimated = 0,
+        Caught = 400,
+        MissRate = 0,
+        MissRateUpper = 0.01,
+        MissRateLower = 0,
+        Confidence = 0.95,
     };
 
     [Fact]

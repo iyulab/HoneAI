@@ -25,10 +25,22 @@ public class TrustControllerTests
 
     private static LedgerCell Good(double? missUpper = 0.01) => new()
     {
-        TierId = "ml", SliceKey = "s", WindowStart = Start, WindowEnd = Now,
-        Rechecks = 500, UpperFailures = 0, EffectiveSampleSize = 500,
-        Agreement = 0.98, AgreementLower = 0.97, AgreementUpper = 0.99,
-        MissesEstimated = 0, Caught = 400, MissRate = 0, MissRateUpper = missUpper, MissRateLower = 0, Confidence = 0.95,
+        TierId = "ml",
+        SliceKey = "s",
+        WindowStart = Start,
+        WindowEnd = Now,
+        Rechecks = 500,
+        UpperFailures = 0,
+        EffectiveSampleSize = 500,
+        Agreement = 0.98,
+        AgreementLower = 0.97,
+        AgreementUpper = 0.99,
+        MissesEstimated = 0,
+        Caught = 400,
+        MissRate = 0,
+        MissRateUpper = missUpper,
+        MissRateLower = 0,
+        Confidence = 0.95,
     };
 
     private static SliceWindow Slice(string key, TrustState state, LedgerCell window, bool drifted = false, double decisions = 10_000, double caught = 3_000)
@@ -109,9 +121,18 @@ public class ConfidenceAbstainTests
 {
     private static LedgerCell Window(double? auc, double ess = 500, double agreement = 0.9) => new()
     {
-        TierId = "ml", SliceKey = "s", WindowStart = DateTimeOffset.UnixEpoch, WindowEnd = DateTimeOffset.UnixEpoch.AddDays(7),
-        Rechecks = (int)ess, UpperFailures = 0, EffectiveSampleSize = ess, Agreement = agreement,
-        MissesEstimated = 0, Caught = 0, Confidence = 0.95, ConfidenceRankAuc = auc,
+        TierId = "ml",
+        SliceKey = "s",
+        WindowStart = DateTimeOffset.UnixEpoch,
+        WindowEnd = DateTimeOffset.UnixEpoch.AddDays(7),
+        Rechecks = (int)ess,
+        UpperFailures = 0,
+        EffectiveSampleSize = ess,
+        Agreement = agreement,
+        MissesEstimated = 0,
+        Caught = 0,
+        Confidence = 0.95,
+        ConfidenceRankAuc = auc,
     };
 
     [Fact]

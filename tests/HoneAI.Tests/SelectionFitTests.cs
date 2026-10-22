@@ -30,8 +30,14 @@ public class SelectionFitTests
                 continue;
             rechecks.Add(new RecheckRecord
             {
-                DecisionId = $"d{i}", TierId = "ml", SliceKey = "s", DecidedAt = Now, Probability = pi,
-                Outcome = wrong ? RecheckOutcome.Disagreed : RecheckOutcome.Agreed, Risk = risk, Weight = 1 + i % 2,
+                DecisionId = $"d{i}",
+                TierId = "ml",
+                SliceKey = "s",
+                DecidedAt = Now,
+                Probability = pi,
+                Outcome = wrong ? RecheckOutcome.Disagreed : RecheckOutcome.Agreed,
+                Risk = risk,
+                Weight = 1 + i % 2,
             });
         }
         return (rechecks, decided);
@@ -112,8 +118,13 @@ public class SelectionFitTests
         var (rechecks, decided) = Population(20_000, r => 0.01 + 0.3 * r * r, seed: 6);
         var noise = Enumerable.Range(0, 5_000).Select(i => new RecheckRecord
         {
-            DecisionId = $"x{i}", TierId = "ml", SliceKey = "s", DecidedAt = Now, Probability = 0.1,
-            Outcome = i % 2 == 0 ? RecheckOutcome.UpperFailed : RecheckOutcome.Disagreed, Risk = i % 2 == 0 ? 0.0 : null,
+            DecisionId = $"x{i}",
+            TierId = "ml",
+            SliceKey = "s",
+            DecidedAt = Now,
+            Probability = 0.1,
+            Outcome = i % 2 == 0 ? RecheckOutcome.UpperFailed : RecheckOutcome.Disagreed,
+            Risk = i % 2 == 0 ? 0.0 : null,
         });
 
         var clean = SelectionFit.Fit(rechecks, decided, SelectionShape.Variance);
@@ -163,7 +174,10 @@ public class SelectionFitTests
         var policy = SettlementPolicy.Categorical(new[] { "OK" }, Array.Empty<string>());
         var snapshot = new PolicySnapshot
         {
-            Version = "v", IssuedAt = Now, SoftExpiresAt = Now.AddHours(1), HardExpiresAt = Now.AddHours(2),
+            Version = "v",
+            IssuedAt = Now,
+            SoftExpiresAt = Now.AddHours(1),
+            HardExpiresAt = Now.AddHours(2),
             Entries = [new PolicyEntry { TierId = "ml", SliceKey = "s", State = TrustState.Active, SampleRates = new Dictionary<string, double> { ["uniform"] = 1.0 } }],
         };
         var router = new TieredRouter<string, string>(

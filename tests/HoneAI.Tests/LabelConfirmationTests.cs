@@ -37,8 +37,16 @@ public class LabelConfirmationTests
     private static TeacherCell Cell(string tier, int plants, double accuracy)
         => new()
         {
-            TierId = tier, WindowStart = Now.AddDays(-7), WindowEnd = Now, Plants = plants, Failures = 0,
-            MustCatchPlants = 0, MustCatchCaught = 0, MustCatchFailures = 0, Accuracy = accuracy, Confidence = 0.95,
+            TierId = tier,
+            WindowStart = Now.AddDays(-7),
+            WindowEnd = Now,
+            Plants = plants,
+            Failures = 0,
+            MustCatchPlants = 0,
+            MustCatchCaught = 0,
+            MustCatchFailures = 0,
+            Accuracy = accuracy,
+            Confidence = 0.95,
         };
 
     [Fact]
@@ -103,7 +111,10 @@ public class LabelConfirmationTests
     private static ConsensusJudgment<string> Consensus(string value, params string[] participants)
         => new()
         {
-            DecisionId = "d1", Value = value, ReachedAt = Now, Grounds = "case-7",
+            DecisionId = "d1",
+            Value = value,
+            ReachedAt = Now,
+            Grounds = "case-7",
             Participants = participants.Select(p => p.Split('/') is [var tier, var who] ? new JudgeIdentity(tier, who) : new JudgeIdentity(p)).ToList(),
         };
 
@@ -167,7 +178,10 @@ public class LabelConfirmationTests
     private static ITracedPrediction<string> PersonAnswer(string who, string value)
         => new TracedPrediction<string>(value, new PredictionProvenance
         {
-            Kind = JudgeKind.Human, TierId = People.Id, TierVersion = People.Version, JudgedBy = who,
+            Kind = JudgeKind.Human,
+            TierId = People.Id,
+            TierVersion = People.Version,
+            JudgedBy = who,
         });
 
     [Fact]

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <!-- HoneAI.Agents → IronHive.Agent 전이 CVE-2025-6965(NU1903) direct-only 감사(선례: honeai-sim). -->
+    <!-- Audit direct references only: HoneAI.Agents brings CVE-2025-6965 (NU1903) in transitively through IronHive.Agent. -->
     <NuGetAuditMode>direct</NuGetAuditMode>
   </PropertyGroup>
   <ItemGroup>
