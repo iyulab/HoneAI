@@ -112,6 +112,46 @@ public class HttpMLoopClientTests
     }
 
     [Fact]
+    public async Task Train_ForwardsBalanceBudgetMetricSplitAndRows_OnlyWhenSet()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.Accepted, """{ "jobId": "job-1" }"""));
+        var client = Client(handler);
+
+        await client.TrainAsync(new MLoopTrainRequest("d.csv", "y", "binary-classification",
+            Balance: "auto", TimeLimitSeconds: 120, Metric: "auc", TestSplit: 0.25, MaxRows: 50000));
+        Assert.Contains("\"balance\":\"auto\"", handler.LastBody);
+        Assert.Contains("\"timeLimitSeconds\":120", handler.LastBody);
+        Assert.Contains("\"metric\":\"auc\"", handler.LastBody);
+        Assert.Contains("\"testSplit\":0.25", handler.LastBody);
+        Assert.Contains("\"maxRows\":50000", handler.LastBody);
+
+        // Unset: absent, so the project's mloop.yaml decides — as an absent CLI option does.
+        await client.TrainAsync(new MLoopTrainRequest("d.csv", "y", "binary-classification"));
+        foreach (var field in new[] { "balance", "timeLimitSeconds", "metric", "testSplit", "maxRows" })
+            Assert.DoesNotContain($"\"{field}\"", handler.LastBody);
+    }
+
+    [Fact]
+    public async Task GetJob_ReadsWhetherMLoopPromoted_WhyItKeptTheModel_AndWhyAJobFailed()
+    {
+        var handler = new StubHandler(request => request.RequestUri!.AbsolutePath.EndsWith("job-1")
+            ? Json(HttpStatusCode.OK, """
+                { "jobId": "job-1", "status": "Completed", "experimentId": "exp-4", "promoted": false,
+                  "keptInStagingReason": "promote: false was requested" }
+                """)
+            : Json(HttpStatusCode.OK, """{ "jobId": "job-2", "status": "Failed", "statusMessage": "Label column 'y' not found" }"""));
+        var client = Client(handler);
+
+        var kept = await client.GetJobAsync("job-1");
+        var failed = await client.GetJobAsync("job-2");
+
+        Assert.Equal(false, kept!.Promoted);
+        Assert.Equal("promote: false was requested", kept.KeptInStagingReason);
+        Assert.Null(failed!.Promoted);                                      // not reported: unknown, not «no»
+        Assert.Equal("Label column 'y' not found", failed.StatusMessage);
+    }
+
+    [Fact]
     public async Task RecordFeedback_UnknownPrediction_IsAClientError()
     {
         var handler = new StubHandler(_ => Json(HttpStatusCode.NotFound, """{ "title": "Prediction not found" }"""));

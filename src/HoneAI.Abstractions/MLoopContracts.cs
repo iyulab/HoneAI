@@ -66,6 +66,11 @@ public sealed record MLoopForecastResult(IReadOnlyList<MLoopForecastPoint> Point
 /// with <see cref="IMLoopClient.PromoteAsync"/> once it has decided; <see langword="true"/> lets MLoop promote it when it beats
 /// production and passes the gates.
 /// </param>
+/// <param name="Balance">Class balancing of the training part (MLoop <c>balance</c>: <c>auto</c>, <c>none</c> or a target ratio); <see langword="null"/> leaves it to MLoop.</param>
+/// <param name="TimeLimitSeconds">The training budget; <see langword="null"/> leaves it to the project's configuration.</param>
+/// <param name="Metric">The metric to optimize (MLoop's names, e.g. <c>auc</c>); <see langword="null"/> leaves it to the project, then the task.</param>
+/// <param name="TestSplit">The held-out share; <see langword="null"/> leaves it to the project.</param>
+/// <param name="MaxRows">Rows to sample the data down to; <see langword="null"/> trains on all.</param>
 public sealed record MLoopTrainRequest(
     string DataPath,
     string? Label = null,
@@ -73,7 +78,12 @@ public sealed record MLoopTrainRequest(
     string? Model = null,
     IReadOnlyList<string>? AdditionalDataPaths = null,
     string? Weight = null,
-    bool Promote = true);
+    bool Promote = true,
+    string? Balance = null,
+    int? TimeLimitSeconds = null,
+    string? Metric = null,
+    double? TestSplit = null,
+    int? MaxRows = null);
 
 /// <summary>A retraining set to build from a model's logged predictions and their feedback (MLoop <c>POST /samples</c>).</summary>
 /// <param name="Model">Target model name; <see langword="null"/> uses the default model.</param>
@@ -94,11 +104,21 @@ public sealed record MLoopSample(string Path, int Rows, int LabeledRows, string?
 /// <param name="Status">Coarse status (e.g. "queued", "running", "completed", "failed").</param>
 /// <param name="ExperimentId">The produced experiment id, once the job has completed.</param>
 /// <param name="Metrics">Evaluation metrics by name, once the job has completed.</param>
+/// <param name="Promoted">
+/// Whether MLoop put the experiment in production; <see langword="null"/> until the job completes, or from a server that
+/// does not report it. A caller that trained with <see cref="MLoopTrainRequest.Promote"/> <see langword="false"/> reads it
+/// to confirm the model stayed in staging — a server older than MLoop 0.42 ignores the request and promotes.
+/// </param>
+/// <param name="KeptInStagingReason">Why the experiment stayed in staging, when it did.</param>
+/// <param name="StatusMessage">What MLoop says about the job's status — why it failed, when it did.</param>
 public sealed record MLoopJob(
     string Id,
     string Status,
     string? ExperimentId = null,
-    IReadOnlyDictionary<string, double>? Metrics = null);
+    IReadOnlyDictionary<string, double>? Metrics = null,
+    bool? Promoted = null,
+    string? KeptInStagingReason = null,
+    string? StatusMessage = null);
 
 /// <summary>Metadata for a production MLoop model.</summary>
 /// <param name="Model">Model name.</param>

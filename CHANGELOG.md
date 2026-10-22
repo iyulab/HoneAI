@@ -6,6 +6,17 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `MLoopTrainRequest` carries the rest of MLoop's `POST /train` options — `Balance`, `TimeLimitSeconds`, `Metric`,
+  `TestSplit`, `MaxRows` — and `HttpMLoopClient` sends each only when it is set, so an unset one leaves the choice to
+  the project's `mloop.yaml`. An application can now train through `IMLoopClient` exactly as it did with
+  `mloop train --balance auto --time 120 --metric auc`.
+- `MLoopJob.Promoted`, `KeptInStagingReason` and `StatusMessage`, read from `GET /jobs/{id}` (MLoop 0.42 and later):
+  whether MLoop put the experiment in production, why it kept it in staging, why a job failed. `Promoted` is `null`
+  when the server does not say — unknown, not «no».
+- `ModelLifecycle` records why a training job failed (`StatusMessage`), and notes at evaluation when MLoop promoted an
+  experiment the run asked to keep in staging (a server older than 0.42 ignores the request).
+
 ## [0.9.0] - 2026-10-22
 
 ### Changed

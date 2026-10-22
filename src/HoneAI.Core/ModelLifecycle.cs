@@ -163,13 +163,20 @@ public sealed class ModelLifecycle : IModelLifecycle
                           ?? new MLoopJob(jobId, "unknown");
                 job = await PollToCompletionAsync(job, cancellationToken).ConfigureAwait(false);
                 if (!IsCompleted(job.Status))
-                    return await FailAsync(run, LifecycleStage.Train, $"job {job.Id} status={job.Status}", cancellationToken)
+                {
+                    return await FailAsync(run, LifecycleStage.Train,
+                        $"job {job.Id} status={job.Status}" + (job.StatusMessage is { } why ? $": {why}" : string.Empty), cancellationToken)
                         .ConfigureAwait(false);
+                }
 
-                // Evaluate (metrics carried by the completed job).
+                // Evaluate (metrics carried by the completed job). The run asked MLoop to keep the experiment in
+                // staging; a server that ignores the request promotes on its own, and the review below no longer gates it.
                 stage = LifecycleStage.Evaluate;
+                var detail = DescribeMetrics(job.Metrics);
+                if (job.Promoted == true)
+                    detail = (detail is null ? string.Empty : detail + "; ") + "MLoop already promoted this experiment — the server ignored promote=false";
                 run = await RecordAsync(run with { ExperimentId = job.ExperimentId }, LifecycleStage.Evaluate, "completed",
-                    DescribeMetrics(job.Metrics), JudgeKind.Ml, cancellationToken).ConfigureAwait(false);
+                    detail, JudgeKind.Ml, cancellationToken).ConfigureAwait(false);
             }
 
             // Review (HITL): open it — idempotently, a resumed run finds the one it opened — and read it.

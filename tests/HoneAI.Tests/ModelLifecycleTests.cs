@@ -189,6 +189,29 @@ public class ModelLifecycleTests : IDisposable
     }
 
     [Fact]
+    public async Task AFailedJob_SaysWhyItFailed()
+    {
+        var mloop = new FakeMLoop { FinalStatus = "failed", StatusMessage = "Label column 'y' not found" };
+
+        var run = await Lifecycle(mloop, new InMemoryReviewStore()).StartAsync(new LifecycleRequest(Train));
+
+        Assert.Equal("failed", run.Status);
+        Assert.EndsWith(": Label column 'y' not found", run.Steps[^1].Detail);
+    }
+
+    [Fact]
+    public async Task AServerThatPromotedAnyway_IsRecorded_BeforeTheReview()
+    {
+        // An MLoop older than 0.42 ignores promote=false: the experiment is in production before anyone reviewed it.
+        var mloop = new FakeMLoop { CompletedExperimentId = "exp-9", ReportsPromoted = true };
+
+        var run = await Lifecycle(mloop, new InMemoryReviewStore()).StartAsync(new LifecycleRequest(Train));
+
+        var evaluate = run.Steps.Single(s => s.Stage == LifecycleStage.Evaluate);
+        Assert.Contains("MLoop already promoted this experiment", evaluate.Detail);
+    }
+
+    [Fact]
     public async Task ProvenanceSink_RecordsEachStage()
     {
         var mloop = new FakeMLoop { CompletedExperimentId = "exp-9" };
@@ -227,9 +250,12 @@ public class ModelLifecycleTests : IDisposable
         public Task<ITracedPrediction<MLoopForecastResult>> ForecastAsync(MLoopForecastRequest request, CancellationToken ct = default)
             => throw new NotSupportedException("lifecycle tests never forecast");
 
+        public string? StatusMessage { get; init; }
+        public bool? ReportsPromoted { get; init; }
+
         public Task<MLoopJob?> GetJobAsync(string jobId, CancellationToken ct = default)
             => Task.FromResult<MLoopJob?>(new MLoopJob(jobId, FinalStatus, CompletedExperimentId,
-                new Dictionary<string, double> { ["auc"] = 0.9 }));
+                new Dictionary<string, double> { ["auc"] = 0.9 }, ReportsPromoted, StatusMessage: StatusMessage));
 
         public Task PromoteAsync(string model, string experimentId, CancellationToken ct = default)
         {

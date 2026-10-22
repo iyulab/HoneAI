@@ -141,6 +141,17 @@ public sealed class HttpMLoopClient : IMLoopClient
             body["weight"] = request.Weight;
         if (!request.Promote)
             body["promote"] = false;
+        // Forwarded only when set: an absent field leaves the choice to the project's mloop.yaml, as an absent CLI option does.
+        if (!string.IsNullOrWhiteSpace(request.Balance))
+            body["balance"] = request.Balance;
+        if (request.TimeLimitSeconds is { } seconds)
+            body["timeLimitSeconds"] = seconds;
+        if (!string.IsNullOrWhiteSpace(request.Metric))
+            body["metric"] = request.Metric;
+        if (request.TestSplit is { } split)
+            body["testSplit"] = split;
+        if (request.MaxRows is { } maxRows)
+            body["maxRows"] = maxRows;
 
         using var response = await _http.PostAsJsonAsync("train", body, JsonOptions, cancellationToken)
             .ConfigureAwait(false);
@@ -172,8 +183,12 @@ public sealed class HttpMLoopClient : IMLoopClient
             ? e.GetString()
             : null;
         var metrics = ParseMetrics(root);
+        bool? promoted = root.TryGetProperty("promoted", out var p) && p.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? p.GetBoolean()
+            : null;
 
-        return new MLoopJob(id, status, experimentId, metrics);
+        return new MLoopJob(id, status, experimentId, metrics, promoted,
+            String(root, "keptInStagingReason"), String(root, "statusMessage"));
     }
 
     /// <inheritdoc />
