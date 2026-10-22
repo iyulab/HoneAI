@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-22
+
 ### Added
 - `MLoopTrainRequest.Promote` — `false` asks MLoop to keep the trained experiment in staging (`"promote": false` on
   `POST /train`, MLoop 0.42 and later) for the caller to promote with `IMLoopClient.PromoteAsync`.
