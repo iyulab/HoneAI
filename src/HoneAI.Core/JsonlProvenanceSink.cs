@@ -60,37 +60,78 @@ public sealed class JsonlProvenanceSink : IProvenanceSink
     }
 
     /// <inheritdoc />
+    /// <remarks>Applies the same read rules as <see cref="ReadFromAsync(TextReader, string?, CancellationToken)"/>.</remarks>
     public async IAsyncEnumerable<ProvenanceRecord> ReadAsync(
         string? subjectId = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (!File.Exists(_path))
             yield break;
 
-        await foreach (var line in File.ReadLinesAsync(_path, cancellationToken).ConfigureAwait(false))
-        {
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
+        using var reader = new StreamReader(_path, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        await foreach (var record in ReadFromAsync(reader, subjectId, cancellationToken).ConfigureAwait(false))
+            yield return record;
+    }
 
-            JsonNode? node;
-            try
-            {
-                node = JsonNode.Parse(line);
-            }
-            catch (JsonException)
-            {
-                // A line cut short by a crash mid-append: the record it carried was never written.
-                continue;
-            }
-            if (node is JsonObject { } obj && obj["provenance"] is JsonObject provenance)
-                UpgradeLegacyProvenance(provenance);
-            var record = node.Deserialize<ProvenanceRecord>(JsonOptions);
-            if (record is null)
+    /// <summary>
+    /// Reads provenance JSONL from any stream — a downloaded blob, a database column, an HTTP
+    /// response — with the same rules as a sink's own file: lines written by 0.2.x read as the
+    /// current contract, and a line cut short by a crash mid-append is skipped.
+    /// </summary>
+    /// <param name="stream">UTF-8 JSONL. Read to its end; left open (the caller owns it).</param>
+    /// <param name="subjectId">When set, only records for this subject.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    public static async IAsyncEnumerable<ProvenanceRecord> ReadFromAsync(
+        Stream stream, string? subjectId = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+        await foreach (var record in ReadFromAsync(reader, subjectId, cancellationToken).ConfigureAwait(false))
+            yield return record;
+    }
+
+    /// <summary>
+    /// Reads provenance JSONL from text already in hand (wrap a string in a <see cref="StringReader"/>),
+    /// with the same rules as a sink's own file: lines written by 0.2.x read as the current contract,
+    /// and a line cut short by a crash mid-append is skipped.
+    /// </summary>
+    /// <param name="reader">JSONL text. Read to its end; left open (the caller owns it).</param>
+    /// <param name="subjectId">When set, only records for this subject.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    public static async IAsyncEnumerable<ProvenanceRecord> ReadFromAsync(
+        TextReader reader, string? subjectId = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+
+        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+        {
+            if (ParseLine(line) is not { } record)
                 continue;
             if (subjectId is not null && record.SubjectId != subjectId)
                 continue;
 
             yield return record;
         }
+    }
+
+    private static ProvenanceRecord? ParseLine(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+            return null;
+
+        JsonNode? node;
+        try
+        {
+            node = JsonNode.Parse(line);
+        }
+        catch (JsonException)
+        {
+            // A line cut short by a crash mid-append: the record it carried was never written.
+            return null;
+        }
+        if (node is JsonObject { } obj && obj["provenance"] is JsonObject provenance)
+            UpgradeLegacyProvenance(provenance);
+        return node.Deserialize<ProvenanceRecord>(JsonOptions);
     }
 
     // Kind names that changed when the reasoning layers became judge kinds. Numbers did not move.

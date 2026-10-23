@@ -178,6 +178,16 @@ predictions already stamped with `JudgeKind.Ml` provenance — wrap it in a judg
 `JsonlProvenanceSink` appends every provenance stamp to a JSONL file — an
 append-only, grep-friendly record of what answered and why.
 
+Records written by older versions keep reading as the current contract, and a line cut
+short by a crash mid-append is skipped. The same read rules apply wherever the JSONL
+ended up — a blob, a database column, an HTTP response — through
+`JsonlProvenanceSink.ReadFromAsync(TextReader | Stream)`:
+
+```csharp
+await foreach (var record in JsonlProvenanceSink.ReadFromAsync(new StringReader(downloadedJsonl)))
+    Console.WriteLine($"{record.SubjectId}: {record.Provenance.Kind}");
+```
+
 ### Human review (`IReviewStore`)
 
 A review is stored state, not a wait in memory: a producer opens it, a reviewer (UI,

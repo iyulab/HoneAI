@@ -6,6 +6,12 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `JsonlProvenanceSink.ReadFromAsync(TextReader)` and `ReadFromAsync(Stream)` read provenance JSONL that is not
+  a local file — a downloaded blob, a database column, an HTTP response — with the same rules as the sink's own
+  file: lines written by 0.2.x read as the current contract, and a line cut short mid-append is skipped.
+  `ReadAsync()` on a sink is now a thin wrapper over the same reader, so the rules cannot diverge between the two.
+
 ## [0.10.0] - 2026-10-23
 
 ### Added

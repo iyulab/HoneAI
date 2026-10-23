@@ -104,17 +104,50 @@ public sealed class JsonlProvenanceSinkTests : IDisposable
         Assert.Equal("Security", read[0].Provenance.Annotations!["category"]);
     }
 
-    [Fact]
-    public async Task Read_ALineWrittenBy02x_ReadsAsTheCurrentContract()
+    // Two 0.2.x lines (renamed kinds, the two flags the per-tier path replaced), one line cut short by a
+    // crash mid-append, and a current line — every read entry point must give the same three records.
+    private const string MixedJsonl =
+        "{\"subjectId\":\"old\",\"provenance\":{\"sourceLayer\":\"Frontier\",\"confidence\":0.4,\"agreement\":false,\"requiresReview\":true,\"annotations\":{\"category\":\"Security\"}},\"recordedAt\":\"2026-09-01T00:00:00+00:00\"}\n"
+        + "{\"subjectId\":\"old2\",\"provenance\":{\"sourceLayer\":\"AutoMl\",\"confidence\":0.9},\"recordedAt\":\"2026-09-01T00:00:00+00:00\"}\n"
+        + "{\"subjectId\":\"cut\",\"provenance\":{\"kind\":\"Ml\",\"confid\n"
+        + "{\"subjectId\":\"new\",\"provenance\":{\"kind\":\"Human\",\"confidence\":1},\"recordedAt\":\"2026-10-01T00:00:00+00:00\"}\n";
+
+    public enum Entry { SinkFile, TextReader, Stream }
+
+    private async Task<List<ProvenanceRecord>> ReadThrough(Entry entry, string jsonl, string? subject = null)
+    {
+        var list = new List<ProvenanceRecord>();
+        switch (entry)
+        {
+            case Entry.SinkFile:
+                await File.WriteAllTextAsync(_path, jsonl);
+                return await ReadAll(new JsonlProvenanceSink(_path), subject);
+            case Entry.TextReader:
+                await foreach (var r in JsonlProvenanceSink.ReadFromAsync(new StringReader(jsonl), subject))
+                    list.Add(r);
+                return list;
+            default:
+                using (var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(jsonl)))
+                {
+                    await foreach (var r in JsonlProvenanceSink.ReadFromAsync(stream, subject))
+                        list.Add(r);
+                    Assert.True(stream.CanRead); // the caller owns the stream
+                }
+                return list;
+        }
+    }
+
+    [Theory]
+    [InlineData(Entry.SinkFile)]
+    [InlineData(Entry.TextReader)]
+    [InlineData(Entry.Stream)]
+    public async Task Read_LinesWrittenBy02x_ReadAsTheCurrentContract(Entry entry)
     {
         // An audit trail is never rewritten: a 0.2.x line keeps reading, renamed kinds mapped and the
         // two flags the per-tier path replaced kept as annotations.
-        await File.WriteAllTextAsync(_path,
-            "{\"subjectId\":\"old\",\"provenance\":{\"sourceLayer\":\"Frontier\",\"confidence\":0.4,\"agreement\":false,\"requiresReview\":true,\"annotations\":{\"category\":\"Security\"}},\"recordedAt\":\"2026-09-01T00:00:00+00:00\"}\n"
-            + "{\"subjectId\":\"old2\",\"provenance\":{\"sourceLayer\":\"AutoMl\",\"confidence\":0.9},\"recordedAt\":\"2026-09-01T00:00:00+00:00\"}\n");
+        var read = await ReadThrough(entry, MixedJsonl);
 
-        var read = await ReadAll(new JsonlProvenanceSink(_path));
-
+        Assert.Equal(new[] { "old", "old2", "new" }, read.Select(r => r.SubjectId));
         Assert.Equal(JudgeKind.Llm, read[0].Provenance.Kind);
         Assert.Equal(0.4, read[0].Provenance.Confidence);
         Assert.Equal("false", read[0].Provenance.Annotations!["legacy:agreement"]);
@@ -122,6 +155,32 @@ public sealed class JsonlProvenanceSinkTests : IDisposable
         Assert.Equal("Security", read[0].Provenance.Annotations!["category"]);
         Assert.Equal(JudgeKind.Ml, read[1].Provenance.Kind);
         Assert.Null(read[1].Provenance.Annotations);
+        Assert.Equal(JudgeKind.Human, read[2].Provenance.Kind);
+    }
+
+    [Theory]
+    [InlineData(Entry.SinkFile)]
+    [InlineData(Entry.TextReader)]
+    [InlineData(Entry.Stream)]
+    public async Task Read_FiltersBySubject_ThroughEveryEntry(Entry entry)
+    {
+        var read = await ReadThrough(entry, MixedJsonl, subject: "old2");
+
+        Assert.Equal(JudgeKind.Ml, Assert.Single(read).Provenance.Kind);
+    }
+
+    [Fact]
+    public async Task ReadFrom_WhatASinkWrote_RoundTrips()
+    {
+        var sink = new JsonlProvenanceSink(_path);
+        await sink.AppendAsync("a", Prov(JudgeKind.Llm, 0.7));
+
+        await using var stream = File.OpenRead(_path);
+        var list = new List<ProvenanceRecord>();
+        await foreach (var r in JsonlProvenanceSink.ReadFromAsync(stream))
+            list.Add(r);
+
+        Assert.Equal(JudgeKind.Llm, Assert.Single(list).Provenance.Kind);
     }
 
     private static async Task<List<ProvenanceRecord>> ReadAll(IProvenanceSink sink, string? subject = null)
