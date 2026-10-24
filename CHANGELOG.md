@@ -21,6 +21,9 @@ All notable changes to HoneAI are documented here. The format follows
   Code that constructs either result recompiles unchanged (the parameter is optional); a binary built against 0.12
   must be rebuilt.
 
+### Changed
+- `HoneAI.Agents` depends on `IronHive.Agent` 0.75.0 (was 0.71.0).
+
 ## [0.12.0] - 2026-10-24
 
 ### Added
