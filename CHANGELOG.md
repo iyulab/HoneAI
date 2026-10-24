@@ -6,6 +6,14 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `MLoopPredictionResult.Model` and `MLoopForecastResult.Model` (`MLoopModel(ExperimentId, Sha256)`): the MLoop model
+  that answered, read from the response's `experimentId` and `modelSha256`. The experiment id names a model inside one
+  MLoop project only; the SHA-256 is the same model wherever it is served, as an embedding's `MLoopEncoder.Sha256` is.
+  `null` from a server that reports neither.
+  Code that constructs either result recompiles unchanged (the parameter is optional); a binary built against 0.12
+  must be rebuilt.
+
 ## [0.12.0] - 2026-10-24
 
 ### Added

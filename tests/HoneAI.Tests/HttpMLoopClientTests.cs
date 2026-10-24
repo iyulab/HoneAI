@@ -50,6 +50,29 @@ public class HttpMLoopClientTests
     }
 
     [Fact]
+    public async Task Predict_NamesTheAnsweringModel_ByExperimentAndContent()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "experimentId": "exp-004", "modelSha256": "90d449d5", "task": "binary",
+              "predictions": [ { "predictedLabel": "NG" } ] }
+            """));
+
+        var pred = await Client(handler).PredictAsync(new MLoopPredictionRequest(new Dictionary<string, object?> { ["t"] = 1 }));
+
+        Assert.Equal(new MLoopModel("exp-004", "90d449d5"), pred.Value.Model);
+    }
+
+    [Fact]
+    public async Task Predict_FromAServerThatNamesNoModel_HasNone()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """{ "predictions": [ { "predictedLabel": "NG" } ] }"""));
+
+        var pred = await Client(handler).PredictAsync(new MLoopPredictionRequest(new Dictionary<string, object?> { ["t"] = 1 }));
+
+        Assert.Null(pred.Value.Model);
+    }
+
+    [Fact]
     public async Task Predict_SurfacesTheLoggedPredictionId_NotAsAnOutput()
     {
         // MLoop logs a served row and returns the id feedback is recorded against.

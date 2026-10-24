@@ -38,13 +38,24 @@ public sealed record MLoopEncoder(string Id, string Version, string? Sha256, int
 /// <summary>Vectors with the encoder that made them, one per image in the order sent.</summary>
 public sealed record MLoopEmbedding(MLoopEncoder Encoder, IReadOnlyList<float[]> Vectors);
 
+/// <summary>
+/// The model that answered (MLoop's <c>experimentId</c> and <c>modelSha256</c>). The experiment id names it inside one
+/// MLoop project only — <c>exp-001</c> is in every project — so a record kept across projects or servers keys answers
+/// by <see cref="Sha256"/>, as an embedding is keyed by its <see cref="MLoopEncoder.Sha256"/>.
+/// </summary>
+/// <param name="ExperimentId">The answering experiment in the server's project; <see langword="null"/> when not reported.</param>
+/// <param name="Sha256">The model file's SHA-256; <see langword="null"/> from a server that does not report it.</param>
+public sealed record MLoopModel(string? ExperimentId, string? Sha256);
+
 /// <summary>Outcome of an MLoop prediction — predicted output columns keyed by name.</summary>
 /// <param name="Outputs">Predicted column name → value (label, score, probability, …).</param>
 /// <param name="PredictionId">
 /// The id MLoop logged the prediction under — what <see cref="IMLoopClient.RecordFeedbackAsync"/> takes to
 /// record its actual value. <see langword="null"/> when the server did not log it.
 /// </param>
-public sealed record MLoopPredictionResult(IReadOnlyDictionary<string, object?> Outputs, string? PredictionId = null);
+/// <param name="Model">The model that answered; <see langword="null"/> when the server reported neither part.</param>
+public sealed record MLoopPredictionResult(
+    IReadOnlyDictionary<string, object?> Outputs, string? PredictionId = null, MLoopModel? Model = null);
 
 /// <summary>The actual value of a logged prediction (MLoop <c>POST /feedback</c>).</summary>
 /// <param name="PredictionId">The id MLoop logged the prediction under (<see cref="MLoopPredictionResult.PredictionId"/>).</param>
@@ -80,7 +91,9 @@ public sealed record MLoopForecastPoint(
     double? IntervalConfidence = null);
 
 /// <summary>Ordered forecast — index 0 is the first step after the training series.</summary>
-public sealed record MLoopForecastResult(IReadOnlyList<MLoopForecastPoint> Points);
+/// <param name="Points">The forecast steps.</param>
+/// <param name="Model">The model that answered; <see langword="null"/> when the server reported neither part.</param>
+public sealed record MLoopForecastResult(IReadOnlyList<MLoopForecastPoint> Points, MLoopModel? Model = null);
 
 /// <summary>Request to start an MLoop training run.</summary>
 /// <param name="DataPath">Path to the training dataset.</param>

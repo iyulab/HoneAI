@@ -131,7 +131,15 @@ public sealed class HttpMLoopClient : IMLoopClient
         // The logged id is not an output of the model: it names the row, so feedback can find it.
         outputs.Remove("predictionId");
         var predictionId = String(row, "predictionId");
-        return new TracedPrediction<MLoopPredictionResult>(new MLoopPredictionResult(outputs, predictionId), provenance);
+        return new TracedPrediction<MLoopPredictionResult>(new MLoopPredictionResult(outputs, predictionId, ModelOf(root)), provenance);
+    }
+
+    // The answering model, from the envelope: one model answers a whole request.
+    private static MLoopModel? ModelOf(JsonElement root)
+    {
+        var experimentId = String(root, "experimentId");
+        var sha256 = String(root, "modelSha256");
+        return experimentId is null && sha256 is null ? null : new MLoopModel(experimentId, sha256);
     }
 
     /// <inheritdoc />
@@ -182,7 +190,7 @@ public sealed class HttpMLoopClient : IMLoopClient
             Rationale = "mloop:forecasting",
         };
 
-        return new TracedPrediction<MLoopForecastResult>(new MLoopForecastResult(points), provenance);
+        return new TracedPrediction<MLoopForecastResult>(new MLoopForecastResult(points, ModelOf(root)), provenance);
     }
 
     /// <inheritdoc />
