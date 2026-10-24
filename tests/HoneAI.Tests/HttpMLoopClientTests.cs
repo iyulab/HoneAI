@@ -168,6 +168,55 @@ public class HttpMLoopClientTests
     }
 
     [Fact]
+    public async Task Embed_ReadsThePreprocessorRevision_PartOfTheSpacesIdentity()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "encoder": { "id": "e", "version": "1", "sha256": "ab", "dimension": 1, "normalized": true, "preprocessor": "pillow/2" }, "vectors": [ [1.0] ] }
+            """));
+
+        var embedding = await Client(handler).EmbedAsync(new MLoopEmbeddingRequest([new byte[] { 1 }]));
+
+        Assert.Equal("pillow/2", embedding.Encoder.Preprocessor);
+        Assert.Null(embedding.Grid);
+        Assert.Null(embedding.Patches);
+    }
+
+    [Fact]
+    public async Task Embed_WithPatches_AsksForThem_AndReadsTheGridAndEachImagesCrop()
+    {
+        // MLoop 0.46+ POST /embed?patches=true → also grid{rows,columns,patchSize,cropSize} and patches[{crop, vectors}].
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            {
+              "encoder": { "id": "e", "version": "1", "sha256": "ab", "dimension": 2, "normalized": true, "preprocessor": "pillow/2" },
+              "vectors": [ [1.0, 0.0] ],
+              "grid": { "rows": 1, "columns": 2, "patchSize": 14, "cropSize": 28 },
+              "patches": [ { "crop": { "x0": 10.5, "y0": 0, "x1": 66.5, "y1": 28 }, "vectors": [ [0.0, 1.0], [0.6, 0.8] ] } ]
+            }
+            """));
+
+        var embedding = await Client(handler).EmbedAsync(new MLoopEmbeddingRequest([new byte[] { 1 }], Encoder: "e", Patches: true));
+
+        Assert.Contains("embed?encoder=e&patches=true", handler.LastUri);
+        Assert.Equal(new MLoopPatchGrid(1, 2, 14, 28), embedding.Grid);
+        var image = Assert.Single(embedding.Patches!);
+        Assert.Equal(new MLoopImageRegion(10.5, 0, 66.5, 28), image.Crop);
+        Assert.Equal([0.6f, 0.8f], image.Vectors[1]);
+    }
+
+    [Fact]
+    public async Task Embed_WithPatches_FromAServerThatIgnoresTheAsk_IsAnError()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "encoder": { "id": "e", "version": "1", "sha256": "ab", "dimension": 1, "normalized": true }, "vectors": [ [1.0] ] }
+            """));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Client(handler).EmbedAsync(new MLoopEmbeddingRequest([new byte[] { 1 }], Patches: true)));
+
+        Assert.Contains("0.46", ex.Message);
+    }
+
+    [Fact]
     public async Task RecordFeedback_PostsTheValueSourceAndWeight()
     {
         var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """{ "recorded": true }"""));

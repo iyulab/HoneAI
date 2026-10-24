@@ -177,11 +177,15 @@ Images travel by their contents, so the MLoop server can be on another machine: 
 classifies them with an image-classification model (one traced prediction per image, in order), and
 `EmbedAsync` turns them into vectors with an encoder installed on the server — the input of a
 nearest-neighbour judge over confirmed cases. The embedding names its encoder; keep it beside the vectors
-and do not mix vectors of two encoders.
+and do not mix vectors of two encoders. `Patches: true` adds a vector per patch of each image (MLoop 0.46+),
+for a small local difference one vector per image averages away — and where in the image it is.
 
 ```csharp
 var embedding = await mloop.EmbedAsync(new MLoopEmbeddingRequest([imageBytes], Encoder: "dinov2-small"));
-var key = (embedding.Encoder.Id, embedding.Encoder.Sha256);   // the space these vectors live in
+var key = (embedding.Encoder.Id, embedding.Encoder.Sha256, embedding.Encoder.Preprocessor);   // the space these vectors live in
+
+var local = await mloop.EmbedAsync(new MLoopEmbeddingRequest([imageBytes], Patches: true));
+// local.Grid: 16 × 16 patches; local.Patches[0].Crop: the region they tile, in the image's pixels
 ```
 
 ### Audit trail (`IProvenanceSink`)

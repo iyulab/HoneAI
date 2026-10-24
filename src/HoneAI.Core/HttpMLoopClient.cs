@@ -87,7 +87,12 @@ public sealed class HttpMLoopClient : IMLoopClient
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Images);
 
-        var uri = "embed" + (string.IsNullOrWhiteSpace(request.Encoder) ? string.Empty : "?encoder=" + Uri.EscapeDataString(request.Encoder));
+        var query = new List<string>();
+        if (!string.IsNullOrWhiteSpace(request.Encoder))
+            query.Add("encoder=" + Uri.EscapeDataString(request.Encoder));
+        if (request.Patches)
+            query.Add("patches=true");
+        var uri = "embed" + (query.Count == 0 ? string.Empty : "?" + string.Join('&', query));
         using var response = await _http.PostAsJsonAsync(uri, ImagesBody(request.Images), JsonOptions, cancellationToken).ConfigureAwait(false);
         await EnsureSuccess(response, "embed", cancellationToken).ConfigureAwait(false);
 
@@ -102,14 +107,38 @@ public sealed class HttpMLoopClient : IMLoopClient
             String(e, "version") ?? string.Empty,
             String(e, "sha256"),
             NumberOf(e, "dimension") is { } d ? (int)d : 0,
-            TryGetProperty(e, "normalized", out var n) && n.ValueKind == JsonValueKind.True);
-        var vectors = v.EnumerateArray()
-            .Select(vector => vector.EnumerateArray().Select(x => x.GetSingle()).ToArray())
-            .ToList();
+            TryGetProperty(e, "normalized", out var n) && n.ValueKind == JsonValueKind.True,
+            String(e, "preprocessor"));
+        var vectors = Vectors(v);
         if (vectors.Count != request.Images.Count)
             throw new InvalidOperationException($"MLoop /embed answered {vectors.Count} vectors for {request.Images.Count} images.");
-        return new MLoopEmbedding(encoder, vectors);
+        if (!request.Patches)
+            return new MLoopEmbedding(encoder, vectors);
+
+        // A server before MLoop 0.46 ignores ?patches=true and answers vectors only — that is not an answer to this request.
+        if (!TryGetProperty(root, "grid", out var g) || g.ValueKind != JsonValueKind.Object
+            || !TryGetProperty(root, "patches", out var p) || p.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("MLoop /embed answered no patches; patch vectors need MLoop 0.46 or later.");
+        var grid = new MLoopPatchGrid(
+            NumberOf(g, "rows") is { } rows ? (int)rows : 0,
+            NumberOf(g, "columns") is { } columns ? (int)columns : 0,
+            NumberOf(g, "patchSize") is { } patchSize ? (int)patchSize : 0,
+            NumberOf(g, "cropSize") is { } cropSize ? (int)cropSize : 0);
+        var patches = p.EnumerateArray().Select(image =>
+        {
+            if (!TryGetProperty(image, "crop", out var c) || c.ValueKind != JsonValueKind.Object
+                || !TryGetProperty(image, "vectors", out var pv) || pv.ValueKind != JsonValueKind.Array)
+                throw new InvalidOperationException("MLoop /embed answered an image's patches without its crop or vectors.");
+            var crop = new MLoopImageRegion(NumberOf(c, "x0") ?? 0, NumberOf(c, "y0") ?? 0, NumberOf(c, "x1") ?? 0, NumberOf(c, "y1") ?? 0);
+            return new MLoopImagePatches(crop, Vectors(pv));
+        }).ToList();
+        if (patches.Count != request.Images.Count)
+            throw new InvalidOperationException($"MLoop /embed answered patches for {patches.Count} of {request.Images.Count} images.");
+        return new MLoopEmbedding(encoder, vectors, grid, patches);
     }
+
+    private static List<float[]> Vectors(JsonElement array) =>
+        [.. array.EnumerateArray().Select(vector => vector.EnumerateArray().Select(x => x.GetSingle()).ToArray())];
 
     // MLoop's image input: {"images": ["<base64>", …]} — the same body /predict and /embed take.
     private static Dictionary<string, string[]> ImagesBody(IReadOnlyList<ReadOnlyMemory<byte>> images)

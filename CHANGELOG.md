@@ -7,6 +7,13 @@ All notable changes to HoneAI are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `MLoopEmbeddingRequest.Patches`: `EmbedAsync` also returns each image's patch vectors (MLoop 0.46+
+  `POST /embed?patches=true`) — `MLoopEmbedding.Grid` (`MLoopPatchGrid`) and `Patches` (`MLoopImagePatches`: the crop
+  the grid covers in the image's own pixels, and one vector per patch, row by row). For a local difference one vector
+  per image averages away, and where it is. A server that answers without patches is an error, not an empty grid.
+- `MLoopEncoder.Preprocessor`: the revision of how MLoop turned the images into the encoder's input (MLoop 0.46+,
+  `null` before). Vectors are comparable only when `Id`, `Sha256` and `Preprocessor` all match — the same weights give
+  other vectors when it changes.
 - `MLoopPredictionResult.Model` and `MLoopForecastResult.Model` (`MLoopModel(ExperimentId, Sha256)`): the MLoop model
   that answered, read from the response's `experimentId` and `modelSha256`. The experiment id names a model inside one
   MLoop project only; the SHA-256 is the same model wherever it is served, as an embedding's `MLoopEncoder.Sha256` is.

@@ -18,25 +18,55 @@ public sealed record MLoopImagePredictionRequest(
     string? Model = null);
 
 /// <summary>Request to turn images into vectors with an encoder installed on the MLoop server (MLoop 0.44+ <c>POST /embed</c>).</summary>
-/// <param name="Images">The images' encoded bytes, at most 64 in one request; answered in the order given.</param>
+/// <param name="Images">The images' encoded bytes, at most 64 in one request (8 with <paramref name="Patches"/>); answered in the order given.</param>
 /// <param name="Encoder">The installed encoder's id; <see langword="null"/> when the server has exactly one.</param>
+/// <param name="Patches">
+/// Also each image's patch vectors (MLoop 0.46+ <c>?patches=true</c>): one per region of the image, for a local
+/// difference one vector per image averages away, and where it is.
+/// </param>
 public sealed record MLoopEmbeddingRequest(
     IReadOnlyList<ReadOnlyMemory<byte>> Images,
-    string? Encoder = null);
+    string? Encoder = null,
+    bool Patches = false);
 
 /// <summary>
 /// Which encoder made a set of vectors — what a caller keeps beside them and compares before mixing vectors from two
-/// calls: vectors from encoders of different <see cref="Id"/> or <see cref="Sha256"/> are not in one space.
+/// calls: vectors that differ in <see cref="Id"/>, <see cref="Sha256"/> or <see cref="Preprocessor"/> are not in one space.
 /// </summary>
 /// <param name="Id">The encoder's id.</param>
 /// <param name="Version">Its definition's version.</param>
-/// <param name="Sha256">Its weights' SHA-256; with <paramref name="Id"/>, the identity of the vector space.</param>
+/// <param name="Sha256">Its weights' SHA-256; with <paramref name="Id"/> and <paramref name="Preprocessor"/>, the identity of the vector space.</param>
 /// <param name="Dimension">The length of each vector.</param>
 /// <param name="Normalized">Whether the vectors are L2-normalized — cosine similarity is then their dot product.</param>
-public sealed record MLoopEncoder(string Id, string Version, string? Sha256, int Dimension, bool Normalized);
+/// <param name="Preprocessor">
+/// The revision of how MLoop turned the images into the encoder's input (<c>pillow/2</c>): the same weights give other
+/// vectors when it changes. <see langword="null"/> from a server before MLoop 0.46, which does not report it.
+/// </param>
+public sealed record MLoopEncoder(string Id, string Version, string? Sha256, int Dimension, bool Normalized, string? Preprocessor = null);
 
-/// <summary>Vectors with the encoder that made them, one per image in the order sent.</summary>
-public sealed record MLoopEmbedding(MLoopEncoder Encoder, IReadOnlyList<float[]> Vectors);
+/// <summary>How an encoder's patches tile the square crop it read: <see cref="Rows"/> × <see cref="Columns"/> patches of <see cref="PatchSize"/> pixels, row by row.</summary>
+public sealed record MLoopPatchGrid(int Rows, int Columns, int PatchSize, int CropSize);
+
+/// <summary>A rectangle of an image in its own pixels: left, top, right, bottom.</summary>
+public sealed record MLoopImageRegion(double X0, double Y0, double X1, double Y1);
+
+/// <summary>
+/// One image's patch vectors, row by row over the grid: patch (r, c) covers the r-th of <see cref="MLoopPatchGrid.Rows"/>
+/// equal bands of <see cref="Crop"/>'s height and the c-th of <see cref="MLoopPatchGrid.Columns"/> of its width.
+/// </summary>
+/// <param name="Crop">The part of the image the encoder read, in the image's own pixels.</param>
+/// <param name="Vectors">One vector per patch, normalized as the encoder's vectors are.</param>
+public sealed record MLoopImagePatches(MLoopImageRegion Crop, IReadOnlyList<float[]> Vectors);
+
+/// <summary>
+/// Vectors with the encoder that made them, one per image in the order sent — and, when patches were asked for, the
+/// grid and each image's patch vectors (same order).
+/// </summary>
+public sealed record MLoopEmbedding(
+    MLoopEncoder Encoder,
+    IReadOnlyList<float[]> Vectors,
+    MLoopPatchGrid? Grid = null,
+    IReadOnlyList<MLoopImagePatches>? Patches = null);
 
 /// <summary>
 /// The model that answered (MLoop's <c>experimentId</c> and <c>modelSha256</c>). The experiment id names it inside one

@@ -27,7 +27,7 @@ public interface IMLoopClient
     /// <summary>
     /// Turn images into vectors with an encoder installed on the MLoop server — the input of a nearest-neighbour
     /// judge over confirmed cases. The result names the encoder (<see cref="MLoopEncoder"/>): vectors are comparable only
-    /// within one encoder's space.
+    /// within one encoder's space. With <see cref="MLoopEmbeddingRequest.Patches"/>, each image's patch vectors too.
     /// </summary>
     Task<MLoopEmbedding> EmbedAsync(MLoopEmbeddingRequest request, CancellationToken cancellationToken = default);
 
