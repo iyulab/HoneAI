@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-24
+
 ### Added
 - `IMLoopClient.PredictImagesAsync(MLoopImagePredictionRequest)`: classifies images by their contents against an
   MLoop image-classification model (MLoop 0.45+ `POST /predict` with `{"images": [...]}`) — one traced prediction per
