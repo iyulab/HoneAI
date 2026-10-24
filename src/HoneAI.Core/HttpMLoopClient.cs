@@ -54,7 +54,70 @@ public sealed class HttpMLoopClient : IMLoopClient
             throw new InvalidOperationException("MLoop /predict response carried no predictions.");
         }
 
-        var row = preds[0];
+        return Traced(root, preds[0]);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ITracedPrediction<MLoopPredictionResult>>> PredictImagesAsync(
+        MLoopImagePredictionRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Images);
+        if (request.Images.Count == 0)
+            return [];
+
+        using var response = await _http.PostAsJsonAsync("predict" + NameQuery(request.Model), ImagesBody(request.Images), JsonOptions, cancellationToken)
+            .ConfigureAwait(false);
+        await EnsureSuccess(response, "predict", cancellationToken).ConfigureAwait(false);
+
+        using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("predictions", out var preds) || preds.ValueKind != JsonValueKind.Array
+            || preds.GetArrayLength() != request.Images.Count)
+        {
+            throw new InvalidOperationException(
+                $"MLoop /predict answered {(preds.ValueKind == JsonValueKind.Array ? preds.GetArrayLength() : 0)} predictions for {request.Images.Count} images.");
+        }
+        return [.. preds.EnumerateArray().Select(row => Traced(root, row))];
+    }
+
+    /// <inheritdoc />
+    public async Task<MLoopEmbedding> EmbedAsync(MLoopEmbeddingRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Images);
+
+        var uri = "embed" + (string.IsNullOrWhiteSpace(request.Encoder) ? string.Empty : "?encoder=" + Uri.EscapeDataString(request.Encoder));
+        using var response = await _http.PostAsJsonAsync(uri, ImagesBody(request.Images), JsonOptions, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccess(response, "embed", cancellationToken).ConfigureAwait(false);
+
+        using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        var root = doc.RootElement;
+        if (!TryGetProperty(root, "encoder", out var e) || e.ValueKind != JsonValueKind.Object
+            || !TryGetProperty(root, "vectors", out var v) || v.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("MLoop /embed response carried no encoder or vectors.");
+
+        var encoder = new MLoopEncoder(
+            String(e, "id") ?? throw new InvalidOperationException("MLoop /embed response named no encoder id."),
+            String(e, "version") ?? string.Empty,
+            String(e, "sha256"),
+            NumberOf(e, "dimension") is { } d ? (int)d : 0,
+            TryGetProperty(e, "normalized", out var n) && n.ValueKind == JsonValueKind.True);
+        var vectors = v.EnumerateArray()
+            .Select(vector => vector.EnumerateArray().Select(x => x.GetSingle()).ToArray())
+            .ToList();
+        if (vectors.Count != request.Images.Count)
+            throw new InvalidOperationException($"MLoop /embed answered {vectors.Count} vectors for {request.Images.Count} images.");
+        return new MLoopEmbedding(encoder, vectors);
+    }
+
+    // MLoop's image input: {"images": ["<base64>", …]} — the same body /predict and /embed take.
+    private static Dictionary<string, string[]> ImagesBody(IReadOnlyList<ReadOnlyMemory<byte>> images)
+        => new() { ["images"] = [.. images.Select(image => Convert.ToBase64String(image.Span))] };
+
+    // One answered row as a traced prediction: its outputs, MLoop's confidence, and the id it was logged under.
+    private static TracedPrediction<MLoopPredictionResult> Traced(JsonElement root, JsonElement row)
+    {
         var outputs = ToObjectMap(row);
         var provenance = new PredictionProvenance
         {

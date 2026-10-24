@@ -6,6 +6,18 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `IMLoopClient.PredictImagesAsync(MLoopImagePredictionRequest)`: classifies images by their contents against an
+  MLoop image-classification model (MLoop 0.45+ `POST /predict` with `{"images": [...]}`) — one traced prediction per
+  image, in the order sent, with MLoop's confidence. The client no longer needs a path the server can read.
+- `IMLoopClient.EmbedAsync(MLoopEmbeddingRequest)`: images to vectors with an encoder installed on the MLoop server
+  (MLoop 0.44+ `POST /embed`), with the encoder that made them (`MLoopEncoder`: id, version, SHA-256, dimension,
+  normalized) — the key under which vectors are comparable.
+
+### Changed
+- **Breaking** for a class that implements `IMLoopClient` itself (a test double, another transport): it has the two
+  methods above to implement. Callers are unaffected.
+
 ## [0.11.0] - 2026-10-23
 
 ### Added

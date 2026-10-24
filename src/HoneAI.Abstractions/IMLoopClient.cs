@@ -18,6 +18,20 @@ public interface IMLoopClient
     Task<ITracedPrediction<MLoopPredictionResult>> PredictAsync(MLoopPredictionRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Classify images by their contents against an image-classification model — one traced prediction per image, in
+    /// the order sent, each with <see cref="JudgeKind.Ml"/> provenance and MLoop's confidence. The images travel in the
+    /// request, so the MLoop server can be on another machine.
+    /// </summary>
+    Task<IReadOnlyList<ITracedPrediction<MLoopPredictionResult>>> PredictImagesAsync(MLoopImagePredictionRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Turn images into vectors with an encoder installed on the MLoop server — the input of a nearest-neighbour
+    /// judge over confirmed cases. The result names the encoder (<see cref="MLoopEncoder"/>): vectors are comparable only
+    /// within one encoder's space.
+    /// </summary>
+    Task<MLoopEmbedding> EmbedAsync(MLoopEmbeddingRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Run a horizon-based forecast against a promoted forecasting model (MLoop 0.20+
     /// <c>POST /predict</c> forecasting contract). The result is wrapped in
     /// <see cref="ITracedPrediction{T}"/> with <see cref="JudgeKind.Ml"/> provenance.

@@ -7,6 +7,37 @@ public sealed record MLoopPredictionRequest(
     IReadOnlyDictionary<string, object?> Features,
     string? Model = null);
 
+/// <summary>
+/// Request to classify images against an MLoop image-classification model, sending the images themselves — their
+/// encoded bytes (JPEG, PNG, …) — so the caller and the MLoop server need not share a disk (MLoop 0.45+ <c>POST /predict</c>).
+/// </summary>
+/// <param name="Images">The images, at most 64 in one request; answered in the order given.</param>
+/// <param name="Model">Target model name; <see langword="null"/> uses MLoop's default model.</param>
+public sealed record MLoopImagePredictionRequest(
+    IReadOnlyList<ReadOnlyMemory<byte>> Images,
+    string? Model = null);
+
+/// <summary>Request to turn images into vectors with an encoder installed on the MLoop server (MLoop 0.44+ <c>POST /embed</c>).</summary>
+/// <param name="Images">The images' encoded bytes, at most 64 in one request; answered in the order given.</param>
+/// <param name="Encoder">The installed encoder's id; <see langword="null"/> when the server has exactly one.</param>
+public sealed record MLoopEmbeddingRequest(
+    IReadOnlyList<ReadOnlyMemory<byte>> Images,
+    string? Encoder = null);
+
+/// <summary>
+/// Which encoder made a set of vectors — what a caller keeps beside them and compares before mixing vectors from two
+/// calls: vectors from encoders of different <see cref="Id"/> or <see cref="Sha256"/> are not in one space.
+/// </summary>
+/// <param name="Id">The encoder's id.</param>
+/// <param name="Version">Its definition's version.</param>
+/// <param name="Sha256">Its weights' SHA-256; with <paramref name="Id"/>, the identity of the vector space.</param>
+/// <param name="Dimension">The length of each vector.</param>
+/// <param name="Normalized">Whether the vectors are L2-normalized — cosine similarity is then their dot product.</param>
+public sealed record MLoopEncoder(string Id, string Version, string? Sha256, int Dimension, bool Normalized);
+
+/// <summary>Vectors with the encoder that made them, one per image in the order sent.</summary>
+public sealed record MLoopEmbedding(MLoopEncoder Encoder, IReadOnlyList<float[]> Vectors);
+
 /// <summary>Outcome of an MLoop prediction — predicted output columns keyed by name.</summary>
 /// <param name="Outputs">Predicted column name → value (label, score, probability, …).</param>
 /// <param name="PredictionId">

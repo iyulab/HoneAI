@@ -64,6 +64,87 @@ public class HttpMLoopClientTests
     }
 
     [Fact]
+    public async Task PredictImages_SendsTheImagesThemselves_AndTracesEachAnswerInOrder()
+    {
+        // MLoop 0.45 POST /predict for an image-classification model: {"images": [base64, …]} → one row per image.
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            {
+              "modelName": "parts",
+              "task": "image-classification",
+              "predictions": [
+                { "predictedLabel": "scratch", "probabilities": { "ok": 0.1, "scratch": 0.9 }, "confidence": 0.9, "predictionId": "a1" },
+                { "predictedLabel": "ok", "probabilities": { "ok": 0.7, "scratch": 0.3 }, "confidence": 0.7, "predictionId": "a2" }
+              ]
+            }
+            """));
+        byte[] first = [0x89, 0x50, 0x4E, 0x47], second = [0xFF, 0xD8, 0xFF];
+
+        var answers = await Client(handler).PredictImagesAsync(new MLoopImagePredictionRequest([first, second], Model: "parts"));
+
+        Assert.Equal(2, answers.Count);
+        Assert.Equal("scratch", answers[0].Value.Outputs["predictedLabel"]);
+        Assert.Equal(0.9, answers[0].Provenance.Confidence!.Value, precision: 6);
+        Assert.Equal("a2", answers[1].Value.PredictionId);
+        Assert.Equal("mloop:image-classification", answers[1].Provenance.Rationale);
+        Assert.All(answers, a => Assert.Equal(JudgeKind.Ml, a.Provenance.Kind));
+        Assert.Contains("predict?name=parts", handler.LastUri);
+        Assert.Contains($"\"images\":[\"{Convert.ToBase64String(first)}\",\"{Convert.ToBase64String(second)}\"]", handler.LastBody);
+    }
+
+    [Fact]
+    public async Task PredictImages_RefusesAnAnswerThatDoesNotCoverEveryImage()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """{ "predictions": [ { "predictedLabel": "ok" } ] }"""));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Client(handler).PredictImagesAsync(new MLoopImagePredictionRequest([new byte[] { 1 }, new byte[] { 2 }])));
+    }
+
+    [Fact]
+    public async Task PredictImages_ASkippedImage_IsMLoopsRefusalWithItsIndex()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.BadRequest, """{ "error": "Image 1 could not be decoded", "index": 1 }"""));
+
+        var refusal = await Assert.ThrowsAsync<MLoopClientException>(() =>
+            Client(handler).PredictImagesAsync(new MLoopImagePredictionRequest([new byte[] { 1 }, new byte[] { 2 }])));
+        Assert.Equal(HttpStatusCode.BadRequest, refusal.StatusCode);
+        Assert.Contains("\"index\": 1", refusal.Message);
+    }
+
+    [Fact]
+    public async Task Embed_ReturnsTheVectorsWithTheEncoderThatMadeThem()
+    {
+        // MLoop 0.44+ POST /embed?encoder=<id> → {encoder{id,version,sha256,dimension,normalized}, vectors}.
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            {
+              "encoder": { "id": "dinov2-small", "version": "1", "sha256": "f22797ea", "dimension": 3, "normalized": true },
+              "vectors": [ [0.6, 0.8, 0.0], [0.0, 0.0, 1.0] ]
+            }
+            """));
+
+        var embedding = await Client(handler).EmbedAsync(new MLoopEmbeddingRequest([new byte[] { 1 }, new byte[] { 2 }], Encoder: "dinov2-small"));
+
+        Assert.Equal(new MLoopEncoder("dinov2-small", "1", "f22797ea", 3, true), embedding.Encoder);
+        Assert.Equal([0.6f, 0.8f, 0f], embedding.Vectors[0]);
+        Assert.Equal([0f, 0f, 1f], embedding.Vectors[1]);
+        Assert.Contains("embed?encoder=dinov2-small", handler.LastUri);
+        Assert.Contains("\"images\":[\"AQ==\",\"Ag==\"]", handler.LastBody);
+    }
+
+    [Fact]
+    public async Task Embed_WithoutAnEncoder_LeavesTheChoiceToTheServer()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "encoder": { "id": "e", "version": "1", "sha256": null, "dimension": 1, "normalized": true }, "vectors": [ [1.0] ] }
+            """));
+
+        var embedding = await Client(handler).EmbedAsync(new MLoopEmbeddingRequest([new byte[] { 1 }]));
+
+        Assert.EndsWith("embed", handler.LastUri);
+        Assert.Null(embedding.Encoder.Sha256);
+    }
+
+    [Fact]
     public async Task RecordFeedback_PostsTheValueSourceAndWeight()
     {
         var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """{ "recorded": true }"""));

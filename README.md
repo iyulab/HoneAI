@@ -170,8 +170,19 @@ and promotion. Other engines — a memory's settlement — implement the sink th
 
 [`MLoop`](https://github.com/iyulab/MLoop) is an open-source AutoML CLI/server
 for ML.NET. `HttpMLoopClient` implements `IMLoopClient` over its REST API
-(`/predict`, `/train`, `/jobs/{id}`, `/promote`, `/info`, `/drift`, `/feedback`), returning
+(`/predict`, `/embed`, `/train`, `/jobs/{id}`, `/promote`, `/info`, `/drift`, `/feedback`), returning
 predictions already stamped with `JudgeKind.Ml` provenance — wrap it in a judge to make it a tier.
+
+Images travel by their contents, so the MLoop server can be on another machine: `PredictImagesAsync`
+classifies them with an image-classification model (one traced prediction per image, in order), and
+`EmbedAsync` turns them into vectors with an encoder installed on the server — the input of a
+nearest-neighbour judge over confirmed cases. The embedding names its encoder; keep it beside the vectors
+and do not mix vectors of two encoders.
+
+```csharp
+var embedding = await mloop.EmbedAsync(new MLoopEmbeddingRequest([imageBytes], Encoder: "dinov2-small"));
+var key = (embedding.Encoder.Id, embedding.Encoder.Sha256);   // the space these vectors live in
+```
 
 ### Audit trail (`IProvenanceSink`)
 
