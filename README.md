@@ -286,6 +286,11 @@ from active or stable to shadow — is put back with `lifecycle.RollBackAsync(ru
 back exactly what the run's promotion replaced (`LifecycleRun.ReplacedExperimentId`), and only while the run's model
 is still the one in production — a later promotion is not undone in its name.
 
+When to retrain is read from the same measurements (`RetrainPolicy.Decide`): enough new learning labels — counted
+by their effective sample (`RetrainSignals.EffectiveSample`), so a few heavily weighted ones do not pass for many — or
+a stale or demoted model with anything new to learn; never two runs at once, never closer than a minimum interval.
+HoneAI answers; starting the run is yours.
+
 ### Agent roles
 
 `AgentRole` names the seats an agent can occupy when reasoning about a

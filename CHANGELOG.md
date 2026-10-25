@@ -59,6 +59,9 @@ All notable changes to HoneAI are documented here. The format follows
   ledger demands it — the same version tightened from active or stable to shadow. `LifecycleRun.TrainedAt`,
   `PromotionCandidate.TrainedAt`, `MLoopModelInfo.ExperimentId` (read from `GET /info`). **Breaking for implementers**
   of `IModelLifecycle`.
+- `RetrainPolicy.Decide(RetrainSignals, now)`: whether to start a retraining run — enough new learning labels
+  (`MinimumNewLabels`, by Kish's effective sample `RetrainSignals.EffectiveSample`), or a stale or demoted model with
+  any new label; never with a run in flight, never within `MinimumInterval` of the last one — with the reason.
 
 ### Changed
 - **Breaking**: the trust lifecycle's transition record `HoneAI.Trust.LifecycleStep` is renamed `StandingChange` —
