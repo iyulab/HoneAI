@@ -102,13 +102,7 @@ public sealed class HttpMLoopClient : IMLoopClient
             || !TryGetProperty(root, "vectors", out var v) || v.ValueKind != JsonValueKind.Array)
             throw new InvalidOperationException("MLoop /embed response carried no encoder or vectors.");
 
-        var encoder = new MLoopEncoder(
-            String(e, "id") ?? throw new InvalidOperationException("MLoop /embed response named no encoder id."),
-            String(e, "version") ?? string.Empty,
-            String(e, "sha256"),
-            NumberOf(e, "dimension") is { } d ? (int)d : 0,
-            TryGetProperty(e, "normalized", out var n) && n.ValueKind == JsonValueKind.True,
-            String(e, "preprocessor"));
+        var encoder = EncoderOf(e);
         var vectors = Vectors(v);
         if (vectors.Count != request.Images.Count)
             throw new InvalidOperationException($"MLoop /embed answered {vectors.Count} vectors for {request.Images.Count} images.");
@@ -136,6 +130,37 @@ public sealed class HttpMLoopClient : IMLoopClient
             throw new InvalidOperationException($"MLoop /embed answered patches for {patches.Count} of {request.Images.Count} images.");
         return new MLoopEmbedding(encoder, vectors, grid, patches);
     }
+
+    public async Task<MLoopEmbedding> EmbedTextsAsync(MLoopTextEmbeddingRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Texts);
+
+        var uri = "embed" + (string.IsNullOrWhiteSpace(request.Encoder) ? string.Empty : "?encoder=" + Uri.EscapeDataString(request.Encoder));
+        using var response = await _http.PostAsJsonAsync(uri, new Dictionary<string, IReadOnlyList<string>> { ["texts"] = request.Texts }, JsonOptions, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccess(response, "embed", cancellationToken).ConfigureAwait(false);
+
+        using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        var root = doc.RootElement;
+        if (!TryGetProperty(root, "encoder", out var e) || e.ValueKind != JsonValueKind.Object
+            || !TryGetProperty(root, "vectors", out var v) || v.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("MLoop /embed response carried no encoder or vectors.");
+        var vectors = Vectors(v);
+        if (vectors.Count != request.Texts.Count)
+            throw new InvalidOperationException($"MLoop /embed answered {vectors.Count} vectors for {request.Texts.Count} texts.");
+        return new MLoopEmbedding(EncoderOf(e), vectors, Truncated: NumberOf(root, "truncated") is { } t ? (int)t : null);
+    }
+
+    // The encoder an /embed answer names — the identity of its vectors' space.
+    private static MLoopEncoder EncoderOf(JsonElement e) => new(
+        String(e, "id") ?? throw new InvalidOperationException("MLoop /embed response named no encoder id."),
+        String(e, "version") ?? string.Empty,
+        String(e, "sha256"),
+        NumberOf(e, "dimension") is { } d ? (int)d : 0,
+        TryGetProperty(e, "normalized", out var n) && n.ValueKind == JsonValueKind.True,
+        String(e, "preprocessor"),
+        String(e, "kind"),
+        String(e, "tokenizerSha256"));
 
     private static List<float[]> Vectors(JsonElement array) =>
         [.. array.EnumerateArray().Select(vector => vector.EnumerateArray().Select(x => x.GetSingle()).ToArray())];

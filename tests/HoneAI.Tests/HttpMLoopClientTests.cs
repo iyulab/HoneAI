@@ -155,6 +155,40 @@ public class HttpMLoopClientTests
     }
 
     [Fact]
+    public async Task EmbedTexts_SendsTheTexts_AndReadsTheTextEncodersIdentityAndTheTruncatedCount()
+    {
+        // MLoop 0.46+ POST /embed?encoder=<id> with {"texts": […]} → {encoder{…, kind, tokenizerSha256}, vectors, truncated}.
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            {
+              "encoder": { "id": "multilingual-minilm", "version": "1", "sha256": "10f7a088", "dimension": 2, "normalized": true,
+                           "preprocessor": "xlm-roberta/1", "kind": "text", "tokenizerSha256": "cfc8146a" },
+              "vectors": [ [0.6, 0.8], [1.0, 0.0] ],
+              "truncated": 1
+            }
+            """));
+
+        var embedding = await Client(handler).EmbedTextsAsync(new MLoopTextEmbeddingRequest(["배송이 빨라요", "long text"], Encoder: "multilingual-minilm"));
+
+        Assert.Equal(new MLoopEncoder("multilingual-minilm", "1", "10f7a088", 2, true, "xlm-roberta/1", "text", "cfc8146a"), embedding.Encoder);
+        Assert.Equal([0.6f, 0.8f], embedding.Vectors[0]);
+        Assert.Equal(1, embedding.Truncated);
+        Assert.Contains("embed?encoder=multilingual-minilm", handler.LastUri);
+        Assert.Contains("\"texts\":[", handler.LastBody);
+        Assert.DoesNotContain("images", handler.LastBody);
+    }
+
+    [Fact]
+    public async Task EmbedTexts_AnsweredWithAnotherCount_IsAnError()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "encoder": { "id": "e", "version": "1", "dimension": 1, "normalized": true, "kind": "text" }, "vectors": [ [1.0] ] }
+            """));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Client(handler).EmbedTextsAsync(new MLoopTextEmbeddingRequest(["a", "b"])));
+    }
+
+    [Fact]
     public async Task Embed_WithoutAnEncoder_LeavesTheChoiceToTheServer()
     {
         var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """

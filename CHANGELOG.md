@@ -7,6 +7,11 @@ All notable changes to HoneAI are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `IMLoopClient.EmbedTextsAsync(MLoopTextEmbeddingRequest)`: texts to sentence vectors with a text encoder installed on
+  the MLoop server (MLoop 0.46+ `POST /embed` with `{"texts": […]}`) — for comparing texts by meaning, in Korean and
+  other languages. `MLoopEncoder` gains `Kind` (`image` / `text`) and `TokenizerSha256` (a text encoder's tokenizer,
+  part of the space's identity); `MLoopEmbedding` gains `Truncated` (texts longer than the encoder reads).
+  **Breaking for implementers**: a class implementing `IMLoopClient` itself (a test double) adds the method.
 - `MLoopEmbeddingRequest.Patches`: `EmbedAsync` also returns each image's patch vectors (MLoop 0.46+
   `POST /embed?patches=true`) — `MLoopEmbedding.Grid` (`MLoopPatchGrid`) and `Patches` (`MLoopImagePatches`: the crop
   the grid covers in the image's own pixels, and one vector per patch, row by row). For a local difference one vector

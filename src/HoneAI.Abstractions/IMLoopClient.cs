@@ -32,6 +32,13 @@ public interface IMLoopClient
     Task<MLoopEmbedding> EmbedAsync(MLoopEmbeddingRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Turn texts into sentence vectors with a text encoder installed on the MLoop server (MLoop 0.46+) — for a judge
+    /// that compares texts by meaning, in Korean and other languages a word-level model cannot read. The result names the
+    /// encoder, its tokenizer included: vectors are comparable only within one encoder's space.
+    /// </summary>
+    Task<MLoopEmbedding> EmbedTextsAsync(MLoopTextEmbeddingRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Run a horizon-based forecast against a promoted forecasting model (MLoop 0.20+
     /// <c>POST /predict</c> forecasting contract). The result is wrapped in
     /// <see cref="ITracedPrediction{T}"/> with <see cref="JudgeKind.Ml"/> provenance.

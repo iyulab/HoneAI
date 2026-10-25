@@ -30,6 +30,15 @@ public sealed record MLoopEmbeddingRequest(
     bool Patches = false);
 
 /// <summary>
+/// Request to turn texts into vectors with a text encoder installed on the MLoop server (MLoop 0.46+ <c>POST /embed</c>
+/// with <c>{"texts": […]}</c>) — sentence vectors of Korean and some fifty other languages with
+/// <c>multilingual-minilm</c>, whose cosine says how close two texts are in meaning.
+/// </summary>
+/// <param name="Texts">The texts, at most 256 in one request; answered in the order given.</param>
+/// <param name="Encoder">The installed text encoder's id; <see langword="null"/> when the server has exactly one.</param>
+public sealed record MLoopTextEmbeddingRequest(IReadOnlyList<string> Texts, string? Encoder = null);
+
+/// <summary>
 /// Which encoder made a set of vectors — what a caller keeps beside them and compares before mixing vectors from two
 /// calls: vectors that differ in <see cref="Id"/>, <see cref="Sha256"/> or <see cref="Preprocessor"/> are not in one space.
 /// </summary>
@@ -40,9 +49,17 @@ public sealed record MLoopEmbeddingRequest(
 /// <param name="Normalized">Whether the vectors are L2-normalized — cosine similarity is then their dot product.</param>
 /// <param name="Preprocessor">
 /// The revision of how MLoop turned the images into the encoder's input (<c>pillow/2</c>): the same weights give other
-/// vectors when it changes. <see langword="null"/> from a server before MLoop 0.46, which does not report it.
+/// vectors when it changes. <see langword="null"/> from a server before MLoop 0.46, which does not report it. For a text
+/// encoder, how text became token ids (<c>xlm-roberta/1</c>).
 /// </param>
-public sealed record MLoopEncoder(string Id, string Version, string? Sha256, int Dimension, bool Normalized, string? Preprocessor = null);
+/// <param name="Kind">What the encoder reads — <c>image</c> or <c>text</c>; <see langword="null"/> from a server before MLoop 0.46.</param>
+/// <param name="TokenizerSha256">
+/// A text encoder's tokenizer model's SHA-256 — other pieces are other vectors, so it belongs to the space's identity as
+/// <see cref="Sha256"/> does. <see langword="null"/> for an image encoder.
+/// </param>
+public sealed record MLoopEncoder(
+    string Id, string Version, string? Sha256, int Dimension, bool Normalized, string? Preprocessor = null,
+    string? Kind = null, string? TokenizerSha256 = null);
 
 /// <summary>How an encoder's patches tile the square crop it read: <see cref="Rows"/> × <see cref="Columns"/> patches of <see cref="PatchSize"/> pixels, row by row.</summary>
 public sealed record MLoopPatchGrid(int Rows, int Columns, int PatchSize, int CropSize);
@@ -59,14 +76,16 @@ public sealed record MLoopImageRegion(double X0, double Y0, double X1, double Y1
 public sealed record MLoopImagePatches(MLoopImageRegion Crop, IReadOnlyList<float[]> Vectors);
 
 /// <summary>
-/// Vectors with the encoder that made them, one per image in the order sent — and, when patches were asked for, the
-/// grid and each image's patch vectors (same order).
+/// Vectors with the encoder that made them, one per image (or text) in the order sent — and, when patches were asked
+/// for, the grid and each image's patch vectors (same order). Of texts, <see cref="Truncated"/>: how many were longer
+/// than the encoder reads, their vectors being of their beginning.
 /// </summary>
 public sealed record MLoopEmbedding(
     MLoopEncoder Encoder,
     IReadOnlyList<float[]> Vectors,
     MLoopPatchGrid? Grid = null,
-    IReadOnlyList<MLoopImagePatches>? Patches = null);
+    IReadOnlyList<MLoopImagePatches>? Patches = null,
+    int? Truncated = null);
 
 /// <summary>
 /// The model that answered (MLoop's <c>experimentId</c> and <c>modelSha256</c>). The experiment id names it inside one

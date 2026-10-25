@@ -188,6 +188,15 @@ var local = await mloop.EmbedAsync(new MLoopEmbeddingRequest([imageBytes], Patch
 // local.Grid: 16 × 16 patches; local.Patches[0].Crop: the region they tile, in the image's pixels
 ```
 
+`EmbedTextsAsync` does the same for texts with a text encoder (MLoop 0.46+, e.g. `multilingual-minilm` — Korean and
+some fifty other languages): sentence vectors whose cosine says how close two texts are in meaning. A text encoder's
+identity includes its tokenizer (`Encoder.TokenizerSha256`), and `Truncated` counts the texts longer than it reads.
+
+```csharp
+var sentences = await mloop.EmbedTextsAsync(new MLoopTextEmbeddingRequest(["배송이 빨라서 좋았어요", "The delivery was fast"]));
+var space = (sentences.Encoder.Id, sentences.Encoder.Sha256, sentences.Encoder.TokenizerSha256, sentences.Encoder.Preprocessor);
+```
+
 ### Audit trail (`IProvenanceSink`)
 
 `JsonlProvenanceSink` appends every provenance stamp to a JSONL file — an

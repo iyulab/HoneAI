@@ -305,6 +305,7 @@ public class LabelConfirmationTests
         public Task<ITracedPrediction<MLoopForecastResult>> ForecastAsync(MLoopForecastRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<ITracedPrediction<MLoopPredictionResult>>> PredictImagesAsync(MLoopImagePredictionRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<MLoopEmbedding> EmbedAsync(MLoopEmbeddingRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<MLoopEmbedding> EmbedTextsAsync(MLoopTextEmbeddingRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<MLoopJob> TrainAsync(MLoopTrainRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<MLoopJob?> GetJobAsync(string jobId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task PromoteAsync(string model, string experimentId, CancellationToken ct = default) => throw new NotSupportedException();
