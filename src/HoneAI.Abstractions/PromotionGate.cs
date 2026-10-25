@@ -28,6 +28,9 @@ public sealed record PromotionCandidate(string RunId, string Model, string Exper
     /// <summary>MLoop's warnings about it.</summary>
     public IReadOnlyList<string>? Warnings { get; init; }
 
+    /// <summary>When its training completed.</summary>
+    public DateTimeOffset? TrainedAt { get; init; }
+
     /// <summary>What it learned from, when the run was given it (<see cref="LifecycleRequest.TrainingSet"/>).</summary>
     public TrainingSetManifest? TrainingSet { get; init; }
 }

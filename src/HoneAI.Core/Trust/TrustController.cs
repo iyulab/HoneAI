@@ -49,7 +49,7 @@ public sealed record ControllerPolicy(LifecyclePolicy Lifecycle, IssuePolicy Iss
 /// <param name="Committed">The standing the snapshot was issued with.</param>
 /// <param name="Need">The recheck probability the promise needs here.</param>
 /// <param name="Grant">The pool's grant, for a stable tier.</param>
-public sealed record SliceOutcome(string TierId, string SliceKey, LifecycleStep Step, SliceStanding Committed, RecheckRateChoice Need, BudgetGrant? Grant);
+public sealed record SliceOutcome(string TierId, string SliceKey, StandingChange Step, SliceStanding Committed, RecheckRateChoice Need, BudgetGrant? Grant);
 
 /// <summary>A window's close: the snapshot to send to sites, what each slice got and why, and each pool's sharing.</summary>
 public sealed record ControllerStep(PolicySnapshot Snapshot, IReadOnlyList<SliceOutcome> Slices, IReadOnlyDictionary<string, BudgetAllocation> Pools)
@@ -67,7 +67,7 @@ public sealed record ControllerStep(PolicySnapshot Snapshot, IReadOnlyList<Slice
 /// <remarks>
 /// <para>
 /// A release that awaits approval keeps the old standing in the snapshot; once approved, the caller
-/// commits <see cref="LifecycleStep.Standing"/> and issues again. Tightening is committed at once.
+/// commits <see cref="StandingChange.Standing"/> and issues again. Tightening is committed at once.
 /// </para>
 /// <para>
 /// Active tiers draw at the active rate, and those rechecks come out of their pool first; stable

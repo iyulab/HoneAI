@@ -269,6 +269,65 @@ public class ModelLifecycleTests : IDisposable
         Assert.Equal("rejected", refused.Steps[^1].Status);
     }
 
+    [Fact]
+    public async Task RollBack_PutsBackWhatThePromotionReplaced_OnlyWhileTheRunsModelIsStillInProduction()
+    {
+        var mloop = new FakeMLoop { CompletedExperimentId = "exp-9", ProductionExperimentId = "exp-2" };
+        var reviews = new InMemoryReviewStore();
+        var lifecycle = Lifecycle(mloop, reviews);
+        await lifecycle.StartAsync(new LifecycleRequest(Train, ReviewId: "rev-1"));
+        await reviews.DecideAsync("rev-1", new ReviewDecision("approve"));
+        var promoted = await lifecycle.ResumeAsync("run-1");
+        Assert.Equal("exp-2", promoted!.ReplacedExperimentId);
+        Assert.NotNull(promoted.TrainedAt);
+
+        var run = await lifecycle.RollBackAsync("run-1", "demoted: must-catch miss rate shown above 2%");
+
+        Assert.Equal("rolled_back", run!.Status);
+        Assert.True(run.IsSettled);
+        Assert.Equal(("weld", (string?)"exp-2"), Assert.Single(mloop.RolledBack));
+        var step = run.Steps[^1];
+        Assert.Equal((LifecycleStage.Rollback, "completed"), (step.Stage, step.Status));
+        Assert.Contains("exp-9 → exp-2", step.Detail);
+
+        Assert.Same(run.Status, (await lifecycle.RollBackAsync("run-1", "again"))!.Status);   // once
+        Assert.Single(mloop.RolledBack);
+    }
+
+    [Fact]
+    public async Task RollBack_LeavesALaterPromotion_TheFirstModel_AndAnUnpromotedRunAlone()
+    {
+        // Production moved on after this run promoted: its rollback must not undo someone else's change.
+        var moved = new FakeMLoop { CompletedExperimentId = "exp-9", ProductionExperimentId = "exp-2" };
+        var reviews = new InMemoryReviewStore();
+        var lifecycle = Lifecycle(moved, reviews);
+        await lifecycle.StartAsync(new LifecycleRequest(Train, ReviewId: "rev-1"));
+        await reviews.DecideAsync("rev-1", new ReviewDecision("approve"));
+        await lifecycle.ResumeAsync("run-1");
+        moved.ProductionExperimentId = "exp-11";
+        var run = await lifecycle.RollBackAsync("run-1", "vetoed");
+        Assert.Equal("completed", run!.Status);
+        Assert.Empty(moved.RolledBack);
+        Assert.Contains("production is now exp-11", run.Steps[^1].Detail);
+
+        var first = new FakeMLoop { CompletedExperimentId = "exp-1" };
+        var firstReviews = new InMemoryReviewStore();
+        var firstLifecycle = Lifecycle(first, firstReviews);
+        await firstLifecycle.StartAsync(new LifecycleRequest(Train, ReviewId: "rev-1"));
+        await firstReviews.DecideAsync("rev-1", new ReviewDecision("approve"));
+        await firstLifecycle.ResumeAsync("run-1");
+        Assert.Contains("first model", (await firstLifecycle.RollBackAsync("run-1", "vetoed"))!.Steps[^1].Detail);
+        Assert.Empty(first.RolledBack);
+
+        var waiting = new FakeMLoop { CompletedExperimentId = "exp-9" };
+        var waitingLifecycle = Lifecycle(waiting, new InMemoryReviewStore());
+        await waitingLifecycle.StartAsync(new LifecycleRequest(Train));
+        var unpromoted = await waitingLifecycle.RollBackAsync("run-1", "vetoed");
+        Assert.Equal("waiting_review", unpromoted!.Status);
+        Assert.Contains("did not promote", unpromoted.Steps[^1].Detail);
+        Assert.Null(await waitingLifecycle.RollBackAsync("ghost", "vetoed"));
+    }
+
     // --- fakes ---
 
     private sealed class FakeMLoop : IMLoopClient
@@ -304,6 +363,7 @@ public class ModelLifecycleTests : IDisposable
         public Task PromoteAsync(string model, string experimentId, CancellationToken ct = default)
         {
             Promoted = (model, experimentId);
+            ProductionExperimentId = experimentId;
             return Task.CompletedTask;
         }
 
@@ -313,7 +373,7 @@ public class ModelLifecycleTests : IDisposable
         public string? ProductionExperimentId { get; set; }
 
         public Task<MLoopModelInfo?> GetInfoAsync(string? model = null, CancellationToken ct = default)
-            => Task.FromResult(ProductionExperimentId is null ? null : new MLoopModelInfo(model ?? "default", "binary"));
+            => Task.FromResult(ProductionExperimentId is null ? null : new MLoopModelInfo(model ?? "default", "binary", ExperimentId: ProductionExperimentId));
 
         public Dictionary<string, MLoopEvaluation> Evaluations { get; } = new();
         public List<MLoopEvaluationRequest> EvaluationsAsked { get; } = new();
@@ -331,7 +391,9 @@ public class ModelLifecycleTests : IDisposable
         public Task<MLoopRollback> RollbackAsync(string model, string? to = null, CancellationToken ct = default)
         {
             RolledBack.Add((model, to));
-            return Task.FromResult(new MLoopRollback(to ?? "exp-prev", ProductionExperimentId));
+            var previous = ProductionExperimentId;
+            ProductionExperimentId = to ?? "exp-prev";
+            return Task.FromResult(new MLoopRollback(ProductionExperimentId, previous));
         }
 
         public Task<MLoopDrift> GetDriftAsync(MLoopDriftRequest request, CancellationToken ct = default)

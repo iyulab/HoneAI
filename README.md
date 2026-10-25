@@ -137,7 +137,7 @@ A tier earns the right to settle a slice from rechecks, not from its own confide
    each entry saying what set its rate.
 
 `TrustController.Close` runs 2–5 in that order for every tier and slice. Releases wait for a person
-(`LifecycleStep.AwaitsApproval`) unless `LifecyclePolicy.AutoRelease` is on; tightening never waits.
+(`StandingChange.AwaitsApproval`) unless `LifecyclePolicy.AutoRelease` is on; tightening never waits.
 Every number a promise is made of — targets, margins, deadlines, budgets — is yours to set.
 
 ### Learning from what was confirmed (`HoneAI.Learning`)
@@ -273,6 +273,18 @@ var gate = new EvidencePromotionGate(mloop, new EvidenceCriteria
 });
 var run = await new ModelLifecycle(mloop, gate, runs).StartAsync(new LifecycleRequest(training));  // → completed
 ```
+
+`ShadowPromotionGate` lets the candidate earn its standing instead: it runs as a shadow version of the learning tier
+(MLoop `POST /predict?experiment=`), its answers rechecked like any tier's, and is promoted once the trust lifecycle
+has released it in every slice you watch it in — refused if it has not within the time you give it. It reads the
+standings you keep; while `LifecyclePolicy.AutoRelease` is off, each release out of shadow waits for a person's
+approval on the ledger's numbers, so the gate promotes only what was let out.
+
+A promoted version that the ledger then demotes — `RollbackRule.Demands(before, change)`: the same version fallen
+from active or stable to shadow — is put back with `lifecycle.RollBackAsync(runId, reason)`, which needs no approval
+(tightening never does). The same call is the after-the-fact veto of a person reviewing a promoted model. It puts
+back exactly what the run's promotion replaced (`LifecycleRun.ReplacedExperimentId`), and only while the run's model
+is still the one in production — a later promotion is not undone in its name.
 
 ### Agent roles
 

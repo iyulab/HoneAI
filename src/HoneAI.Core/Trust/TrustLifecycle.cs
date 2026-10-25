@@ -71,7 +71,7 @@ public sealed record SliceStanding(TrustState State, DateTimeOffset Since, strin
 /// that may not take effect until a person approves it — <see cref="Standing"/> is then the standing
 /// it would become.
 /// </summary>
-public sealed record LifecycleStep(TrustState From, TrustState To, string Reason, bool AwaitsApproval, SliceStanding Standing)
+public sealed record StandingChange(TrustState From, TrustState To, string Reason, bool AwaitsApproval, SliceStanding Standing)
 {
     /// <summary>The state moved.</summary>
     public bool Moved => From != To;
@@ -118,7 +118,7 @@ public static class TrustLifecycle
     /// <param name="signals">The tier's live signals.</param>
     /// <param name="policy">The rules.</param>
     /// <param name="now">The window's end.</param>
-    public static LifecycleStep Release(
+    public static StandingChange Release(
         SliceStanding standing, LedgerCell window, bool teacherQualified, LiveSignals signals, LifecyclePolicy policy, DateTimeOffset now)
     {
         var tightened = Tighten(standing, window, signals, policy, now);
@@ -142,7 +142,7 @@ public static class TrustLifecycle
     }
 
     /// <summary>Judges a running cell for tightening. Never waits for approval.</summary>
-    public static LifecycleStep Tighten(SliceStanding standing, LedgerCell running, LiveSignals signals, LifecyclePolicy policy, DateTimeOffset now)
+    public static StandingChange Tighten(SliceStanding standing, LedgerCell running, LiveSignals signals, LifecyclePolicy policy, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(standing);
         ArgumentNullException.ThrowIfNull(running);
@@ -204,12 +204,33 @@ public static class TrustLifecycle
         return null;
     }
 
-    private static LifecycleStep Stay(SliceStanding standing, string reason) => new(standing.State, standing.State, reason, false, standing);
+    private static StandingChange Stay(SliceStanding standing, string reason) => new(standing.State, standing.State, reason, false, standing);
 
-    private static LifecycleStep Tightening(SliceStanding from, SliceStanding to, string reason) => new(from.State, to.State, reason, false, to);
+    private static StandingChange Tightening(SliceStanding from, SliceStanding to, string reason) => new(from.State, to.State, reason, false, to);
 
-    private static LifecycleStep Releasing(SliceStanding from, SliceStanding to, string reason, LifecyclePolicy policy)
+    private static StandingChange Releasing(SliceStanding from, SliceStanding to, string reason, LifecyclePolicy policy)
         => new(from.State, to.State, reason, !policy.AutoRelease, to);
+}
+
+/// <summary>When a promoted model is put back.</summary>
+public static class RollbackRule
+{
+    /// <summary>
+    /// Whether <paramref name="step"/>, judged from <paramref name="before"/>, demands putting production back to what
+    /// the version replaced: it tightened the same version from settling (active or stable) to shadow — the ledger
+    /// showed it missing must-catch values above the limit, or agreeing under the target's margin. A stable version
+    /// falling back to active is rechecked more, not rolled back; a new version starting in shadow is not a demotion.
+    /// </summary>
+    /// <param name="before">The standing the step was judged from.</param>
+    /// <param name="step">What <see cref="TrustLifecycle.Tighten"/> or <see cref="TrustLifecycle.Release"/> returned.</param>
+    public static bool Demands(SliceStanding before, StandingChange step)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(step);
+        return before.State != TrustState.Shadow
+            && step.To == TrustState.Shadow
+            && string.Equals(before.TierVersion, step.Standing.TierVersion, StringComparison.Ordinal);
+    }
 }
 
 /// <summary>Reads MLoop's drift of a model as the staleness signal of the tier it serves.</summary>

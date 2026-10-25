@@ -222,10 +222,12 @@ public sealed record MLoopJob(
 /// <param name="Model">Model name.</param>
 /// <param name="Task">ML task type, when known.</param>
 /// <param name="Metrics">Evaluation metrics by name (e.g. "auc", "f1", "rSquared); empty/null when none.</param>
+/// <param name="ExperimentId">The experiment in production; <see langword="null"/> from a server that does not say.</param>
 public sealed record MLoopModelInfo(
     string Model,
     string? Task = null,
-    IReadOnlyDictionary<string, double>? Metrics = null);
+    IReadOnlyDictionary<string, double>? Metrics = null,
+    string? ExperimentId = null);
 
 /// <summary>Request for how far a production model's recent inputs and answers have moved (MLoop <c>GET /drift</c>).</summary>
 /// <param name="Model">Target model name; <see langword="null"/> uses MLoop's default model.</param>

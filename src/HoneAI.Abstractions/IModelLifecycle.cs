@@ -26,6 +26,12 @@ public enum LifecycleStage
 
     /// <summary>Promote the model to production (<c>promote</c>).</summary>
     Promote = 6,
+
+    /// <summary>
+    /// Put production back to what the run's promotion replaced (<c>rollback</c>) — when the promoted version lost its
+    /// standing, or a person vetoed it after the fact (<see cref="IModelLifecycle.RollBackAsync"/>).
+    /// </summary>
+    Rollback = 7,
 }
 
 /// <summary>Outcome of one executed lifecycle stage — the audit trail entry for a run.</summary>
@@ -41,8 +47,8 @@ public sealed record LifecycleStep(LifecycleStage Stage, string Status, string? 
 /// </summary>
 /// <param name="RunId">Run identifier.</param>
 /// <param name="Status">
-/// Run-level status: <c>running</c> (a stage is under way), <c>waiting_review</c> (the review is open; the
-/// run continues when it is decided), <c>completed</c>, <c>failed</c>.
+/// Run-level status: <c>running</c> (a stage is under way), <c>waiting_review</c> (the gate has not decided; the
+/// run continues when it does), <c>completed</c>, <c>failed</c>, <c>rolled_back</c> (promoted, then put back).
 /// </param>
 /// <param name="Steps">Ordered trail of executed steps.</param>
 public sealed record LifecycleRun(string RunId, string Status, IReadOnlyList<LifecycleStep> Steps)
@@ -59,6 +65,12 @@ public sealed record LifecycleRun(string RunId, string Status, IReadOnlyList<Lif
     /// <summary>The experiment the training produced, once it completed.</summary>
     public string? ExperimentId { get; init; }
 
+    /// <summary>When training completed — a shadow's time to earn its standing is counted from here.</summary>
+    public DateTimeOffset? TrainedAt { get; init; }
+
+    /// <summary>The experiment in production that the run's promotion replaced; null for the first model, or before promotion.</summary>
+    public string? ReplacedExperimentId { get; init; }
+
     /// <summary>The experiment's metrics on MLoop's held-out rows, once training completed.</summary>
     public IReadOnlyDictionary<string, double>? Metrics { get; init; }
 
@@ -74,8 +86,8 @@ public sealed record LifecycleRun(string RunId, string Status, IReadOnlyList<Lif
     /// <summary>When the run was last saved.</summary>
     public DateTimeOffset? UpdatedAt { get; init; }
 
-    /// <summary>Whether the run has finished — <c>completed</c> or <c>failed</c>.</summary>
-    public bool IsSettled => Status is "completed" or "failed";
+    /// <summary>Whether the run has finished — <c>completed</c>, <c>failed</c> or <c>rolled_back</c>.</summary>
+    public bool IsSettled => Status is "completed" or "failed" or "rolled_back";
 }
 
 /// <summary>
@@ -133,4 +145,13 @@ public interface IModelLifecycle
 
     /// <summary>The current state + step trail of a run, or <see langword="null"/> when unknown.</summary>
     Task<LifecycleRun?> GetAsync(string runId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Puts production back to what the run's promotion replaced, recording <paramref name="reason"/> — the promoted
+    /// version was demoted (tightening needs no one's approval), or a person reviewing it after the fact rejected it.
+    /// Only while the run's experiment is still the one in production: a later promotion is not undone in its name.
+    /// A run that did not promote, or promoted the first model, is left as it is with the reason recorded.
+    /// <see langword="null"/> when no run is stored under the id.
+    /// </summary>
+    Task<LifecycleRun?> RollBackAsync(string runId, string reason, CancellationToken cancellationToken = default);
 }

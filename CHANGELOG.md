@@ -50,8 +50,21 @@ All notable changes to HoneAI are documented here. The format follows
 - `IMLoopClient.EvaluateAsync(MLoopEvaluationRequest)` (MLoop `POST /evaluate`: metrics, `MLoopConfusion` with
   `Recall(classes)`, and the paired comparison `against` another model) and `RollbackAsync(model, to)` (MLoop
   `POST /rollback`). **Breaking for implementers**, as `EmbedTextsAsync` above.
+- `ShadowPromotionGate`: the candidate runs as a shadow version of the learning tier and is promoted once the trust
+  lifecycle has released it in every slice it is watched in (from the standings the consumer keeps — with
+  `AutoRelease` off, each release waited for a person); refused when it has not within `maximumShadow` of training.
+- `IModelLifecycle.RollBackAsync(runId, reason)`: puts production back to exactly what the run's promotion replaced
+  (`LifecycleRun.ReplacedExperimentId`, read before promoting), only while the run's model is still in production;
+  the run becomes `rolled_back` (`LifecycleStage.Rollback`). `RollbackRule.Demands(before, change)` says when the
+  ledger demands it — the same version tightened from active or stable to shadow. `LifecycleRun.TrainedAt`,
+  `PromotionCandidate.TrainedAt`, `MLoopModelInfo.ExperimentId` (read from `GET /info`). **Breaking for implementers**
+  of `IModelLifecycle`.
 
 ### Changed
+- **Breaking**: the trust lifecycle's transition record `HoneAI.Trust.LifecycleStep` is renamed `StandingChange` —
+  it shared its name with the model lifecycle's `HoneAI.LifecycleStep`, so code using both namespaces could not name
+  either without qualifying it. Rename the type where you read `TrustLifecycle.Release` / `Tighten` results or
+  `SliceOutcome.Step`; nothing else changes.
 - `HoneAI.Agents` depends on `IronHive.Agent` 0.75.0 (was 0.71.0).
 
 ## [0.12.0] - 2026-10-24

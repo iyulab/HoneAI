@@ -432,7 +432,7 @@ public sealed class HttpMLoopClient : IMLoopClient
             ? tk.GetString()
             : null;
 
-        return new MLoopModelInfo(name, task, ParseMetrics(root));
+        return new MLoopModelInfo(name, task, ParseMetrics(root), String(root, "experimentId"));
     }
 
     /// <inheritdoc />
