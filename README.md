@@ -140,6 +140,18 @@ A tier earns the right to settle a slice from rechecks, not from its own confide
 (`StandingChange.AwaitsApproval`) unless `LifecyclePolicy.AutoRelease` is on; tightening never waits.
 Every number a promise is made of — targets, margins, deadlines, budgets — is yours to set.
 
+### A judge that comes when it comes (`RecheckPool`)
+
+`TieredRouter.RecheckAsync` calls the tier above there and then — right for a model. A person, or an expensive model
+run in spare time, judges when it can: put the drawn decisions in a pool (`IRecheckPoolStore` — in-memory and JSONL
+reference implementations; a `PoolItem` has room for the input reference and nothing a tier answered), show them with
+`RecheckPool.PresentAsync` — in an order fixed by a hash of the decision and the session, never by the item, each held
+for the reviewer for a while — and record each `PoolResponse` (answered, or seen and passed). When a window of decision
+time closes, `RecheckPool.AccountAsync` turns the reached items into rechecks for the ledger: since the order owes
+nothing to the item, the reached ones are a random thinning of the pooled ones, so each counts at π × r (r the share
+of its tier and slice reached) and the unreached are left out instead of counted as failures. A pass is a failure of
+the tier above, counted as an abstention is.
+
 ### Learning from what was confirmed (`HoneAI.Learning`)
 
 A cheap tier gets better by learning from answers the tiers above it confirmed — never its own.

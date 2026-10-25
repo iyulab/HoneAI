@@ -59,6 +59,12 @@ All notable changes to HoneAI are documented here. The format follows
   ledger demands it — the same version tightened from active or stable to shadow. `LifecycleRun.TrainedAt`,
   `PromotionCandidate.TrainedAt`, `MLoopModelInfo.ExperimentId` (read from `GET /info`). **Breaking for implementers**
   of `IModelLifecycle`.
+- A recheck pool for judges that come when they come (a person, an expensive model in spare time): `PoolItem` (no room
+  for any tier's answer), `IRecheckPoolStore` with `InMemoryRecheckPoolStore` / `JsonlRecheckPoolStore`,
+  `RecheckPool.PresentAsync` (an order hashed from the decision and the session, a hold per reviewer) and
+  `RecheckPool.AccountAsync` — a closed window's reached items as `RecheckRecord`s at π × r, r the reach of their tier
+  and slice (`PoolReach`); unreached and expired items are left out, a pass (`PoolResponseKind.Skipped`) counts as the
+  tier above failing.
 - `RetrainPolicy.Decide(RetrainSignals, now)`: whether to start a retraining run — enough new learning labels
   (`MinimumNewLabels`, by Kish's effective sample `RetrainSignals.EffectiveSample`), or a stale or demoted model with
   any new label; never with a run in flight, never within `MinimumInterval` of the last one — with the reason.
