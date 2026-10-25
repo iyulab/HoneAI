@@ -11,6 +11,8 @@ namespace HoneAI.Learning;
 /// confirmed it, and <see cref="ConfirmedLabel{TValue}.Weight"/>. MLoop builds the retraining dataset from
 /// feedback (<c>mloop sample create --model</c>), so a model retrains on what was confirmed above it, each row
 /// counted by its weight. <see cref="IModelLifecycle"/> runs that retraining as a consumer behind this sink.
+/// It trains, so it takes <see cref="LabelShare.Training"/> labels only — route held-out ones elsewhere
+/// (<see cref="LabelShareSink{TValue}"/>).
 /// </summary>
 /// <typeparam name="TValue">The decision's value type.</typeparam>
 public sealed class MLoopFeedbackSink<TValue> : IConfirmedLabelSink<TValue>
@@ -51,6 +53,10 @@ public sealed class MLoopFeedbackSink<TValue> : IConfirmedLabelSink<TValue>
     public Task SendAsync(ConfirmedLabel<TValue> label, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(label);
+        if (label.Share != LabelShare.Training)
+            throw new InvalidOperationException(
+                $"Decision '{label.DecisionId}' is held out for measuring the model ({label.Share}); feedback is what the "
+                + "model retrains on, so the label it would be measured against cannot go there.");
         if (label.Annotations?.GetValueOrDefault(PredictionIdAnnotation) is not { Length: > 0 } predictionId)
             throw new InvalidOperationException(
                 $"Decision '{label.DecisionId}' carries no '{PredictionIdAnnotation}' annotation — feedback is recorded "

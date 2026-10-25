@@ -7,6 +7,14 @@ All notable changes to HoneAI are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Held-out labels for measuring the learning tier: `LabelSplit` (a share of decisions, overall or per slice, under 1)
+  passed to `LabelConfirmation.Decide` / `Settle` sets `ConfirmedLabel.Share` (`LabelShare.Training` / `Evaluation`)
+  and `ShareProbability` q, fixed by a hash of the decision id — every label of a decision lands in the same share.
+  `Weight` is now trust / (π · q) (unchanged without a split: q = 1). `LabelShareSink<T>` routes each share to its
+  sink; `MLoopFeedbackSink<T>` refuses a held-out label, so a model is never trained on what it is measured against.
+- `LabelConfirmation.Supersedes(previous, next)`: whether a later label for a decision replaces the one already sent
+  — a consensus over any one judge, otherwise the more trusted (on a tie, measured over default trust, then the later).
+  MLoop counts the most recent feedback of a prediction, so a less trusted label sent later would win there.
 - `IMLoopClient.EmbedTextsAsync(MLoopTextEmbeddingRequest)`: texts to sentence vectors with a text encoder installed on
   the MLoop server (MLoop 0.46+ `POST /embed` with `{"texts": […]}`) — for comparing texts by meaning, in Korean and
   other languages. `MLoopEncoder` gains `Kind` (`image` / `text`) and `TokenizerSha256` (a text encoder's tokenizer,

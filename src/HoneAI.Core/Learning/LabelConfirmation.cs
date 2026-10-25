@@ -40,7 +40,9 @@ public sealed record LabelTrustDefaults
 /// Decides whether answers from above a learning tier make a label for it, and with what weight — the one
 /// place the rules of the learning loop live: only a tier above may confirm; a settled decision is a label
 /// only when it was drawn for recheck, at its draw's π; judges above that disagree on a must-catch value
-/// wait for consensus (<see cref="Settle{TValue}"/>); trust is the ledger's measurement, else the kind's default, said so.
+/// wait for consensus (<see cref="Settle{TValue}"/>); trust is the ledger's measurement, else the kind's default, said so;
+/// a share of decisions is held out for measuring the learner (<see cref="LabelSplit"/>); and a later label replaces an
+/// earlier one only when it is trusted more (<see cref="Supersedes{TValue}"/>).
 /// </summary>
 public static class LabelConfirmation
 {
@@ -63,6 +65,7 @@ public static class LabelConfirmation
     /// The references the sinks need, carried onto the label — for MLoop, the prediction id of the ML tier's
     /// answer under <see cref="MLoopFeedbackSink{TValue}.PredictionIdAnnotation"/>.
     /// </param>
+    /// <param name="split">Which decisions are held out for measuring the learner; <see cref="LabelSplit.None"/> when null.</param>
     public static Confirmation<TValue> Decide<TValue>(
         string decisionId,
         PredictionProvenance decision,
@@ -73,7 +76,8 @@ public static class LabelConfirmation
         Func<JudgeIdentity, TeacherCell?> teacherCell,
         DateTimeOffset confirmedAt,
         LabelTrustDefaults? defaults = null,
-        IReadOnlyDictionary<string, string>? annotations = null)
+        IReadOnlyDictionary<string, string>? annotations = null,
+        LabelSplit? split = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(decisionId);
         ArgumentNullException.ThrowIfNull(decision);
@@ -111,6 +115,7 @@ public static class LabelConfirmation
             .ThenByDescending(x => x.Tier.CostRank)
             .First();
 
+        var (share, shareProbability) = (split ?? LabelSplit.None).Assign(decisionId, decision.SliceKey);
         return new(ConfirmationOutcome.Confirmed, new ConfirmedLabel<TValue>
         {
             DecisionId = decisionId,
@@ -125,6 +130,8 @@ public static class LabelConfirmation
             Trust = scored.Trust.Value,
             TrustBasis = scored.Trust.Basis,
             ConfirmedAt = confirmedAt,
+            Share = share,
+            ShareProbability = shareProbability,
             Annotations = annotations,
         });
     }
@@ -140,6 +147,7 @@ public static class LabelConfirmation
     /// <param name="tiers">The ladder.</param>
     /// <param name="defaults">The consensus trust; <see cref="LabelTrustDefaults.Standard"/> when null.</param>
     /// <param name="annotations">The references the sinks need, as in <see cref="Decide{TValue}"/>.</param>
+    /// <param name="split">Which decisions are held out, as in <see cref="Decide{TValue}"/> — a consensus is split like any other label.</param>
     /// <exception cref="ArgumentException">
     /// The consensus is not one: fewer than two distinct participants, a participant whose tier is not on the
     /// ladder, or one at or below the learner — a judge agreeing with itself is not evidence, and neither is the learner.
@@ -150,7 +158,8 @@ public static class LabelConfirmation
         Tier learner,
         IReadOnlyCollection<Tier> tiers,
         LabelTrustDefaults? defaults = null,
-        IReadOnlyDictionary<string, string>? annotations = null)
+        IReadOnlyDictionary<string, string>? annotations = null,
+        LabelSplit? split = null)
     {
         ArgumentNullException.ThrowIfNull(decision);
         ArgumentNullException.ThrowIfNull(consensus);
@@ -184,6 +193,7 @@ public static class LabelConfirmation
             .OrderBy(p => p.Tier.CostRank)
             .ThenBy(p => p.Judge.ToString(), StringComparer.Ordinal)
             .ToList();
+        var (share, shareProbability) = (split ?? LabelSplit.None).Assign(consensus.DecisionId, decision.SliceKey);
         return new(ConfirmationOutcome.Confirmed, new ConfirmedLabel<TValue>
         {
             DecisionId = consensus.DecisionId,
@@ -197,8 +207,40 @@ public static class LabelConfirmation
             Trust = defaults.Consensus,
             TrustBasis = LabelTrustBasis.Consensus,
             ConfirmedAt = consensus.ReachedAt,
+            Share = share,
+            ShareProbability = shareProbability,
             Annotations = annotations,
         });
+    }
+
+    /// <summary>
+    /// Whether <paramref name="next"/> replaces <paramref name="previous"/>, a label already sent for the same decision.
+    /// A consensus replaces any single judge's label; otherwise the label trusted more stands — on equal trust, a
+    /// measured trust over a default one, and then the later label. Send <paramref name="next"/> only when it does:
+    /// MLoop counts the most recent feedback of a prediction, so a label sent later wins there whatever it is worth.
+    /// </summary>
+    /// <exception cref="ArgumentException">The two labels are for different decisions.</exception>
+    public static bool Supersedes<TValue>(ConfirmedLabel<TValue> previous, ConfirmedLabel<TValue> next)
+    {
+        ArgumentNullException.ThrowIfNull(previous);
+        ArgumentNullException.ThrowIfNull(next);
+        if (!string.Equals(previous.DecisionId, next.DecisionId, StringComparison.Ordinal))
+            throw new ArgumentException(
+                $"A label for '{next.DecisionId}' cannot replace one for '{previous.DecisionId}'.", nameof(next));
+
+        var byConsensus = IsConsensus(next).CompareTo(IsConsensus(previous));
+        if (byConsensus != 0)
+            return byConsensus > 0;
+        var byTrust = next.Trust.CompareTo(previous.Trust);
+        if (byTrust != 0)
+            return byTrust > 0;
+        var byMeasured = IsMeasured(next).CompareTo(IsMeasured(previous));
+        if (byMeasured != 0)
+            return byMeasured > 0;
+        return next.ConfirmedAt > previous.ConfirmedAt;
+
+        static bool IsConsensus(ConfirmedLabel<TValue> l) => l.TrustBasis == LabelTrustBasis.Consensus;
+        static bool IsMeasured(ConfirmedLabel<TValue> l) => l.TrustBasis == LabelTrustBasis.Measured;
     }
 
     // π: a decision that went up to the confirming tiers reached them with certainty; one a lower tier settled

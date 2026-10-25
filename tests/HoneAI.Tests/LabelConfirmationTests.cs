@@ -282,6 +282,93 @@ public class LabelConfirmationTests
     }
 
     [Fact]
+    public void ASplit_HoldsOutAShareOfDecisions_FixedByTheDecision_WithItsProbabilityInTheWeight()
+    {
+        var split = new LabelSplit { EvaluationShare = 0.2 };
+        var labels = Enumerable.Range(0, 2000)
+            .Select(i => LabelConfirmation.Decide($"d{i}", SettledBy(Llm), [Answer(Llm, "minor")], Ml, Ladder, Policy,
+                _ => null, Now, split: split).Label!)
+            .ToList();
+
+        var heldOut = labels.Count(l => l.Share == LabelShare.Evaluation);
+        Assert.InRange(heldOut, 340, 460);                                   // ~ 400 of 2000
+        Assert.All(labels.Where(l => l.Share == LabelShare.Evaluation), l => Assert.Equal(0.2, l.ShareProbability));
+        Assert.All(labels.Where(l => l.Share == LabelShare.Training), l => Assert.Equal(0.8, l.ShareProbability, 12));
+        // Each share's weights stand for every decision: they sum to about the number of decisions × trust.
+        Assert.InRange(labels.Where(l => l.Share == LabelShare.Evaluation).Sum(l => l.Weight), 0.8 * 2000 * 0.85, 0.8 * 2000 * 1.15);
+
+        // The share belongs to the decision: a later label — a consensus here — falls in the same one.
+        foreach (var label in labels.Take(50))
+        {
+            var consensus = LabelConfirmation.Settle(SettledBy(Llm), Consensus("minor", "person-a", "llm") with { DecisionId = label.DecisionId },
+                Ml, Ladder, split: split).Label!;
+            Assert.Equal(label.Share, consensus.Share);
+        }
+    }
+
+    [Fact]
+    public void ASplit_PerSlice_AndNeverASliceHeldOutWhole()
+    {
+        var split = new LabelSplit { EvaluationShare = 0, BySlice = new Dictionary<string, double> { ["rare"] = 0.5 } };
+        Assert.Equal((LabelShare.Training, 1.0), split.Assign("d1", "s"));
+        Assert.Equal(0.5, split.Assign("d1", "rare").Probability);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LabelSplit { EvaluationShare = 1 }.Assign("d1", null));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LabelSplit { EvaluationShare = -0.1 }.Assign("d1", null));
+
+        // No split asked for: every label is for learning, weighted as before.
+        var label = Decide(SettledBy(Llm), [Answer(Llm, "minor")]).Label!;
+        Assert.Equal(LabelShare.Training, label.Share);
+        Assert.Equal(0.8, label.Weight, 12);
+    }
+
+    [Fact]
+    public async Task TheMLoopSink_RefusesAHeldOutLabel_AndTheShareSinkRoutesIt()
+    {
+        var label = Decide(SettledBy(Llm), [Answer(Llm, "minor")]).Label! with { Share = LabelShare.Evaluation, ShareProbability = 0.2 };
+        var client = new FeedbackRecorder();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new MLoopFeedbackSink<string>(client).SendAsync(label));
+        Assert.Empty(client.Sent);
+
+        var evaluation = new LabelRecorder();
+        var routed = new LabelShareSink<string>(new MLoopFeedbackSink<string>(client), evaluation);
+        await routed.SendAsync(label);
+        await routed.SendAsync(label with { Share = LabelShare.Training, ShareProbability = 0.8 });
+        Assert.Single(evaluation.Sent);
+        Assert.Single(client.Sent);
+    }
+
+    [Fact]
+    public void Supersedes_LetsAMoreTrustedLabelReplaceAnEarlierOne_NeverALessTrustedOne()
+    {
+        var llm = Decide(SettledBy(Llm), [Answer(Llm, "minor")]).Label!;                     // trust 0.8, default
+        var person = llm with { Value = "ok", ConfirmedBy = "person-a", Kind = JudgeKind.Human, Trust = 1.0, ConfirmedAt = Now.AddHours(1) };
+        var consensus = llm with { Value = "danger", Trust = 0.9, TrustBasis = LabelTrustBasis.Consensus, ConfirmedAt = Now.AddHours(2) };
+        var measured = llm with { TrustBasis = LabelTrustBasis.Measured };
+
+        Assert.True(LabelConfirmation.Supersedes(llm, person));
+        Assert.False(LabelConfirmation.Supersedes(person, llm with { ConfirmedAt = Now.AddHours(3) }));   // later, but trusted less
+        Assert.True(LabelConfirmation.Supersedes(person, consensus));                                     // a consensus over any one judge
+        Assert.False(LabelConfirmation.Supersedes(consensus, person with { ConfirmedAt = Now.AddHours(3) }));
+        Assert.True(LabelConfirmation.Supersedes(llm, measured));                                         // equal trust: measured over default
+        Assert.True(LabelConfirmation.Supersedes(llm, llm with { ConfirmedAt = Now.AddMinutes(1) }));    // then the later one
+
+        Assert.Throws<ArgumentException>(() => LabelConfirmation.Supersedes(llm, person with { DecisionId = "d2" }));
+    }
+
+    private sealed class LabelRecorder : IConfirmedLabelSink<string>
+    {
+        public List<ConfirmedLabel<string>> Sent { get; } = new();
+
+        public Task SendAsync(ConfirmedLabel<string> label, CancellationToken cancellationToken = default)
+        {
+            Sent.Add(label);
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
     public void ReferenceTo_CarriesTheLoggedPredictionId_AndRefusesAnUnloggedOne()
     {
         var reference = MLoopFeedbackSink<string>.ReferenceTo(new MLoopPredictionResult(new Dictionary<string, object?>(), "p-9"));

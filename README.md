@@ -158,7 +158,17 @@ A cheap tier gets better by learning from answers the tiers above it confirmed �
   rung of people (`JudgeIdentity`) — else its kind's default (`LabelTrustDefaults`), and the label says which
   (`LabelTrustBasis`).
 
-The label's `Weight` is trust / π. Send it to each engine's `IConfirmedLabelSink<T>`:
+A label measuring the learner must not be one it learned from. Pass a `LabelSplit` (a share of decisions, overall
+or per slice) and each label says which share its decision falls in — `LabelShare.Training` or `Evaluation`, fixed
+by a hash of the decision id, so every label a decision ever gets lands in the same one. Held-out labels are where a
+challenger is measured against the model in production; `LabelShareSink<T>` routes each share to its sink, and the
+MLoop sink refuses a held-out label. No slice is held out whole — the hard decisions are learned from too.
+
+A decision can be labelled twice — a teacher first, a person or a consensus later. MLoop counts the most recent
+feedback of a prediction, so send a later label only when `LabelConfirmation.Supersedes(previous, next)` says it
+replaces the earlier one: a consensus over any one judge, otherwise the more trusted.
+
+The label's `Weight` is trust / (π · q), q the probability of its share. Send it to each engine's `IConfirmedLabelSink<T>`:
 `MLoopFeedbackSink<T>` records it as weighted feedback on the ML tier's MLoop prediction
 (`MLoopPredictionResult.PredictionId` — keep `MLoopFeedbackSink.ReferenceTo(result)` with the decision and pass it to
 `Decide` as `annotations`),

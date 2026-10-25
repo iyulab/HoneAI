@@ -26,6 +26,22 @@ public enum LabelTrustBasis
 }
 
 /// <summary>
+/// What a confirmed label is for: learning, or measuring the tier that learns. A label measuring a model must not be
+/// one the model learned from, so the two are kept apart by the decision, not by the consumer's hand.
+/// </summary>
+public enum LabelShare
+{
+    /// <summary>For the learning engines — training rows for a model, a memory's settlement.</summary>
+    Training = 0,
+
+    /// <summary>
+    /// Held out: for measuring the learning tier offline (a challenger against the model in production), never sent to
+    /// an engine that learns. Sinks that train refuse it.
+    /// </summary>
+    Evaluation = 1,
+}
+
+/// <summary>
 /// A value a tier above — or a person — decided for a decision, ready to be learned from: the label,
 /// who confirmed it, how far that judge is trusted, and the probability the decision reached it.
 /// </summary>
@@ -86,11 +102,22 @@ public sealed record ConfirmedLabel<TValue>
     public required DateTimeOffset ConfirmedAt { get; init; }
 
     /// <summary>
-    /// How much the label counts when it is learned from: <see cref="Trust"/> / <see cref="Probability"/>.
-    /// The 1/π half makes the labels a sample of every decision rather than of the ones sent up or drawn;
-    /// the trust half counts a judge that is wrong more often for less.
+    /// Whether the label is for learning or held out for measuring — fixed by the decision, so every label a decision
+    /// ever gets falls in the same share. <see cref="LabelShare.Training"/> when no split was asked for.
     /// </summary>
-    public double Weight => Trust / Probability;
+    public LabelShare Share { get; init; } = LabelShare.Training;
+
+    /// <summary>
+    /// q — the probability a decision's labels fall in <see cref="Share"/>, in (0, 1]: 1 when nothing is held out.
+    /// </summary>
+    public double ShareProbability { get; init; } = 1.0;
+
+    /// <summary>
+    /// How much the label counts: <see cref="Trust"/> / (<see cref="Probability"/> · <see cref="ShareProbability"/>).
+    /// The 1/π half makes the labels a sample of every decision rather than of the ones sent up or drawn, and the 1/q
+    /// half keeps each share a sample of them too; the trust half counts a judge that is wrong more often for less.
+    /// </summary>
+    public double Weight => Trust / (Probability * ShareProbability);
 
     /// <summary>
     /// Consumer references the sinks need — the engine's own id for the decision (an MLoop prediction id),
