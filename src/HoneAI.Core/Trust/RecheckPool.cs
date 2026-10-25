@@ -20,6 +20,39 @@ public sealed record PoolReach(string TierId, string SliceKey, int Pooled, int R
     public double Rate => Pooled == 0 ? 0 : (double)Reached / Pooled;
 }
 
+/// <summary>
+/// What a judging session mixes in besides rechecks — shares of the session, together under 1 — so planted items,
+/// repeats and second opinions reach the judge among the rechecks, looking the same.
+/// </summary>
+public sealed record SessionMix
+{
+    /// <summary>Rechecks only.</summary>
+    public static SessionMix RechecksOnly { get; } = new();
+
+    /// <summary>The share of planted items — the judge's own measurement.</summary>
+    public double PlantShare { get; init; }
+
+    /// <summary>The share of repeats — decisions this judge answered at least <see cref="MinimumRepeatGap"/> ago.</summary>
+    public double RepeatShare { get; init; }
+
+    /// <summary>The share of second opinions — decisions another judge answered.</summary>
+    public double SecondOpinionShare { get; init; }
+
+    /// <summary>How long before an answered decision comes back to the same judge as a repeat — long enough not to be remembered.</summary>
+    public TimeSpan MinimumRepeatGap { get; init; } = TimeSpan.FromDays(7);
+
+    internal IEnumerable<(PoolPurpose Purpose, double Share)> Shares =>
+        [(PoolPurpose.Plant, PlantShare), (PoolPurpose.Repeat, RepeatShare), (PoolPurpose.SecondOpinion, SecondOpinionShare)];
+
+    internal void Validate()
+    {
+        if (Shares.Any(s => !(s.Share >= 0)) || !(PlantShare + RepeatShare + SecondOpinionShare < 1))
+            throw new InvalidOperationException("Mixed-in shares are not negative and together under 1 — a session is mostly rechecks.");
+        if (MinimumRepeatGap < TimeSpan.Zero)
+            throw new InvalidOperationException("MinimumRepeatGap is not negative.");
+    }
+}
+
 /// <summary>What a closed window of the pool gives the ledger.</summary>
 /// <param name="Closed">
 /// Every item decided in the window has been answered, passed or has expired. Until then the reach is not known and
@@ -51,22 +84,24 @@ public sealed record PoolAccount(bool Closed, IReadOnlyList<RecheckRecord> Recor
 public static class RecheckPool
 {
     /// <summary>
-    /// Up to <paramref name="count"/> items to show <paramref name="reviewerKey"/> now, holding each for them until
-    /// <paramref name="now"/> + <paramref name="hold"/> — in an order fixed by the decision and
-    /// <paramref name="sessionKey"/>, never by the item. Items already answered, expired, or held by someone else are
-    /// not offered; the reviewer's own unexpired holds come back first.
+    /// Up to <paramref name="count"/> items to show <paramref name="reviewerKey"/> now — rechecks, with planted items,
+    /// repeats and second opinions mixed in at the shares of <paramref name="mix"/> — in an order fixed by the decision,
+    /// the purpose and <paramref name="sessionKey"/>, never by the item. A recheck is held for the reviewer until
+    /// <paramref name="now"/> + <paramref name="hold"/>; one already answered, expired, or held by someone else is not
+    /// offered, and the reviewer's own unexpired holds are offered before anyone else's free ones. A share with nothing to offer is filled with rechecks.
     /// </summary>
     /// <param name="store">The pool.</param>
     /// <param name="reviewerKey">Who is judging — a pseudonymous key.</param>
     /// <param name="sessionKey">This session's key — a new one deals a new order.</param>
     /// <param name="count">How many to offer.</param>
     /// <param name="now">Now.</param>
-    /// <param name="hold">How long an offered item stays theirs.</param>
+    /// <param name="hold">How long an offered recheck stays theirs.</param>
     /// <param name="tierId">Only items of this measured tier; every tier when null.</param>
+    /// <param name="mix">What else to mix in; rechecks only when null.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     public static async Task<IReadOnlyList<PoolPresentation>> PresentAsync(
         IRecheckPoolStore store, string reviewerKey, string sessionKey, int count, DateTimeOffset now, TimeSpan hold,
-        string? tierId = null, CancellationToken cancellationToken = default)
+        string? tierId = null, SessionMix? mix = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentException.ThrowIfNullOrWhiteSpace(reviewerKey);
@@ -74,27 +109,73 @@ public static class RecheckPool
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
         if (hold <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(hold), hold, "A hold lasts some time.");
+        mix ??= SessionMix.RechecksOnly;
+        mix.Validate();
 
-        var open = new List<(PoolEntry Entry, bool Own)>();
+        var rechecks = new List<(PoolItem Item, bool Own)>();
+        var candidates = new Dictionary<PoolPurpose, List<PoolItem>>
+        {
+            [PoolPurpose.Plant] = [],
+            [PoolPurpose.Repeat] = [],
+            [PoolPurpose.SecondOpinion] = [],
+        };
         await foreach (var entry in store.ReadAsync(DateTimeOffset.MinValue, now, cancellationToken).ConfigureAwait(false))
         {
-            if (entry.Response is not null || entry.Item.ExpiresAt <= now || (tierId is not null && entry.Item.TierId != tierId))
+            var item = entry.Item;
+            if (tierId is not null && item.TierId != tierId)
+                continue;
+            bool AnsweredBy(PoolPurpose purpose) => entry.ResponsesOf(purpose).Any(r => r.ReviewerKey == reviewerKey);
+
+            if (item.Kind == PoolItemKind.Plant)
+            {
+                if (item.ExpiresAt > now && !AnsweredBy(PoolPurpose.Plant))
+                    candidates[PoolPurpose.Plant].Add(item);
+                continue;
+            }
+            if (entry.Response is { } first)
+            {
+                // Answered: a repeat for the one who answered (after a while, so it is not remembered), a second
+                // opinion for anyone else — each once per judge.
+                if (first.Kind == PoolResponseKind.Answered && first.ReviewerKey == reviewerKey)
+                {
+                    if (now - first.RespondedAt >= mix.MinimumRepeatGap && !AnsweredBy(PoolPurpose.Repeat))
+                        candidates[PoolPurpose.Repeat].Add(item);
+                }
+                else if (first.Kind == PoolResponseKind.Answered && first.ReviewerKey is not null && !AnsweredBy(PoolPurpose.SecondOpinion))
+                {
+                    candidates[PoolPurpose.SecondOpinion].Add(item);
+                }
+                continue;
+            }
+            if (item.ExpiresAt <= now)
                 continue;
             var held = entry.Lease is { } lease && lease.Until > now;
             var own = held && entry.Lease!.ReviewerKey == reviewerKey;
             if (!held || own)
-                open.Add((entry, own));
+                rechecks.Add((item, own));
         }
 
-        var chosen = open
+        var chosen = new List<(PoolItem Item, PoolPurpose Purpose)>();
+        foreach (var (purpose, share) in mix.Shares)
+        {
+            chosen.AddRange(candidates[purpose]
+                .OrderBy(i => Order(i, purpose, sessionKey))
+                .Take((int)Math.Round(count * share, MidpointRounding.AwayFromZero))
+                .Select(i => (i, purpose)));
+        }
+        chosen.AddRange(rechecks
             .OrderByDescending(x => x.Own)
-            .ThenBy(x => Order(x.Entry.Item, sessionKey))
-            .Take(count)
-            .Select(x => x.Entry.Item)
-            .ToList();
-        foreach (var item in chosen)
+            .ThenBy(x => Order(x.Item, PoolPurpose.Recheck, sessionKey))
+            .Take(Math.Max(0, count - chosen.Count))
+            .Select(x => (x.Item, PoolPurpose.Recheck)));
+
+        foreach (var (item, purpose) in chosen.Where(c => c.Purpose == PoolPurpose.Recheck))
             await store.LeaseAsync(new PoolLease(item.DecisionId, item.TierId, reviewerKey, now + hold), cancellationToken).ConfigureAwait(false);
-        return chosen.Select(i => new PoolPresentation(i.DecisionId, i.TierId, i.SliceKey, i.InputRef)).ToList();
+        return chosen
+            .OrderBy(c => Order(c.Item, c.Purpose, sessionKey))
+            .Take(count)
+            .Select(c => new PoolPresentation(c.Item.DecisionId, c.Item.TierId, c.Item.SliceKey, c.Item.InputRef, c.Purpose))
+            .ToList();
     }
 
     /// <summary>
@@ -115,6 +196,7 @@ public static class RecheckPool
     public static PoolAccount Account(IReadOnlyCollection<PoolEntry> entries, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(entries);
+        entries = entries.Where(e => e.Item.Kind == PoolItemKind.Recheck).ToList();
         var reach = entries
             .GroupBy(e => (e.Item.TierId, e.Item.SliceKey))
             .OrderBy(g => g.Key.TierId, StringComparer.Ordinal).ThenBy(g => g.Key.SliceKey, StringComparer.Ordinal)
@@ -154,11 +236,11 @@ public static class RecheckPool
         Blind = true,
     };
 
-    // A number fixed by the decision and the session: an order nothing about the item can sway.
-    private static ulong Order(PoolItem item, string sessionKey)
+    // A number fixed by the decision, the purpose and the session: an order nothing about the item can sway.
+    private static ulong Order(PoolItem item, PoolPurpose purpose, string sessionKey)
     {
         Span<byte> hash = stackalloc byte[32];
-        SHA256.HashData(Encoding.UTF8.GetBytes(sessionKey + "\n" + item.TierId + "\n" + item.DecisionId), hash);
+        SHA256.HashData(Encoding.UTF8.GetBytes(sessionKey + "\n" + purpose + "\n" + item.TierId + "\n" + item.DecisionId), hash);
         return BinaryPrimitives.ReadUInt64BigEndian(hash);
     }
 }

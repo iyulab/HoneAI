@@ -1,5 +1,37 @@
 namespace HoneAI;
 
+/// <summary>What a pooled item is.</summary>
+public enum PoolItemKind
+{
+    /// <summary>A settled decision drawn for recheck — what measures the tier that settled it.</summary>
+    Recheck = 0,
+
+    /// <summary>
+    /// An input whose answer is known, planted among the rechecks so a judge cannot tell it apart — what measures the
+    /// judge (<c>PlantRecords</c>). Each judge sees it once; it is not part of a tier's measurement.
+    /// </summary>
+    Plant = 1,
+}
+
+/// <summary>
+/// Why an item is in front of a judge — for the consumer's backend, which routes the answer; never shown to the judge,
+/// to whom every item looks the same.
+/// </summary>
+public enum PoolPurpose
+{
+    /// <summary>The recheck of a settled decision: the first answer to it stands.</summary>
+    Recheck = 0,
+
+    /// <summary>A planted item: measures the judge.</summary>
+    Plant = 1,
+
+    /// <summary>A decision this judge already answered, shown again later: their consistency (<c>RepeatConsistency</c>).</summary>
+    Repeat = 2,
+
+    /// <summary>A decision another judge already answered: the two judges together (<c>DoubleCheckMeasure</c>).</summary>
+    SecondOpinion = 3,
+}
+
 /// <summary>
 /// A decision drawn for recheck and set aside for a judge that comes when it comes — a person, or an expensive model
 /// run in spare time — instead of being judged on the spot. It carries what the judge is shown and nothing it must not
@@ -7,8 +39,11 @@ namespace HoneAI;
 /// </summary>
 public sealed record PoolItem
 {
-    /// <summary>The decision — with <see cref="TierId"/>, the key the item is pooled under once.</summary>
+    /// <summary>The decision (a plant's id, for a plant) — with <see cref="TierId"/>, the key the item is pooled under once.</summary>
     public required string DecisionId { get; init; }
+
+    /// <summary>A recheck of a settled decision, or a planted item.</summary>
+    public PoolItemKind Kind { get; init; } = PoolItemKind.Recheck;
 
     /// <summary>The tier that settled the decision (the one being measured).</summary>
     public required string TierId { get; init; }
@@ -55,7 +90,8 @@ public sealed record PoolItem
 /// <param name="TierId">The tier being measured — to answer back with.</param>
 /// <param name="SliceKey">The slice.</param>
 /// <param name="InputRef">Where the input is.</param>
-public sealed record PoolPresentation(string DecisionId, string TierId, string SliceKey, string InputRef);
+/// <param name="Purpose">Why it is shown — for the consumer's backend to answer back with; not for the judge's eyes.</param>
+public sealed record PoolPresentation(string DecisionId, string TierId, string SliceKey, string InputRef, PoolPurpose Purpose = PoolPurpose.Recheck);
 
 /// <summary>An item offered to a judge and held for them until a time — given back to the pool if they do not answer by then.</summary>
 /// <param name="DecisionId">The decision.</param>
@@ -77,9 +113,15 @@ public enum PoolResponseKind
     Skipped = 1,
 }
 
-/// <summary>A judge's response to a pooled item. The first response to an item stands.</summary>
+/// <summary>
+/// A judge's response to a pooled item. The first recheck response to an item stands; a plant, repeat or second
+/// opinion is recorded once per judge.
+/// </summary>
 public sealed record PoolResponse
 {
+    /// <summary>What the item was shown for (<see cref="PoolPresentation.Purpose"/>).</summary>
+    public PoolPurpose Purpose { get; init; } = PoolPurpose.Recheck;
+
     /// <summary>The decision.</summary>
     public required string DecisionId { get; init; }
 
@@ -89,7 +131,7 @@ public sealed record PoolResponse
     /// <summary>The tier that judged — the rung of people, say.</summary>
     public required string CheckedBy { get; init; }
 
-    /// <summary>Who judged within it — a pseudonymous key.</summary>
+    /// <summary>Who judged within it — a pseudonymous key. Required for every purpose but a recheck.</summary>
     public string? ReviewerKey { get; init; }
 
     /// <summary>When.</summary>
@@ -98,18 +140,26 @@ public sealed record PoolResponse
     /// <summary>Answered or passed.</summary>
     public required PoolResponseKind Kind { get; init; }
 
-    /// <summary>For an answer: whether it agrees with the settled one (<see cref="RecheckOutcome.Agreed"/> or <see cref="RecheckOutcome.Disagreed"/>).</summary>
+    /// <summary>For a recheck answer: whether it agrees with the settled one (<see cref="RecheckOutcome.Agreed"/> or <see cref="RecheckOutcome.Disagreed"/>).</summary>
     public RecheckOutcome? Outcome { get; init; }
 
     /// <summary>For an answer: whether it is a must-catch value.</summary>
     public bool UpperMustCatch { get; init; }
 }
 
-/// <summary>A pooled item with its hold and response, as stored.</summary>
+/// <summary>A pooled item with its hold and responses, as stored.</summary>
 /// <param name="Item">The item.</param>
 /// <param name="Lease">The latest hold on it, if any.</param>
-/// <param name="Response">The response, once there is one.</param>
-public sealed record PoolEntry(PoolItem Item, PoolLease? Lease, PoolResponse? Response);
+/// <param name="Response">The recheck response, once there is one.</param>
+/// <param name="Others">Its plant, repeat and second-opinion responses.</param>
+public sealed record PoolEntry(PoolItem Item, PoolLease? Lease, PoolResponse? Response, IReadOnlyList<PoolResponse>? Others = null)
+{
+    /// <summary>The responses of <paramref name="purpose"/>.</summary>
+    public IEnumerable<PoolResponse> ResponsesOf(PoolPurpose purpose)
+        => purpose == PoolPurpose.Recheck
+            ? Response is null ? [] : [Response]
+            : (Others ?? []).Where(r => r.Purpose == purpose);
+}
 
 /// <summary>
 /// Where pooled items, holds and responses are kept — the consumer's store; HoneAI.Core has in-memory and JSONL
@@ -123,7 +173,10 @@ public interface IRecheckPoolStore
     /// <summary>Records a hold on an item, replacing any earlier one.</summary>
     ValueTask LeaseAsync(PoolLease lease, CancellationToken cancellationToken = default);
 
-    /// <summary>Records <paramref name="response"/> unless the item has one; returns whether it was recorded.</summary>
+    /// <summary>
+    /// Records <paramref name="response"/> unless one is recorded already — for a recheck, any response to the item; for
+    /// another purpose, that judge's response of that purpose. Returns whether it was recorded.
+    /// </summary>
     ValueTask<bool> RespondAsync(PoolResponse response, CancellationToken cancellationToken = default);
 
     /// <summary>The entries whose decision time falls in [<paramref name="from"/>, <paramref name="to"/>).</summary>

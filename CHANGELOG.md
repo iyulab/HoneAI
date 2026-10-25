@@ -64,7 +64,11 @@ All notable changes to HoneAI are documented here. The format follows
   `RecheckPool.PresentAsync` (an order hashed from the decision and the session, a hold per reviewer) and
   `RecheckPool.AccountAsync` — a closed window's reached items as `RecheckRecord`s at π × r, r the reach of their tier
   and slice (`PoolReach`); unreached and expired items are left out, a pass (`PoolResponseKind.Skipped`) counts as the
-  tier above failing.
+  tier above failing. `SessionMix` mixes planted items (`PoolItemKind.Plant`), repeats (after `MinimumRepeatGap`) and
+  second opinions into a session at set shares, shuffled with the rechecks (`PoolPresentation.Purpose` /
+  `PoolResponse.Purpose` — a recheck answered once per item, the rest once per judge); `PoolAnswers` turns one answer
+  into the response to record, the blind `RecheckResult` for `PlantRecords` / `RepeatConsistency` /
+  `DoubleCheckMeasure`, and the draw (π × r) a label is confirmed with.
 - `RetrainPolicy.Decide(RetrainSignals, now)`: whether to start a retraining run — enough new learning labels
   (`MinimumNewLabels`, by Kish's effective sample `RetrainSignals.EffectiveSample`), or a stale or demoted model with
   any new label; never with a run in flight, never within `MinimumInterval` of the last one — with the reason.

@@ -14,7 +14,7 @@ public sealed class InMemoryRecheckPoolStore : IRecheckPoolStore
 {
     private readonly ConcurrentDictionary<(string, string), PoolItem> _items = new();
     private readonly ConcurrentDictionary<(string, string), PoolLease> _leases = new();
-    private readonly ConcurrentDictionary<(string, string), PoolResponse> _responses = new();
+    private readonly ConcurrentDictionary<(string, string, PoolPurpose, string), PoolResponse> _responses = new();
 
     /// <inheritdoc />
     public ValueTask<bool> AddAsync(PoolItem item, CancellationToken cancellationToken = default)
@@ -34,8 +34,7 @@ public sealed class InMemoryRecheckPoolStore : IRecheckPoolStore
     /// <inheritdoc />
     public ValueTask<bool> RespondAsync(PoolResponse response, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(response);
-        return ValueTask.FromResult(_responses.TryAdd((response.DecisionId, response.TierId), response));
+        return ValueTask.FromResult(_responses.TryAdd(PoolResponseKeys.Of(response), response));
     }
 
     /// <inheritdoc />
@@ -46,7 +45,8 @@ public sealed class InMemoryRecheckPoolStore : IRecheckPoolStore
         {
             cancellationToken.ThrowIfCancellationRequested();
             var key = (item.DecisionId, item.TierId);
-            yield return new PoolEntry(item, _leases.GetValueOrDefault(key), _responses.GetValueOrDefault(key));
+            var responses = _responses.Values.Where(r => r.DecisionId == item.DecisionId && r.TierId == item.TierId).ToList();
+            yield return PoolResponseKeys.Entry(item, _leases.GetValueOrDefault(key), responses);
         }
         await Task.CompletedTask.ConfigureAwait(false);
     }
@@ -59,7 +59,7 @@ public sealed class InMemoryRecheckPoolStore : IRecheckPoolStore
 public sealed class JsonlRecheckPoolStore : IRecheckPoolStore
 {
     private readonly JsonlKeyedLog<PoolItem, (string, string)> _items;
-    private readonly JsonlKeyedLog<PoolResponse, (string, string)> _responses;
+    private readonly JsonlKeyedLog<PoolResponse, (string, string, PoolPurpose, string)> _responses;
     private readonly string _leases;
 
     /// <param name="directory">Where <c>items.jsonl</c>, <c>leases.jsonl</c> and <c>responses.jsonl</c> live.</param>
@@ -67,7 +67,7 @@ public sealed class JsonlRecheckPoolStore : IRecheckPoolStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
         _items = new(Path.Combine(directory, "items.jsonl"), i => (i.DecisionId, i.TierId));
-        _responses = new(Path.Combine(directory, "responses.jsonl"), r => (r.DecisionId, r.TierId));
+        _responses = new(Path.Combine(directory, "responses.jsonl"), PoolResponseKeys.Of);
         _leases = Path.Combine(directory, "leases.jsonl");
     }
 
@@ -83,7 +83,10 @@ public sealed class JsonlRecheckPoolStore : IRecheckPoolStore
 
     /// <inheritdoc />
     public ValueTask<bool> RespondAsync(PoolResponse response, CancellationToken cancellationToken = default)
-        => _responses.AppendAsync(response, cancellationToken);
+    {
+        PoolResponseKeys.Of(response);
+        return _responses.AppendAsync(response, cancellationToken);
+    }
 
     /// <inheritdoc />
     public async IAsyncEnumerable<PoolEntry> ReadAsync(
@@ -92,15 +95,41 @@ public sealed class JsonlRecheckPoolStore : IRecheckPoolStore
         var leases = new Dictionary<(string, string), PoolLease>();
         await foreach (var lease in JsonlFile.ReadAsync<PoolLease>(_leases, cancellationToken).ConfigureAwait(false))
             leases[(lease.DecisionId, lease.TierId)] = lease;
-        var responses = new Dictionary<(string, string), PoolResponse>();
+        var responses = new Dictionary<(string, string), List<PoolResponse>>();
         await foreach (var response in _responses.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-            responses.TryAdd((response.DecisionId, response.TierId), response);
+        {
+            var key = (response.DecisionId, response.TierId);
+            if (!responses.TryGetValue(key, out var list))
+                responses[key] = list = [];
+            list.Add(response);
+        }
         await foreach (var item in _items.ReadAllAsync(cancellationToken).ConfigureAwait(false))
         {
             if (item.DecidedAt < from || item.DecidedAt >= to)
                 continue;
             var key = (item.DecisionId, item.TierId);
-            yield return new PoolEntry(item, leases.GetValueOrDefault(key), responses.GetValueOrDefault(key));
+            yield return PoolResponseKeys.Entry(item, leases.GetValueOrDefault(key), responses.GetValueOrDefault(key) ?? []);
         }
+    }
+}
+
+// A recheck is answered once per item; a plant, repeat or second opinion once per judge.
+internal static class PoolResponseKeys
+{
+    public static (string, string, PoolPurpose, string) Of(PoolResponse response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        if (response.Purpose == PoolPurpose.Recheck)
+            return (response.DecisionId, response.TierId, response.Purpose, string.Empty);
+        if (string.IsNullOrEmpty(response.ReviewerKey))
+            throw new ArgumentException($"A {response.Purpose} response is recorded per judge: it needs a reviewer key.", nameof(response));
+        return (response.DecisionId, response.TierId, response.Purpose, response.ReviewerKey);
+    }
+
+    public static PoolEntry Entry(PoolItem item, PoolLease? lease, IReadOnlyCollection<PoolResponse> responses)
+    {
+        var recheck = responses.FirstOrDefault(r => r.Purpose == PoolPurpose.Recheck);
+        var others = responses.Where(r => r.Purpose != PoolPurpose.Recheck).ToList();
+        return new PoolEntry(item, lease, recheck, others.Count == 0 ? null : others);
     }
 }

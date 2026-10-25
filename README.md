@@ -152,6 +152,13 @@ nothing to the item, the reached ones are a random thinning of the pooled ones, 
 of its tier and slice reached) and the unreached are left out instead of counted as failures. A pass is a failure of
 the tier above, counted as an abstention is.
 
+A session can mix more in, at shares you set (`SessionMix`): planted items (`PoolItemKind.Plant` — the judge's own
+measurement, each judge once), repeats of what this judge answered a while ago (`RepeatConsistency`), and second
+opinions on what another judge answered (`DoubleCheckMeasure`) — shuffled among the rechecks by the same hash, so
+the judge cannot tell them apart; `PoolPresentation.Purpose` is for your backend, not the judge's screen. One answer
+then goes everywhere through `PoolAnswers`: the response to record, the blind `RecheckResult` the measurements take,
+and — once its window is accounted — the draw (π × r) to confirm a label with.
+
 ### Learning from what was confirmed (`HoneAI.Learning`)
 
 A cheap tier gets better by learning from answers the tiers above it confirmed — never its own.
