@@ -58,6 +58,18 @@ public interface IMLoopClient
     Task PromoteAsync(string model, string experimentId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Put production back to an earlier experiment (MLoop 0.35+ <c>POST /rollback</c>): the one the current production
+    /// replaced, or <paramref name="to"/>. The change is recorded in MLoop's promotion history like a promotion.
+    /// </summary>
+    Task<MLoopRollback> RollbackAsync(string model, string? to = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Score an experiment on a labeled file in the MLoop project (MLoop <c>POST /evaluate</c>) — and, with
+    /// <see cref="MLoopEvaluationRequest.Against"/>, the other model on the same rows, paired per row.
+    /// </summary>
+    Task<MLoopEvaluation> EvaluateAsync(MLoopEvaluationRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// How far the production model's recent inputs and answers have moved from what it was trained
     /// on — the staleness signal a tier's standing tightens on. A window MLoop could not measure comes
     /// back with <see cref="MLoopDrift.Measured"/> false and the reason.

@@ -333,6 +333,88 @@ public sealed class HttpMLoopClient : IMLoopClient
     }
 
     /// <inheritdoc />
+    public async Task<MLoopRollback> RollbackAsync(string model, string? to = null, CancellationToken cancellationToken = default)
+    {
+        var body = new Dictionary<string, object?> { ["name"] = model, ["to"] = to };
+        using var response = await _http.PostAsJsonAsync("rollback", body, JsonOptions, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccess(response, "rollback", cancellationToken).ConfigureAwait(false);
+        using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        var root = doc.RootElement;
+        return new MLoopRollback(
+            String(root, "experimentId") ?? throw new MLoopClientException("MLoop /rollback answered without an experimentId.", response.StatusCode),
+            String(root, "previousExperimentId"));
+    }
+
+    /// <inheritdoc />
+    public async Task<MLoopEvaluation> EvaluateAsync(MLoopEvaluationRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.TestDataPath, nameof(request));
+        var body = new Dictionary<string, object?>
+        {
+            ["testDataPath"] = request.TestDataPath,
+            ["experimentId"] = request.ExperimentId,
+            ["name"] = request.Model,
+            ["weight"] = request.Weight,
+            ["against"] = request.Against,
+        };
+        using var response = await _http.PostAsJsonAsync("evaluate", body, JsonOptions, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccess(response, "evaluate", cancellationToken).ConfigureAwait(false);
+        using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        var root = doc.RootElement;
+
+        // A model with nothing in production answers 200 with status "skipped" when no experiment was named.
+        if (String(root, "status") == "skipped")
+            throw new MLoopClientException($"MLoop /evaluate skipped: {String(root, "reason")}", response.StatusCode);
+
+        string? against = null, notPaired = null;
+        MLoopPairedComparison? paired = null;
+        if (root.TryGetProperty("comparison", out var c) && c.ValueKind == JsonValueKind.Object)
+        {
+            against = String(c, "against");
+            notPaired = String(c, "notPaired");
+            if (c.TryGetProperty("paired", out var p) && p.ValueKind == JsonValueKind.Object)
+            {
+                paired = new MLoopPairedComparison(
+                    String(p, "measure") ?? string.Empty,
+                    p.TryGetProperty("rows", out var rows) && rows.TryGetInt32(out var n) ? n : 0,
+                    NumberOf(p, "candidate") ?? double.NaN,
+                    NumberOf(p, "baseline") ?? double.NaN,
+                    NumberOf(p, "difference") ?? double.NaN,
+                    NumberOf(p, "low") ?? double.NaN,
+                    NumberOf(p, "high") ?? double.NaN,
+                    String(p, "verdict") ?? string.Empty);
+            }
+        }
+        return new MLoopEvaluation(
+            String(root, "experimentId") ?? request.ExperimentId ?? string.Empty,
+            ParseMetrics(root) ?? new Dictionary<string, double>(),
+            ParseConfusion(root),
+            against,
+            paired,
+            notPaired,
+            Strings(root, "warnings"));
+    }
+
+    private static MLoopConfusion? ParseConfusion(JsonElement root)
+    {
+        if (!root.TryGetProperty("confusion", out var c) || c.ValueKind != JsonValueKind.Object
+            || !c.TryGetProperty("classes", out var classes) || classes.ValueKind != JsonValueKind.Array
+            || !c.TryGetProperty("counts", out var counts) || counts.ValueKind != JsonValueKind.Array)
+            return null;
+        var names = classes.EnumerateArray().Select(e => e.GetString() ?? string.Empty).ToList();
+        var matrix = counts.EnumerateArray()
+            .Select(row => (IReadOnlyList<double>)row.EnumerateArray().Select(v => v.GetDouble()).ToList())
+            .ToList();
+        return matrix.Count == names.Count && matrix.All(r => r.Count == names.Count) ? new MLoopConfusion(names, matrix) : null;
+    }
+
+    private static IReadOnlyList<string>? Strings(JsonElement root, string name)
+        => root.TryGetProperty(name, out var a) && a.ValueKind == JsonValueKind.Array
+            ? a.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).ToList()
+            : null;
+
+    /// <inheritdoc />
     public async Task<MLoopModelInfo?> GetInfoAsync(string? model = null, CancellationToken cancellationToken = default)
     {
         using var response = await _http.GetAsync("info" + NameQuery(model), cancellationToken).ConfigureAwait(false);

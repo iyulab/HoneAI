@@ -282,3 +282,70 @@ public sealed record MLoopDrift(
     /// <summary>The window was compared. Anything else is no evidence either way — not "no drift".</summary>
     public bool Measured => Status == "Measured" && Report is not null;
 }
+
+/// <summary>What production was put back to (MLoop <c>POST /rollback</c>).</summary>
+/// <param name="ExperimentId">The experiment now in production.</param>
+/// <param name="PreviousExperimentId">The one it replaced.</param>
+public sealed record MLoopRollback(string ExperimentId, string? PreviousExperimentId);
+
+/// <summary>Request to score an experiment on labeled rows (MLoop <c>POST /evaluate</c>).</summary>
+/// <param name="TestDataPath">The labeled file, relative to the MLoop project.</param>
+/// <param name="ExperimentId">The experiment to score; <see langword="null"/> scores the one in production.</param>
+/// <param name="Model">Target model name; <see langword="null"/> uses MLoop's default model.</param>
+/// <param name="Weight">The file's weight column (a held-out label's 1/(π · q)).</param>
+/// <param name="Against">Another experiment, or <c>production</c>, to score on the same rows and pair with it.</param>
+public sealed record MLoopEvaluationRequest(
+    string TestDataPath, string? ExperimentId = null, string? Model = null, string? Weight = null, string? Against = null);
+
+/// <summary>How a classifier's answers fell against the labels: <see cref="Counts"/>[actual][predicted], weighted.</summary>
+/// <param name="Classes">The class names, in the model's order.</param>
+/// <param name="Counts">Weighted rows per (actual, predicted) pair.</param>
+public sealed record MLoopConfusion(IReadOnlyList<string> Classes, IReadOnlyList<IReadOnlyList<double>> Counts)
+{
+    /// <summary>
+    /// Of the rows labeled with one of <paramref name="classes"/>, the weighted share answered with one of them — the
+    /// recall of a set of classes; <see langword="null"/> when no row has such a label. Names match ignoring case.
+    /// </summary>
+    public double? Recall(IEnumerable<string> classes)
+    {
+        ArgumentNullException.ThrowIfNull(classes);
+        var wanted = new HashSet<string>(classes, StringComparer.OrdinalIgnoreCase);
+        var indices = Enumerable.Range(0, Classes.Count).Where(i => wanted.Contains(Classes[i])).ToList();
+        double rows = 0, caught = 0;
+        foreach (var a in indices)
+        {
+            rows += Counts[a].Sum();
+            caught += indices.Sum(p => Counts[a][p]);
+        }
+        return rows > 0 ? caught / rows : null;
+    }
+}
+
+/// <summary>A candidate and a baseline scored on the same rows, paired per row.</summary>
+/// <param name="Measure">The per-row loss — <c>error_rate</c> or <c>squared_error</c>.</param>
+/// <param name="Rows">Rows both answered.</param>
+/// <param name="Candidate">The candidate's weighted mean loss.</param>
+/// <param name="Baseline">The baseline's.</param>
+/// <param name="Difference">Candidate − baseline; negative favors the candidate.</param>
+/// <param name="Low">Lower end of the 95% paired interval for <paramref name="Difference"/>.</param>
+/// <param name="High">Upper end.</param>
+/// <param name="Verdict">MLoop's reading — <c>CandidateBetter</c>, <c>BaselineBetter</c> or <c>Indistinguishable</c>.</param>
+public sealed record MLoopPairedComparison(
+    string Measure, int Rows, double Candidate, double Baseline, double Difference, double Low, double High, string Verdict);
+
+/// <summary>An experiment scored on labeled rows (MLoop <c>POST /evaluate</c>).</summary>
+/// <param name="ExperimentId">The experiment scored.</param>
+/// <param name="Metrics">Its metrics.</param>
+/// <param name="Confusion">How a classifier's answers fell; <see langword="null"/> for other tasks.</param>
+/// <param name="Against">The experiment it was compared with, when asked.</param>
+/// <param name="Paired">The per-row comparison; <see langword="null"/> when not asked, or when the task cannot be paired.</param>
+/// <param name="NotPaired">Why a comparison that was asked for could not be paired.</param>
+/// <param name="Warnings">MLoop's warnings about the rows (overlap with the training data, a weight it ignored).</param>
+public sealed record MLoopEvaluation(
+    string ExperimentId,
+    IReadOnlyDictionary<string, double> Metrics,
+    MLoopConfusion? Confusion = null,
+    string? Against = null,
+    MLoopPairedComparison? Paired = null,
+    string? NotPaired = null,
+    IReadOnlyList<string>? Warnings = null);

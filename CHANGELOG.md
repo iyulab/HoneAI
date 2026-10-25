@@ -41,6 +41,16 @@ All notable changes to HoneAI are documented here. The format follows
   Code that constructs either result recompiles unchanged (the parameter is optional); a binary built against 0.12
   must be rebuilt.
 
+- Promotion gates: `ModelLifecycle`'s review stage is an `IPromotionGate` (`PromotionCandidate` →
+  `PromotionVerdict`: promote, refuse or wait). `ReviewPromotionGate` is the person's review (what the `IReviewStore`
+  constructor wires — unchanged behaviour); `EvidencePromotionGate` promotes a candidate shown no worse than production
+  on held-out labels — the paired interval's upper end within a registered `EvidenceCriteria.Margin`, enough rows, and
+  must-catch recall no lower than production's when `MustCatch` is named — and refuses otherwise. `LifecycleRun`
+  gains `Metrics`, `Warnings` and `ProvenNoWorse`.
+- `IMLoopClient.EvaluateAsync(MLoopEvaluationRequest)` (MLoop `POST /evaluate`: metrics, `MLoopConfusion` with
+  `Recall(classes)`, and the paired comparison `against` another model) and `RollbackAsync(model, to)` (MLoop
+  `POST /rollback`). **Breaking for implementers**, as `EmbedTextsAsync` above.
+
 ### Changed
 - `HoneAI.Agents` depends on `IronHive.Agent` 0.75.0 (was 0.71.0).
 

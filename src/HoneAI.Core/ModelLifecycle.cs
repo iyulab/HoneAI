@@ -8,25 +8,23 @@ using System.Threading.Tasks;
 namespace HoneAI;
 
 /// <summary>
-/// Orchestrates train → (poll) → review (HITL) → promote over an <see cref="IMLoopClient"/> and an
-/// <see cref="IReviewStore"/> as a resumable run: the run is saved to an <see cref="ILifecycleStore"/>
-/// after every step, the review is a stored review rather than a wait in memory, and
+/// Orchestrates train → (poll) → review → promote over an <see cref="IMLoopClient"/> and an
+/// <see cref="IPromotionGate"/> as a resumable run: the run is saved to an <see cref="ILifecycleStore"/>
+/// after every step, a gate that cannot decide yet leaves the run waiting rather than a wait in memory, and
 /// <see cref="ResumeAsync"/> continues a run from where it stopped — in this process or another, after
 /// a restart, days later. Consumer-specific stages (dataset export, init, inspect) stay in the consumer;
 /// this capstone starts at training. A <see cref="IProvenanceSink"/> may record each stage outcome.
 /// </summary>
 /// <remarks>
-/// Promotion happens only when the review verdict is an approval (<c>approve</c>); a rejection settles
-/// the run before promote. One instance serializes the runs it resumes by id; two processes resuming the
-/// same run at once is the consumer's to prevent (a queue delivers a run to one worker).
+/// The gate decides promotion: a person's review (<see cref="ReviewPromotionGate"/>, what the
+/// <see cref="IReviewStore"/> constructor wires), evidence on held-out labels (<see cref="EvidencePromotionGate"/>),
+/// or the consumer's own. A refusal settles the run before promote. One instance serializes the runs it resumes by
+/// id; two processes resuming the same run at once is the consumer's to prevent (a queue delivers a run to one worker).
 /// </remarks>
 public sealed class ModelLifecycle : IModelLifecycle
 {
-    private static readonly HashSet<string> ApprovalVerdicts =
-        new(StringComparer.OrdinalIgnoreCase) { "approve", "approved", "accept", "promote" };
-
     private readonly IMLoopClient _mloop;
-    private readonly IReviewStore _reviews;
+    private readonly IPromotionGate _gate;
     private readonly ILifecycleStore _runs;
     private readonly IProvenanceSink? _provenance;
     private readonly Func<CancellationToken, Task> _pollDelay;
@@ -36,7 +34,7 @@ public sealed class ModelLifecycle : IModelLifecycle
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _runLocks = new(StringComparer.Ordinal);
 
     /// <param name="mloop">Client for train/poll/promote.</param>
-    /// <param name="reviews">Where the human review stage opens its review and reads the decision.</param>
+    /// <param name="reviews">Where a person's review is opened and its decision read — the gate is <see cref="ReviewPromotionGate"/>.</param>
     /// <param name="runs">Where runs are saved between steps; defaults to this process's memory.</param>
     /// <param name="provenance">Optional sink recording each stage outcome.</param>
     /// <param name="pollDelay">Delay between job polls; defaults to 2s. Pass a no-op for tests.</param>
@@ -52,9 +50,31 @@ public sealed class ModelLifecycle : IModelLifecycle
         int maxPolls = 150,
         Func<string>? runIdFactory = null,
         Func<DateTimeOffset>? clock = null)
+        : this(mloop, new ReviewPromotionGate(reviews ?? throw new ArgumentNullException(nameof(reviews))),
+            runs, provenance, pollDelay, maxPolls, runIdFactory, clock)
+    {
+    }
+
+    /// <param name="mloop">Client for train/poll/promote.</param>
+    /// <param name="gate">What decides whether a trained model is promoted.</param>
+    /// <param name="runs">Where runs are saved between steps; defaults to this process's memory.</param>
+    /// <param name="provenance">Optional sink recording each stage outcome.</param>
+    /// <param name="pollDelay">Delay between job polls; defaults to 2s. Pass a no-op for tests.</param>
+    /// <param name="maxPolls">Max job polls before giving up; defaults to 150.</param>
+    /// <param name="runIdFactory">Run id source; defaults to a new GUID per run.</param>
+    /// <param name="clock">Time source for <see cref="LifecycleRun.UpdatedAt"/>; defaults to <see cref="DateTimeOffset.UtcNow"/>.</param>
+    public ModelLifecycle(
+        IMLoopClient mloop,
+        IPromotionGate gate,
+        ILifecycleStore? runs = null,
+        IProvenanceSink? provenance = null,
+        Func<CancellationToken, Task>? pollDelay = null,
+        int maxPolls = 150,
+        Func<string>? runIdFactory = null,
+        Func<DateTimeOffset>? clock = null)
     {
         _mloop = mloop ?? throw new ArgumentNullException(nameof(mloop));
-        _reviews = reviews ?? throw new ArgumentNullException(nameof(reviews));
+        _gate = gate ?? throw new ArgumentNullException(nameof(gate));
         _runs = runs ?? new InMemoryLifecycleStore();
         _provenance = provenance;
         _pollDelay = pollDelay ?? (ct => Task.Delay(TimeSpan.FromSeconds(2), ct));
@@ -178,35 +198,41 @@ public sealed class ModelLifecycle : IModelLifecycle
                 // MLoop's warnings about the model belong in front of the reviewer who decides on it.
                 if (job.Warnings is { Count: > 0 } warnings)
                     detail = (detail is null ? string.Empty : detail + "; ") + "MLoop warns: " + string.Join("; ", warnings);
-                run = await RecordAsync(run with { ExperimentId = job.ExperimentId }, LifecycleStage.Evaluate, "completed",
+                run = await RecordAsync(run with { ExperimentId = job.ExperimentId, Metrics = job.Metrics, Warnings = job.Warnings },
+                    LifecycleStage.Evaluate, "completed",
                     detail, JudgeKind.Ml, cancellationToken).ConfigureAwait(false);
             }
 
-            // Review (HITL): open it — idempotently, a resumed run finds the one it opened — and read it.
+            // Review: the gate decides — asked again on every resume until it does.
             stage = LifecycleStage.Review;
-            var reviewId = run.ReviewId ?? run.RunId;
-            var review = await _reviews.OpenAsync(reviewId, run.RunId, cancellationToken).ConfigureAwait(false);
-            if (review.Decision is not { } decision)
+            if (run.ExperimentId is not { Length: > 0 } experimentId)
+                return await FailAsync(run, LifecycleStage.Promote, "no experimentId on completed job", cancellationToken)
+                    .ConfigureAwait(false);
+            var model = run.Request?.Training.Model ?? "default";
+            var verdict = await _gate.JudgeAsync(new PromotionCandidate(run.RunId, model, experimentId)
+            {
+                ReviewId = run.ReviewId ?? run.RunId,
+                Metrics = run.Metrics,
+                Warnings = run.Warnings,
+                TrainingSet = run.Request?.TrainingSet,
+            }, cancellationToken).ConfigureAwait(false);
+            if (verdict.Decision == PromotionDecision.Wait)
             {
                 return run.Status == "waiting_review"
                     ? run
                     : await SaveAsync(run with { Status = "waiting_review" }, cancellationToken).ConfigureAwait(false);
             }
 
-            var approved = ApprovalVerdicts.Contains(decision.Verdict);
-            run = await RecordAsync(run, LifecycleStage.Review, approved ? "completed" : "rejected",
-                decision.Comment, JudgeKind.Human, cancellationToken).ConfigureAwait(false);
-            if (!approved)
+            var promote = verdict.Decision == PromotionDecision.Promote;
+            run = await RecordAsync(run with { ProvenNoWorse = promote && verdict.ProvenNoWorse }, LifecycleStage.Review,
+                promote ? "completed" : "rejected", verdict.Reason, verdict.DecidedBy, cancellationToken).ConfigureAwait(false);
+            if (!promote)
                 return await SaveAsync(run with { Status = "completed" }, cancellationToken).ConfigureAwait(false); // completed without promotion
 
             // Promote.
             stage = LifecycleStage.Promote;
-            if (string.IsNullOrEmpty(run.ExperimentId))
-                return await FailAsync(run, LifecycleStage.Promote, "no experimentId on completed job", cancellationToken)
-                    .ConfigureAwait(false);
-            await _mloop.PromoteAsync(run.Request?.Training.Model ?? "default", run.ExperimentId, cancellationToken)
-                .ConfigureAwait(false);
-            run = await RecordAsync(run, LifecycleStage.Promote, "completed", run.ExperimentId, JudgeKind.Ml, cancellationToken)
+            await _mloop.PromoteAsync(model, experimentId, cancellationToken).ConfigureAwait(false);
+            run = await RecordAsync(run, LifecycleStage.Promote, "completed", experimentId, JudgeKind.Ml, cancellationToken)
                 .ConfigureAwait(false);
             return await SaveAsync(run with { Status = "completed" }, cancellationToken).ConfigureAwait(false);
         }

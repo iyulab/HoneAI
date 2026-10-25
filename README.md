@@ -37,8 +37,8 @@ It is built on four ideas:
 
 | Package | What it contains | Dependencies |
 |---|---|---|
-| `HoneAI.Abstractions` | Contracts only: `IJudge<,>`, `Tier`, `JudgeKind`, `ISettlementPolicy<>`, `ISliceKey<>`, `PolicySnapshot`, `PredictionProvenance`, `ITracedPrediction<T>`, `IReasoningRouter<,>`, `IMLoopClient`, `IProvenanceSink`, `IReviewStore`, `IModelLifecycle`, `ILifecycleStore`, `AgentRole` | none |
-| `HoneAI.Core` | Reference implementations: `TieredRouter<,>`, `RecheckDraw`, `MemoryJudge<,>`, `SettlementPolicy`, `HttpMLoopClient`, `JsonlProvenanceSink`, `InMemoryReviewStore`, `JsonlReviewStore`, `InMemoryLifecycleStore`, `JsonlLifecycleStore`, `ModelLifecycle`, `RolePersona` | none (third-party-free) |
+| `HoneAI.Abstractions` | Contracts only: `IJudge<,>`, `Tier`, `JudgeKind`, `ISettlementPolicy<>`, `ISliceKey<>`, `PolicySnapshot`, `PredictionProvenance`, `ITracedPrediction<T>`, `IReasoningRouter<,>`, `IMLoopClient`, `IProvenanceSink`, `IReviewStore`, `IPromotionGate`, `IModelLifecycle`, `ILifecycleStore`, `AgentRole` | none |
+| `HoneAI.Core` | Reference implementations: `TieredRouter<,>`, `RecheckDraw`, `MemoryJudge<,>`, `SettlementPolicy`, `HttpMLoopClient`, `JsonlProvenanceSink`, `InMemoryReviewStore`, `JsonlReviewStore`, `InMemoryLifecycleStore`, `JsonlLifecycleStore`, `ModelLifecycle`, `ReviewPromotionGate`, `EvidencePromotionGate`, `RolePersona` | none (third-party-free) |
 | `HoneAI.Agents` | An MLOps agent loop that drives the [MLoop](https://github.com/iyulab/MLoop) CLI through [mloop-mcp](https://github.com/iyulab/mloop-mcp) tools, using any `Microsoft.Extensions.AI` `IChatClient` | IronHive.Agent, ModelContextProtocol |
 
 `HoneAI.Core` reaches ML backends over transport (HTTP), never as an SDK
@@ -255,6 +255,23 @@ var run = await lifecycle.StartAsync(new LifecycleRequest(training));       // �
 // … later, wherever the reviewer is:
 await reviews.DecideAsync(run.ReviewId!, new ReviewDecision("approve", ReviewerKey: "r-7"));
 await lifecycle.ResumeAsync(run.RunId);                                       // → promoted, completed
+```
+
+The review stage is a promotion gate (`IPromotionGate`); a person's review (`ReviewPromotionGate`) is what the
+`IReviewStore` constructor wires. `EvidencePromotionGate` decides without a person: the candidate and the model in
+production are scored on the same held-out labels (`LabelShare.Evaluation`, written to a file in the MLoop project)
+and paired per row (MLoop `POST /evaluate` with `against`), and the candidate is promoted when the upper end of the
+interval for its loss minus production's stays within a margin you register beforehand — with, when you name the
+must-catch classes, a recall of them no lower than production's. Thin evidence refuses; production stays. A
+promotion it makes sets `LifecycleRun.ProvenNoWorse` — the new version keeps its standing in the trust lifecycle
+(`LiveSignals.VersionProvenNoWorse`) instead of starting again in shadow.
+
+```csharp
+var gate = new EvidencePromotionGate(mloop, new EvidenceCriteria
+{
+    EvaluationDataPath = "datasets/held-out.csv", Weight = "weight", Margin = 0.01, MustCatch = ["danger"],
+});
+var run = await new ModelLifecycle(mloop, gate, runs).StartAsync(new LifecycleRequest(training));  // → completed
 ```
 
 ### Agent roles

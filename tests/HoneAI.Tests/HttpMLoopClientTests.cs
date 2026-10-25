@@ -481,6 +481,70 @@ public class HttpMLoopClientTests
     }
 
     [Fact]
+    public async Task Evaluate_ReadsMetricsConfusionAndThePairedComparison()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            {
+              "modelName": "weld", "experimentId": "exp-4", "task": "multiclass-classification",
+              "metrics": { "macro_accuracy": 0.81 },
+              "confusion": { "classes": ["ok", "danger"], "counts": [[8, 2], [1, 9]], "total": 20 },
+              "comparison": {
+                "against": "exp-2", "metrics": { "macro_accuracy": 0.78 },
+                "paired": { "measure": "error_rate", "rows": 20, "candidate": 0.15, "baseline": 0.2,
+                            "difference": -0.05, "low": -0.12, "high": 0.02, "verdict": "Indistinguishable" }
+              },
+              "warnings": ["2 rows overlap the training data"]
+            }
+            """));
+
+        var evaluation = await Client(handler).EvaluateAsync(
+            new MLoopEvaluationRequest("eval.csv", "exp-4", "weld", Weight: "w", Against: "production"));
+
+        Assert.EndsWith("/evaluate", handler.LastUri);
+        Assert.Contains("\"against\":\"production\"", handler.LastBody);
+        Assert.Contains("\"weight\":\"w\"", handler.LastBody);
+        Assert.Equal("exp-4", evaluation.ExperimentId);
+        Assert.Equal(0.81, evaluation.Metrics["macro_accuracy"]);
+        Assert.Equal(0.9, evaluation.Confusion!.Recall(["DANGER"]));                // 9 of 10, names ignore case
+        Assert.Equal("exp-2", evaluation.Against);
+        Assert.Equal(new MLoopPairedComparison("error_rate", 20, 0.15, 0.2, -0.05, -0.12, 0.02, "Indistinguishable"), evaluation.Paired);
+        Assert.Equal(["2 rows overlap the training data"], evaluation.Warnings);
+    }
+
+    [Fact]
+    public async Task Evaluate_SaysWhyAComparisonWasNotPaired_AndRefusesASkippedEvaluation()
+    {
+        var notPaired = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "experimentId": "exp-4", "metrics": { "r_squared": 0.7 },
+              "comparison": { "against": "exp-2", "metrics": {}, "notPaired": "ranking has no per-row measure to pair" } }
+            """));
+        var evaluation = await Client(notPaired).EvaluateAsync(new MLoopEvaluationRequest("eval.csv", "exp-4", Against: "production"));
+        Assert.Null(evaluation.Paired);
+        Assert.Null(evaluation.Confusion);
+        Assert.Contains("per-row", evaluation.NotPaired!);
+
+        var skipped = new StubHandler(_ => Json(HttpStatusCode.OK, """{ "status": "skipped", "reason": "no_production_model" }"""));
+        await Assert.ThrowsAsync<MLoopClientException>(() => Client(skipped).EvaluateAsync(new MLoopEvaluationRequest("eval.csv")));
+    }
+
+    [Fact]
+    public async Task Rollback_ReadsWhatProductionWasPutBackTo()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "modelName": "weld", "experimentId": "exp-2", "previousExperimentId": "exp-4", "backupPath": "x" }
+            """));
+
+        var rollback = await Client(handler).RollbackAsync("weld");
+
+        Assert.Equal(new MLoopRollback("exp-2", "exp-4"), rollback);
+        Assert.Contains("\"name\":\"weld\"", handler.LastBody);
+
+        var conflict = new StubHandler(_ => Json(HttpStatusCode.Conflict, """{ "error": "nothing to roll back to" }"""));
+        var error = await Assert.ThrowsAsync<MLoopClientException>(() => Client(conflict).RollbackAsync("weld"));
+        Assert.Equal(HttpStatusCode.Conflict, error.StatusCode);
+    }
+
+    [Fact]
     public async Task GetInfo_ReturnsNullOnNotFound()
     {
         var handler = new StubHandler(_ => Json(HttpStatusCode.NotFound, """{ "error": "no model" }"""));

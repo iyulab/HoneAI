@@ -240,6 +240,35 @@ public class ModelLifecycleTests : IDisposable
         Assert.Contains(sink.Records, r => r.Provenance.Kind == JudgeKind.Human);
     }
 
+    [Fact]
+    public async Task AnEvidenceGate_PromotesWithoutAPerson_AndTheRunSaysTheNewVersionWasShownNoWorse()
+    {
+        var mloop = new FakeMLoop { CompletedExperimentId = "exp-9", ProductionExperimentId = "exp-2" };
+        mloop.Evaluations["exp-9"] = new MLoopEvaluation("exp-9", new Dictionary<string, double>(),
+            Paired: new MLoopPairedComparison("error_rate", 120, 0.1, 0.12, -0.02, -0.05, 0.0, "Indistinguishable"));
+        var gate = new EvidencePromotionGate(mloop, new EvidenceCriteria { EvaluationDataPath = "eval.csv" });
+
+        var run = await new ModelLifecycle(mloop, gate, pollDelay: NoDelay, runIdFactory: () => "run-1")
+            .StartAsync(new LifecycleRequest(Train));
+
+        Assert.Equal("completed", run.Status);
+        Assert.Equal(("weld", "exp-9"), mloop.Promoted);
+        Assert.True(run.ProvenNoWorse);
+        Assert.Equal(0.9, run.Metrics!["auc"]);
+        var review = Assert.Single(run.Steps, s => s.Stage == LifecycleStage.Review);
+        Assert.Contains("shown no worse", review.Detail);
+
+        // Not shown no worse: the run completes, production stays.
+        var worse = new FakeMLoop { CompletedExperimentId = "exp-9", ProductionExperimentId = "exp-2" };
+        worse.Evaluations["exp-9"] = mloop.Evaluations["exp-9"] with { Paired = mloop.Evaluations["exp-9"].Paired! with { High = 0.04 } };
+        var refused = await new ModelLifecycle(worse, new EvidencePromotionGate(worse, new EvidenceCriteria { EvaluationDataPath = "eval.csv" }),
+            pollDelay: NoDelay, runIdFactory: () => "run-2").StartAsync(new LifecycleRequest(Train));
+        Assert.Equal("completed", refused.Status);
+        Assert.Null(worse.Promoted);
+        Assert.False(refused.ProvenNoWorse);
+        Assert.Equal("rejected", refused.Steps[^1].Status);
+    }
+
     // --- fakes ---
 
     private sealed class FakeMLoop : IMLoopClient
@@ -281,8 +310,29 @@ public class ModelLifecycleTests : IDisposable
         public Task<ITracedPrediction<MLoopPredictionResult>> PredictAsync(MLoopPredictionRequest request, CancellationToken ct = default)
             => throw new NotSupportedException();
 
+        public string? ProductionExperimentId { get; set; }
+
         public Task<MLoopModelInfo?> GetInfoAsync(string? model = null, CancellationToken ct = default)
-            => Task.FromResult<MLoopModelInfo?>(null);
+            => Task.FromResult(ProductionExperimentId is null ? null : new MLoopModelInfo(model ?? "default", "binary"));
+
+        public Dictionary<string, MLoopEvaluation> Evaluations { get; } = new();
+        public List<MLoopEvaluationRequest> EvaluationsAsked { get; } = new();
+
+        public Task<MLoopEvaluation> EvaluateAsync(MLoopEvaluationRequest request, CancellationToken ct = default)
+        {
+            EvaluationsAsked.Add(request);
+            var id = request.ExperimentId ?? ProductionExperimentId!;
+            var evaluation = Evaluations[id];
+            return Task.FromResult(request.Against is null ? evaluation with { Paired = null, Against = null } : evaluation with { Against = ProductionExperimentId });
+        }
+
+        public List<(string Model, string? To)> RolledBack { get; } = new();
+
+        public Task<MLoopRollback> RollbackAsync(string model, string? to = null, CancellationToken ct = default)
+        {
+            RolledBack.Add((model, to));
+            return Task.FromResult(new MLoopRollback(to ?? "exp-prev", ProductionExperimentId));
+        }
 
         public Task<MLoopDrift> GetDriftAsync(MLoopDriftRequest request, CancellationToken ct = default)
             => throw new NotSupportedException("lifecycle tests never read drift");

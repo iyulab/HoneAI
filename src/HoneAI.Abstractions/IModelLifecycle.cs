@@ -21,7 +21,7 @@ public enum LifecycleStage
     /// <summary>Evaluate the trained model (<c>evaluate</c>).</summary>
     Evaluate = 4,
 
-    /// <summary>Human review (<c>review</c>, HITL — a review in <see cref="IReviewStore"/>).</summary>
+    /// <summary>The promotion gate (<c>review</c>) — a person's review in <see cref="IReviewStore"/> by default (<see cref="IPromotionGate"/>).</summary>
     Review = 5,
 
     /// <summary>Promote the model to production (<c>promote</c>).</summary>
@@ -58,6 +58,18 @@ public sealed record LifecycleRun(string RunId, string Status, IReadOnlyList<Lif
 
     /// <summary>The experiment the training produced, once it completed.</summary>
     public string? ExperimentId { get; init; }
+
+    /// <summary>The experiment's metrics on MLoop's held-out rows, once training completed.</summary>
+    public IReadOnlyDictionary<string, double>? Metrics { get; init; }
+
+    /// <summary>MLoop's warnings about the experiment, once training completed.</summary>
+    public IReadOnlyList<string>? Warnings { get; init; }
+
+    /// <summary>
+    /// The gate promoted the experiment as shown no worse than the model it replaced (<see cref="PromotionVerdict.ProvenNoWorse"/>) —
+    /// the evidence the tier's new version keeps its standing on.
+    /// </summary>
+    public bool ProvenNoWorse { get; init; }
 
     /// <summary>When the run was last saved.</summary>
     public DateTimeOffset? UpdatedAt { get; init; }
