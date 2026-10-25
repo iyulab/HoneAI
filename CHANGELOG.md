@@ -15,6 +15,13 @@ All notable changes to HoneAI are documented here. The format follows
 - `LabelConfirmation.Supersedes(previous, next)`: whether a later label for a decision replaces the one already sent
   — a consensus over any one judge, otherwise the more trusted (on a tie, measured over default trust, then the later).
   MLoop counts the most recent feedback of a prediction, so a less trusted label sent later would win there.
+- `LabelAdmission` (passed to `Decide` / `Settle`): which confirmations become labels — `Qualified` (a judge that may
+  confirm at all, e.g. a teacher whose must-catch recall clears the floor), `DefaultTrustCap` (an unmeasured judge's
+  default trust held under a cap) and `MinimumTrust`. A judge kept out cannot confirm; with none admitted, the new
+  `ConfirmationOutcome.NotAdmitted` says why.
+- `TrainingSetManifest` and `TrainingSets.Manifest` / `Compare`: what a training run learned from — label counts by
+  confirming judge, trust basis, slice and value, the time span, the held-out split and a SHA-256 of the contents —
+  and what changed between two runs. `LifecycleRequest.TrainingSet` saves it with the run.
 - `IMLoopClient.EmbedTextsAsync(MLoopTextEmbeddingRequest)`: texts to sentence vectors with a text encoder installed on
   the MLoop server (MLoop 0.46+ `POST /embed` with `{"texts": […]}`) — for comparing texts by meaning, in Korean and
   other languages. `MLoopEncoder` gains `Kind` (`image` / `text`) and `TokenizerSha256` (a text encoder's tokenizer,

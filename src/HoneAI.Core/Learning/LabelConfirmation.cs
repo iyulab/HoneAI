@@ -66,6 +66,10 @@ public static class LabelConfirmation
     /// answer under <see cref="MLoopFeedbackSink{TValue}.PredictionIdAnnotation"/>.
     /// </param>
     /// <param name="split">Which decisions are held out for measuring the learner; <see cref="LabelSplit.None"/> when null.</param>
+    /// <param name="admission">
+    /// Which confirmations may become labels; <see cref="LabelAdmission.All"/> when null. A judge it keeps out cannot
+    /// confirm — the most trusted admitted one stands, and with none, <see cref="ConfirmationOutcome.NotAdmitted"/>.
+    /// </param>
     public static Confirmation<TValue> Decide<TValue>(
         string decisionId,
         PredictionProvenance decision,
@@ -77,7 +81,8 @@ public static class LabelConfirmation
         DateTimeOffset confirmedAt,
         LabelTrustDefaults? defaults = null,
         IReadOnlyDictionary<string, string>? annotations = null,
-        LabelSplit? split = null)
+        LabelSplit? split = null,
+        LabelAdmission? admission = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(decisionId);
         ArgumentNullException.ThrowIfNull(decision);
@@ -108,9 +113,17 @@ public static class LabelConfirmation
             return new(ConfirmationOutcome.NeedsConsensus,
                 Reason: "Judges above disagree on a must-catch value; it waits for a consensus judgment.");
 
-        // The most trusted confirmer's answer stands (on a tie, the one higher in the cost order).
-        var scored = above
-            .Select(x => (x.Answer, x.Tier, Trust: TrustOf(x.Tier, x.Answer.Provenance.JudgedBy, teacherCell, defaults)))
+        // The most trusted admitted confirmer's answer stands (on a tie, the one higher in the cost order).
+        admission ??= LabelAdmission.All;
+        var candidates = above
+            .Select(x => (x.Answer, x.Tier, Judge: new JudgeIdentity(x.Tier.Id, x.Answer.Provenance.JudgedBy),
+                Trust: admission.Cap(TrustOf(x.Tier, x.Answer.Provenance.JudgedBy, teacherCell, defaults))))
+            .Select(x => (x.Answer, x.Tier, x.Trust, Refusal: admission.Refusal(x.Judge, x.Trust.Value)))
+            .ToList();
+        if (candidates.All(x => x.Refusal is not null))
+            return new(ConfirmationOutcome.NotAdmitted, Reason: string.Join("; ", candidates.Select(x => x.Refusal)) + ".");
+        var scored = candidates
+            .Where(x => x.Refusal is null)
             .OrderByDescending(x => x.Trust.Value)
             .ThenByDescending(x => x.Tier.CostRank)
             .First();
@@ -148,6 +161,7 @@ public static class LabelConfirmation
     /// <param name="defaults">The consensus trust; <see cref="LabelTrustDefaults.Standard"/> when null.</param>
     /// <param name="annotations">The references the sinks need, as in <see cref="Decide{TValue}"/>.</param>
     /// <param name="split">Which decisions are held out, as in <see cref="Decide{TValue}"/> — a consensus is split like any other label.</param>
+    /// <param name="admission">The admission rules; a consensus is held to <see cref="LabelAdmission.MinimumTrust"/> only.</param>
     /// <exception cref="ArgumentException">
     /// The consensus is not one: fewer than two distinct participants, a participant whose tier is not on the
     /// ladder, or one at or below the learner — a judge agreeing with itself is not evidence, and neither is the learner.
@@ -159,7 +173,8 @@ public static class LabelConfirmation
         IReadOnlyCollection<Tier> tiers,
         LabelTrustDefaults? defaults = null,
         IReadOnlyDictionary<string, string>? annotations = null,
-        LabelSplit? split = null)
+        LabelSplit? split = null,
+        LabelAdmission? admission = null)
     {
         ArgumentNullException.ThrowIfNull(decision);
         ArgumentNullException.ThrowIfNull(consensus);
@@ -188,6 +203,9 @@ public static class LabelConfirmation
         if (ReachProbability(decision, participants.Select(p => p.Tier), tiers) is not { } probability)
             return new(ConfirmationOutcome.NotALabel,
                 Reason: $"Settled by '{decision.TierId}' and not drawn for recheck: no tier above saw it.");
+
+        if ((admission ?? LabelAdmission.All).Refusal(null, defaults.Consensus) is { } refusal)
+            return new(ConfirmationOutcome.NotAdmitted, Reason: $"Consensus {refusal}.");
 
         var ordered = participants
             .OrderBy(p => p.Tier.CostRank)

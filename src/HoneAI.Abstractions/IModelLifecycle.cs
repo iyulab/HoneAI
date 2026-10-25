@@ -88,8 +88,13 @@ public interface ILifecycleStore
 /// When set, the run first builds a retraining set from the model's feedback — the confirmed labels sinks recorded —
 /// and trains on <see cref="MLoopTrainRequest.DataPath"/> with it merged in (the <see cref="LifecycleStage.Export"/> stage).
 /// </param>
+/// <param name="TrainingSet">
+/// What the confirmed labels the run learns from are (<c>TrainingSets.Manifest</c> over the labels the consumer kept) —
+/// saved with the run, so two runs can be compared by their data.
+/// </param>
 public sealed record LifecycleRequest(
-    MLoopTrainRequest Training, string? ReviewId = null, string? Trigger = null, MLoopSampleRequest? Feedback = null);
+    MLoopTrainRequest Training, string? ReviewId = null, string? Trigger = null, MLoopSampleRequest? Feedback = null,
+    TrainingSetManifest? TrainingSet = null);
 
 /// <summary>
 /// Orchestrates a model reliability lifecycle — export→train→evaluate→review(HITL)→promote —

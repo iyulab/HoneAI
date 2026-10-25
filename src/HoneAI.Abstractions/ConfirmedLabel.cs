@@ -143,6 +143,12 @@ public enum ConfirmationOutcome
     /// never drawn, so no tier above saw it.
     /// </summary>
     NotALabel = 2,
+
+    /// <summary>
+    /// A label the consumer's admission rules keep out: the confirming judge is not qualified, or trusted under the
+    /// minimum. Nothing is learned from it.
+    /// </summary>
+    NotAdmitted = 3,
 }
 
 /// <summary>
