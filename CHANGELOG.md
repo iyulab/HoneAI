@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-27
+
 ### Changed
 - **Breaking** (source): `IModelLifecycle.RollBackAsync(runId, reason, by = null, cancellationToken = default)` — `by`
   sits before the cancellation token, so a caller that passed the token positionally as the third argument names it
