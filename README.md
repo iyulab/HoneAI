@@ -140,6 +140,12 @@ A tier earns the right to settle a slice from rechecks, not from its own confide
 (`StandingChange.AwaitsApproval`) unless `LifecyclePolicy.AutoRelease` is on; tightening never waits.
 Every number a promise is made of — targets, margins, deadlines, budgets — is yours to set.
 
+A person can hold a slice: pass `SliceWindow.Freeze` (`SliceFreeze` — who, when, why, and the lowest rate a stable
+slice may be rechecked at) and the controller stops releasing it — no step toward active or stable, no window counted
+toward stable, no approval queued. Tightening is not held: a frozen slice that gets worse is still demoted and
+rechecked more, so the lever that stops an automatic change does not stop the safety net. Windows keep being judged,
+and the step says what the hold held. Keep the freeze where you keep standings; lift it by not passing it.
+
 ### A judge that comes when it comes (`RecheckPool`)
 
 `TieredRouter.RecheckAsync` calls the tier above there and then — right for a model. A person, or an expensive model

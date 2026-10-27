@@ -78,6 +78,84 @@ public class TrustControllerTests
         Assert.False(outcome["stable"].Grant!.Funded);
     }
 
+    private static readonly SliceFreeze Hold = new("operator-1", Now.AddDays(-1), "manual labels under review");
+
+    [Fact]
+    public void AFrozenSlice_IsNotReleased_AndIsNotWaitingForAnApproval_ButTheWindowIsStillJudged()
+    {
+        foreach (var policy in new[] { Policy, Policy with { Lifecycle = Policy.Lifecycle with { AutoRelease = true } } })
+        {
+            var step = TrustController.Close("s-20", Now, [Slice("ready", TrustState.Shadow, Good()) with { Freeze = Hold }], policy);
+
+            var outcome = Assert.Single(step.Slices);
+            Assert.Equal(TrustState.Shadow, step.Snapshot.Entries[0].State);
+            Assert.Equal(TrustState.Shadow, outcome.Committed.State);
+            Assert.False(outcome.Step.Moved);
+            Assert.True(outcome.Held);
+            Assert.Empty(step.AwaitingApproval);
+            Assert.Same(Hold, Assert.Single(step.Frozen).Freeze);
+            Assert.Contains("frozen by operator-1", outcome.Step.Reason);
+            Assert.Contains("window met every release condition", outcome.Step.Reason);   // what it would have done
+        }
+
+        // The same slice without the hold is released (or waits for approval): the hold is what stopped it.
+        var free = TrustController.Close("s-21", Now, [Slice("ready", TrustState.Shadow, Good())], Policy);
+        Assert.Equal(["ready"], free.AwaitingApproval.Select(s => s.SliceKey));
+    }
+
+    [Fact]
+    public void AFrozenActiveSlice_DoesNotCountWindowsTowardStable()
+    {
+        var step = TrustController.Close("s-22", Now, [Slice("a", TrustState.Active, Good()) with { Freeze = Hold }], Policy);
+
+        Assert.Equal(0, step.Slices[0].Committed.PassingWindows);
+        Assert.True(step.Slices[0].Held);
+        var free = TrustController.Close("s-23", Now, [Slice("a", TrustState.Active, Good())], Policy);
+        Assert.Equal(1, free.Slices[0].Committed.PassingWindows);
+    }
+
+    [Fact]
+    public void AFrozenSlice_IsStillTightened_BecauseTheHoldStopsReleasesNotTheSafetyNet()
+    {
+        var step = TrustController.Close("s-24", Now, [
+            Slice("drifted", TrustState.Stable, Good(), drifted: true) with { Freeze = Hold },
+            Slice("failing", TrustState.Active, Good() with { AgreementUpper = 0.5, AgreementLower = 0.4, Agreement = 0.45 }) with { Freeze = Hold },
+        ], Policy);
+
+        var outcome = step.Slices.ToDictionary(s => s.SliceKey);
+        Assert.Equal(TrustState.Active, outcome["drifted"].Committed.State);
+        Assert.Equal(TrustState.Shadow, outcome["failing"].Committed.State);
+        Assert.All(outcome.Values, o => Assert.False(o.Held));
+        Assert.Equal(2, step.Frozen.Count());                                    // still frozen; nothing was held this window
+    }
+
+    [Fact]
+    public void AFrozenStableSlice_IsRecheckedNoLessThanItsHold_AndThePoolCountsTheExtra()
+    {
+        var free = TrustController.Close("s-25", Now, [Slice("stable", TrustState.Stable, Good())], Policy);
+        var frozen = TrustController.Close("s-26", Now, [Slice("stable", TrustState.Stable, Good()) with { Freeze = Hold with { MinimumRate = 0.1 } }], Policy);
+
+        var floor = frozen.Snapshot.Entries[0];
+        Assert.True(free.Snapshot.Entries[0].SampleRates!["uniform"] < 0.1);
+        Assert.Equal(0.1, floor.SampleRates!["uniform"], 12);
+        Assert.Equal(SliceFreeze.RateTerm, floor.RateSetBy);
+        Assert.True(frozen.Slices[0].Held);
+        Assert.Equal(free.Pools["tenant-a"].Spent + (0.1 - free.Snapshot.Entries[0].SampleRates!["uniform"]) * 10_000, frozen.Pools["tenant-a"].Spent, 6);
+
+        // A grant already above the hold is left as it is.
+        var above = TrustController.Close("s-27", Now, [Slice("stable", TrustState.Stable, Good()) with { Freeze = Hold with { MinimumRate = 0.0001 } }], Policy);
+        Assert.Equal(free.Snapshot.Entries[0].SampleRates!["uniform"], above.Snapshot.Entries[0].SampleRates!["uniform"], 12);
+        Assert.False(above.Slices[0].Held);
+    }
+
+    [Fact]
+    public void AFreeze_NeedsAWhoAWhyAndARateInRange()
+    {
+        Assert.Throws<ArgumentException>(() => TrustController.Close("s", Now, [Slice("a", TrustState.Active, Good()) with { Freeze = Hold with { By = " " } }], Policy));
+        Assert.Throws<ArgumentException>(() => TrustController.Close("s", Now, [Slice("a", TrustState.Active, Good()) with { Freeze = Hold with { Reason = "" } }], Policy));
+        Assert.Throws<ArgumentOutOfRangeException>(() => TrustController.Close("s", Now, [Slice("a", TrustState.Stable, Good()) with { Freeze = Hold with { MinimumRate = 0 } }], Policy));
+    }
+
     [Fact]
     public void AStableTierWithinBudget_IsGrantedWhatItsPromiseNeeds()
     {

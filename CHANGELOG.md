@@ -7,6 +7,12 @@ All notable changes to HoneAI are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- A person's freeze on a slice: `SliceWindow.Freeze` (`SliceFreeze { By, At, Reason, MinimumRate }`) makes
+  `TrustController.Close` stop *releasing* it — no move toward active or stable, no window counted toward stable (so no
+  approval is queued either), and a stable slice is rechecked at no less than `MinimumRate` (the extra counts in the
+  pool's spending, `RateSetBy` says `freeze`). Tightening is never held: a frozen slice that gets worse is still demoted
+  and rechecked more. The window is judged as usual and the step says what it held (`SliceOutcome.Held` / `Freeze`,
+  `ControllerStep.Frozen`). The caller keeps the freeze and lifts it by no longer passing it.
 - Repeat consistency as an admission rule: `LabelConfirmation.Decide(…, repeats:)` takes the repeats made of the decision
   (`RepeatConsistency.Pair`), and a label whose confirming judge did not hold its own answer on one
   (`RepeatRecord.Consistent` false) is trusted at most `LabelAdmission.UnsteadyTrustCap` (whatever the trust basis) or,

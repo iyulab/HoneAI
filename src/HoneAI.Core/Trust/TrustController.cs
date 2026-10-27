@@ -4,6 +4,35 @@ using System.Linq;
 
 namespace HoneAI.Trust;
 
+/// <summary>
+/// A person's hold on one tier in one slice: the controller stops <em>releasing</em> it — no move toward active or
+/// stable, no step along the windows that lead there, no lowering of the rate it is rechecked at — until the hold is
+/// lifted. Tightening is never held: a frozen slice that gets worse is still demoted and rechecked more, or the lever
+/// meant to stop an automatic change would stop the safety net with it. The ledger keeps measuring either way.
+/// </summary>
+/// <param name="By">Who froze it.</param>
+/// <param name="At">When.</param>
+/// <param name="Reason">Why — what a person coming to lift the hold reads first.</param>
+/// <param name="MinimumRate">
+/// The rate the slice is rechecked at no lower than, when it is stable (its pool grant may fall below what the person
+/// saw when freezing it). Null: the grant as it comes. The extra rechecks are counted in the pool's spending.
+/// </param>
+public sealed record SliceFreeze(string By, DateTimeOffset At, string Reason, double? MinimumRate = null)
+{
+    /// <summary>The term that sets a stable slice's rate when this hold raised it (<see cref="BudgetGrant.SetBy"/>).</summary>
+    public const string RateTerm = "freeze";
+
+    internal void Validate()
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(By);
+        ArgumentException.ThrowIfNullOrWhiteSpace(Reason);
+        if (MinimumRate is { } r && !(r > 0 && r <= 1))
+            throw new ArgumentOutOfRangeException(nameof(MinimumRate), r, "A rate lies in (0, 1].");
+    }
+
+    internal string Describe() => $"frozen by {By} at {At:yyyy-MM-dd HH:mm}Z: {Reason}";
+}
+
 /// <summary>One tier in one slice at a window's end: where it stands and what the window showed.</summary>
 /// <param name="TierId">The tier.</param>
 /// <param name="SliceKey">The slice.</param>
@@ -19,6 +48,9 @@ public sealed record SliceWindow(
 {
     /// <summary>Rates of knobs other than the promise knob.</summary>
     public IReadOnlyDictionary<string, double>? OtherKnobRates { get; init; }
+
+    /// <summary>A person's hold on the slice (<see cref="SliceFreeze"/>); null when it is not frozen.</summary>
+    public SliceFreeze? Freeze { get; init; }
 
     /// <summary>How knobs tilt toward decisions worth checking.</summary>
     public IReadOnlyDictionary<string, KnobSelection>? Selection { get; init; }
@@ -45,17 +77,27 @@ public sealed record ControllerPolicy(LifecyclePolicy Lifecycle, IssuePolicy Iss
 /// <summary>What the controller decided for one tier in one slice.</summary>
 /// <param name="TierId">The tier.</param>
 /// <param name="SliceKey">The slice.</param>
-/// <param name="Step">The lifecycle's judgement. A release that awaits approval is not in the snapshot.</param>
+/// <param name="Step">The lifecycle's judgement. A release that awaits approval is not in the snapshot; one a freeze held is a stay that says so.</param>
 /// <param name="Committed">The standing the snapshot was issued with.</param>
 /// <param name="Need">The recheck probability the promise needs here.</param>
 /// <param name="Grant">The pool's grant, for a stable tier.</param>
-public sealed record SliceOutcome(string TierId, string SliceKey, StandingChange Step, SliceStanding Committed, RecheckRateChoice Need, BudgetGrant? Grant);
+public sealed record SliceOutcome(string TierId, string SliceKey, StandingChange Step, SliceStanding Committed, RecheckRateChoice Need, BudgetGrant? Grant)
+{
+    /// <summary>The hold the slice was under (<see cref="SliceFreeze"/>); null when it was not frozen.</summary>
+    public SliceFreeze? Freeze { get; init; }
+
+    /// <summary>The freeze held a release or a rate cut this window — <see cref="Step"/> says which.</summary>
+    public bool Held { get; init; }
+}
 
 /// <summary>A window's close: the snapshot to send to sites, what each slice got and why, and each pool's sharing.</summary>
 public sealed record ControllerStep(PolicySnapshot Snapshot, IReadOnlyList<SliceOutcome> Slices, IReadOnlyDictionary<string, BudgetAllocation> Pools)
 {
     /// <summary>Releases a person must approve before they take effect.</summary>
     public IEnumerable<SliceOutcome> AwaitingApproval => Slices.Where(s => s.Step.AwaitsApproval);
+
+    /// <summary>Slices a person has frozen, whether or not the freeze held anything this window.</summary>
+    public IEnumerable<SliceOutcome> Frozen => Slices.Where(s => s.Freeze is not null);
 }
 
 /// <summary>
@@ -91,9 +133,13 @@ public static class TrustController
 
         var judged = slices.Select(s =>
         {
+            s.Freeze?.Validate();
             var step = TrustLifecycle.Release(s.Standing, s.Window, s.TeacherQualified, s.Signals, policy.Lifecycle, now);
+            var held = s.Freeze is not null && Loosens(s.Standing, step.Standing);
+            if (held)
+                step = new StandingChange(s.Standing.State, s.Standing.State, $"{s.Freeze!.Describe()}; held: {step.Reason}", false, s.Standing);
             var committed = step.AwaitsApproval ? s.Standing : step.Standing;
-            return (Slice: s, Step: step, Committed: committed, Need: RecheckRate.Solve(policy.Lifecycle.Targets, s.Traffic));
+            return (Slice: s, Step: step, Committed: committed, Need: RecheckRate.Solve(policy.Lifecycle.Targets, s.Traffic), Held: held);
         }).ToList();
 
         var pools = new Dictionary<string, BudgetAllocation>(StringComparer.Ordinal);
@@ -107,11 +153,22 @@ public static class TrustController
                 .ToList();
             var allocation = RecheckBudget.Allocate(Math.Max(0, policy.PoolBudgets[pool.Key] - activeSpend), requests, policy.Lifecycle.Targets.RateFloor);
             pools[pool.Key] = allocation with { Budget = policy.PoolBudgets[pool.Key], Spent = allocation.Spent + activeSpend };
+            var raised = 0.0;
             foreach (var grant in allocation.Grants)
             {
                 var slice = pool.First(j => Key(j.Slice) == grant.SliceKey).Slice;
-                grants[(slice.TierId, slice.SliceKey)] = grant with { SliceKey = slice.SliceKey };
+                var issued = grant with { SliceKey = slice.SliceKey };
+                // A frozen slice is not rechecked less than its hold says; the extra comes out of the pool's spending.
+                if (slice.Freeze?.MinimumRate is { } floor && issued.Rate < floor)
+                {
+                    var extra = (floor - issued.Rate) * slice.Traffic.Decisions;
+                    issued = issued with { Rate = floor, Rechecks = issued.Rechecks + extra, SetBy = SliceFreeze.RateTerm };
+                    raised += extra;
+                }
+                grants[(slice.TierId, slice.SliceKey)] = issued;
             }
+            if (raised > 0)
+                pools[pool.Key] = pools[pool.Key] with { Spent = pools[pool.Key].Spent + raised };
         }
 
         var snapshot = PolicySnapshotIssuer.Issue(version, now,
@@ -124,12 +181,23 @@ public static class TrustController
             policy.Issue, sliceKeyVersion);
 
         var outcomes = judged
-            .Select(j => new SliceOutcome(j.Slice.TierId, j.Slice.SliceKey, j.Step, j.Committed, j.Need, grants.GetValueOrDefault((j.Slice.TierId, j.Slice.SliceKey))))
+            .Select(j => new SliceOutcome(j.Slice.TierId, j.Slice.SliceKey, j.Step, j.Committed, j.Need, grants.GetValueOrDefault((j.Slice.TierId, j.Slice.SliceKey)))
+            {
+                Freeze = j.Slice.Freeze,
+                Held = j.Held || (j.Slice.Freeze?.MinimumRate is not null && grants.GetValueOrDefault((j.Slice.TierId, j.Slice.SliceKey))?.SetBy == SliceFreeze.RateTerm),
+            })
             .ToList();
         return new ControllerStep(snapshot, outcomes, pools);
     }
 
     private static string Key(SliceWindow s) => s.TierId + "\u001f" + s.SliceKey;
+
+    // Whether `next` is further along toward release than `current`: a higher state, or more windows toward stable in the
+    // same one. A demotion, or a run that starts over, is tightening and is never held.
+    private static bool Loosens(SliceStanding current, SliceStanding next)
+        => next.State > current.State
+            || (next.State == current.State && string.Equals(next.TierVersion, current.TierVersion, StringComparison.Ordinal)
+                && next.PassingWindows > current.PassingWindows);
 
     /// <summary>Upper bound on the must-catch decisions a tier may be missing per window: u·C/(1 − u); null when unmeasured.</summary>
     public static double? Exposure(LedgerCell window)
