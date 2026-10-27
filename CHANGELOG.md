@@ -7,6 +7,13 @@ All notable changes to HoneAI are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `TrainingSetSelector.Select(labels, policy)`: the training set picked from the labels that stand, by a
+  `TrainingSetPolicy` — at most N labels per unit (`MaxPerUnit`, near-duplicates), per slice (`MaxPerSlice`) and in all
+  (`MaxLabels`, shared out between slices in proportion after the `MinPerSlice` floors). Each limit thins a group by the
+  labels' hash order, so the same labels and policy give the same set. A cap rebalances the set; with `Compensate` the
+  labels kept carry their keep probability (`ConfirmedLabel.SelectionProbability`, `Weight` divides by it) and still
+  count for everything they stand for. The manifest records what was offered, what was left out by reason, and whether
+  the set was compensated.
 - `MLoopPredictionRequest.Experiment` / `MLoopImagePredictionRequest.Experiment` (MLoop `POST /predict?experiment=`): a
   candidate experiment answers the same input while production keeps serving — the shadow tier's prediction. The result
   names the experiment that answered (`MLoopPredictionResult.Model`); `HttpMLoopClient` refuses an answer from another

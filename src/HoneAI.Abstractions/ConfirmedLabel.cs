@@ -123,11 +123,19 @@ public sealed record ConfirmedLabel<TValue>
     public string Unit => SplitKey ?? DecisionId;
 
     /// <summary>
-    /// How much the label counts: <see cref="Trust"/> / (<see cref="Probability"/> · <see cref="ShareProbability"/>).
-    /// The 1/π half makes the labels a sample of every decision rather than of the ones sent up or drawn, and the 1/q
-    /// half keeps each share a sample of them too; the trust half counts a judge that is wrong more often for less.
+    /// s — the probability the label was kept when the training set was selected (<c>TrainingSetSelector</c>), in (0, 1]:
+    /// 1 unless the selection was asked to stand for the labels it left out (<c>TrainingSetPolicy.Compensate</c>).
     /// </summary>
-    public double Weight => Trust / (Probability * ShareProbability);
+    public double SelectionProbability { get; init; } = 1.0;
+
+    /// <summary>
+    /// How much the label counts: <see cref="Trust"/> / (<see cref="Probability"/> · <see cref="ShareProbability"/> ·
+    /// <see cref="SelectionProbability"/>). The 1/π half makes the labels a sample of every decision rather than of the
+    /// ones sent up or drawn, the 1/q half keeps each share a sample of them too, and the 1/s half — when the selection
+    /// asked for it — makes the labels kept stand for the ones left out; the trust half counts a judge that is wrong
+    /// more often for less.
+    /// </summary>
+    public double Weight => Trust / (Probability * ShareProbability * SelectionProbability);
 
     /// <summary>
     /// Consumer references the sinks need — the engine's own id for the decision (an MLoop prediction id),

@@ -188,6 +188,11 @@ session — pass its key as `splitKey` to `Decide` / `Settle` (the same key at b
 so those decisions fall in one share, and `TrainingSets.Summarize` counts the held-out share in independent units
 and warns if a key has labels in both shares.
 
+More labels than should be learned from? `TrainingSetSelector.Select(labels, policy)` picks the set: at most so many
+per near-duplicate unit, per slice and in all, with floors that keep a rare slice whole, the same set for the same
+labels and policy. A cap rebalances the set — a big slice counts for less than it had; `Compensate` makes the labels
+kept carry the weight of those left out instead. The manifest says what was offered and what each limit left out.
+
 A decision can be labelled twice — a teacher first, a person or a consensus later. MLoop counts the most recent
 feedback of a prediction, so send a later label only when `LabelConfirmation.Supersedes(previous, next)` says it
 replaces the earlier one: a consensus over any one judge, otherwise the more trusted.

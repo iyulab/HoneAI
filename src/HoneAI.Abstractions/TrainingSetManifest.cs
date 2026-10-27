@@ -57,6 +57,18 @@ public sealed record TrainingSetManifest
     /// </summary>
     public int? Units { get; init; }
 
+    /// <summary>Labels offered to the selection (<c>TrainingSetSelector</c>), of which <see cref="Labels"/> were kept; null when none was made.</summary>
+    public int? Offered { get; init; }
+
+    /// <summary>Labels the selection left out, by reason (<c>unit</c>, <c>slice</c>, <c>budget</c>); null when none was made.</summary>
+    public IReadOnlyDictionary<string, int>? Dropped { get; init; }
+
+    /// <summary>
+    /// Whether the labels kept carry the weight of the ones left out (<see cref="ConfirmedLabel{TValue}.SelectionProbability"/>);
+    /// null when no selection was made. Without it a cap rebalances the set; with it the set stays a sample of everything.
+    /// </summary>
+    public bool? Compensated { get; init; }
+
     /// <summary>
     /// SHA-256 of the labels' contents (decision, value, confirming judge and version, weight), in decision order —
     /// the same labels give the same hash, whatever order they were kept in.
