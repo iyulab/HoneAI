@@ -196,6 +196,10 @@ session — pass its key as `splitKey` to `Decide` / `Settle` (the same key at b
 so those decisions fall in one share, and `TrainingSets.Summarize` counts the held-out share in independent units
 and warns if a key has labels in both shares.
 
+How many is enough? Train at a few budgets (`TrainingSetSelector` at several `MaxLabels`), measure each on the held-out
+share with its standard error, and `TrainingSizeCurve.Recommend` gives the smallest size beyond which none is
+significantly better — or says the curve is still rising and the largest measured is the answer.
+
 More labels than should be learned from? `TrainingSetSelector.Select(labels, policy)` picks the set: at most so many
 per near-duplicate unit, per slice and in all, with floors that keep a rare slice whole, the same set for the same
 labels and policy. A cap rebalances the set — a big slice counts for less than it had; `Compensate` makes the labels

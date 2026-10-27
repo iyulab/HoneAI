@@ -12,6 +12,10 @@ All notable changes to HoneAI are documented here. The format follows
   (`cancellationToken: ct`).
 
 ### Added
+- `TrainingSizeCurve.Recommend(curve, higherIsBetter, confidence)`: how large a training set needs to be — the smallest
+  size from which no larger measured one is significantly better on the held-out share (one-sided, `confidence` 0.95 by
+  default, from each point's standard error). A curve still rising at its largest point says so rather than inventing a
+  plateau. Nothing sizes a set unless a consumer asks.
 - `MetaMaskMeasure` (experimental, off unless used): whether a teacher leans on an input's metadata. Judge an input
   again with one piece of its metadata masked (the masking is the caller's — HoneAI does not know which part of an input
   is metadata) and pair the two blind judgments (`MetaMaskMeasure.Pair` → `MaskedPairRecord`). `Compute` counts, per
