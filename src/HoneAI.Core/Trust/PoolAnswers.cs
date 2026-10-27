@@ -50,6 +50,27 @@ public static class PoolAnswers
     }
 
     /// <summary>
+    /// The response to record when the judge saw <paramref name="shown"/> and could not tell
+    /// (<see cref="PoolResponseKind.Unsure"/>) — not a pass, which is the upper tier's failure, and no label.
+    /// </summary>
+    public static PoolResponse Unsure(PoolPresentation shown, string checkedBy, string reviewerKey, DateTimeOffset at)
+    {
+        ArgumentNullException.ThrowIfNull(shown);
+        ArgumentException.ThrowIfNullOrWhiteSpace(checkedBy);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reviewerKey);
+        return new PoolResponse
+        {
+            Purpose = shown.Purpose,
+            DecisionId = shown.DecisionId,
+            TierId = shown.TierId,
+            CheckedBy = checkedBy,
+            ReviewerKey = reviewerKey,
+            RespondedAt = at,
+            Kind = PoolResponseKind.Unsure,
+        };
+    }
+
+    /// <summary>
     /// The judgment as a recheck result — blind, as everything the pool shows is — for <c>PlantRecords.From</c>,
     /// <see cref="RepeatConsistency.Pair{TValue}"/> and <see cref="DoubleCheckMeasure.Pair{TValue}"/>.
     /// </summary>

@@ -343,7 +343,7 @@ public static class LabelConfirmation
 
     /// <summary>
     /// Whether <paramref name="next"/> replaces <paramref name="previous"/>, a label already sent for the same decision.
-    /// A consensus replaces any single judge's label; otherwise the label trusted more stands — on equal trust, a
+    /// A label someone judged replaces one spread to the decision from another (<see cref="LabelOrigin.Propagated"/>), and never the reverse; a consensus replaces any single judge's label; otherwise the label trusted more stands — on equal trust, a
     /// measured trust over a default one, and then the later label. Send <paramref name="next"/> only when it does:
     /// MLoop counts the most recent feedback of a prediction, so a label sent later wins there whatever it is worth.
     /// </summary>
@@ -356,6 +356,10 @@ public static class LabelConfirmation
             throw new ArgumentException(
                 $"A label for '{next.DecisionId}' cannot replace one for '{previous.DecisionId}'.", nameof(next));
 
+        // A label someone judged outweighs one spread to the decision from another, whatever trust the spread one inherits.
+        var byJudged = IsJudged(next).CompareTo(IsJudged(previous));
+        if (byJudged != 0)
+            return byJudged > 0;
         var byConsensus = IsConsensus(next).CompareTo(IsConsensus(previous));
         if (byConsensus != 0)
             return byConsensus > 0;
@@ -367,6 +371,7 @@ public static class LabelConfirmation
             return byMeasured > 0;
         return next.ConfirmedAt > previous.ConfirmedAt;
 
+        static bool IsJudged(ConfirmedLabel<TValue> l) => l.Origin != LabelOrigin.Propagated;
         static bool IsConsensus(ConfirmedLabel<TValue> l) => l.TrustBasis == LabelTrustBasis.Consensus;
         static bool IsMeasured(ConfirmedLabel<TValue> l) => l.TrustBasis == LabelTrustBasis.Measured;
     }

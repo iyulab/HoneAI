@@ -111,6 +111,14 @@ public enum PoolResponseKind
     /// ledger counts it at both ends of an interval. An item the judge never reached is not this.
     /// </summary>
     Skipped = 1,
+
+    /// <summary>
+    /// It saw the item and could not tell. Unlike <see cref="Skipped"/> this is not the upper tier's failure and unlike an
+    /// answer it is no label: the item was reached (it counts in the reach rate), and nothing else is recorded from it
+    /// but the count (<c>PoolReach.Unsure</c>) — hard inputs are where people are unsure, so a consumer watches that count
+    /// beside the agreement it leaves out.
+    /// </summary>
+    Unsure = 2,
 }
 
 /// <summary>

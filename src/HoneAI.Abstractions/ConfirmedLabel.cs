@@ -57,6 +57,14 @@ public enum LabelOrigin
     /// counted apart from the person's measured trust.
     /// </summary>
     Voluntary = 1,
+
+    /// <summary>
+    /// Nobody judged this decision: a person's answer to a representative of its cluster was spread to it. The value is an
+    /// estimate of what a person would say, not an observation — so a propagated label teaches (at its representative's trust
+    /// times the cluster's measured purity, capped) and never measures (<see cref="LabelShare.Evaluation"/> refuses it), and it
+    /// is never counted in anyone's measured trust. It has no π: it stands for itself, not for the decisions nobody looked at.
+    /// </summary>
+    Propagated = 2,
 }
 
 /// <summary>
@@ -153,7 +161,7 @@ public sealed record ConfirmedLabel<TValue>
     /// asked for it — makes the labels kept stand for the ones left out; the trust half counts a judge that is wrong
     /// more often for less.
     /// </summary>
-    public double Weight => Math.Min(Trust / (Probability * ShareProbability * SelectionProbability), WeightCap ?? double.PositiveInfinity);
+    public double Weight => Math.Min(Trust * Purity / (Probability * ShareProbability * SelectionProbability), WeightCap ?? double.PositiveInfinity);
 
     /// <summary>
     /// How the decision reached the judge — <see cref="LabelOrigin.Drawn"/> unless a person corrected a decision nothing
@@ -166,6 +174,15 @@ public sealed record ConfirmedLabel<TValue>
     /// not for decisions it was not drawn from. Null: no cap.
     /// </summary>
     public double? WeightCap { get; init; }
+
+    /// <summary>
+    /// For a <see cref="LabelOrigin.Propagated"/> label, the share of the cluster's decisions the representative's value was
+    /// measured to be right for, in (0, 1] — the weight is multiplied by it. 1 for every other label.
+    /// </summary>
+    public double Purity { get; init; } = 1.0;
+
+    /// <summary>For a <see cref="LabelOrigin.Propagated"/> label, the decision whose answer was spread; null otherwise.</summary>
+    public string? PropagatedFrom { get; init; }
 
     /// <summary>
     /// Consumer references the sinks need — the engine's own id for the decision (an MLoop prediction id),

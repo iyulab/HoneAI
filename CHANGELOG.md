@@ -6,6 +6,19 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Propagated labels — a person's answer to one decision of a cluster, spread to the cluster's others. `ClusterPropagation.Assess`
+  judges a cluster from the decisions a person checked beside the representative against a `PropagationPolicy` (the fewest
+  decisions to check, the agreement required, the cap on the weight — none has a default); `ClusterPropagation.Propagate`
+  makes the `LabelOrigin.Propagated` label of a passing cluster for another decision. It teaches and never measures: training
+  share only (a decision the split holds out takes none), weight = the representative's trust × the checked agreement
+  (`ConfirmedLabel.Purity`), capped, with no π; it is not spread again, the feedback source ends with `(propagated)`, the
+  manifest counts it under `ByOrigin`, and `LabelConfirmation.Supersedes` lets a label someone judged replace it and never
+  the reverse.
+- `PoolResponseKind.Unsure` and `PoolAnswers.Unsure` — a judge who saw a pooled item and could not tell. The item counts as
+  reached (`PoolReach.Reached`, so the reach rate), is no failure of the tier above and leaves no recheck record;
+  `PoolReach.Unsure` counts them.
+
 ## [0.14.0] - 2026-10-27
 
 ### Changed

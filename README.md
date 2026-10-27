@@ -236,6 +236,16 @@ A person's own correction of a decision nothing drew has no π, and people corre
 labels are a sample of the errors. `LabelConfirmation.Volunteer` makes them as voluntary labels (`LabelOrigin.Voluntary`):
 they teach, at a weight capped by `LabelAdmission.VoluntaryWeightCap` (1 by default), and never measure — a decision the
 split holds out takes none — and the feedback source and the manifest count them apart.
+An answer a person gave for one decision of a cluster can be spread to the cluster's others as a propagated label
+(`ClusterPropagation.Propagate`, `LabelOrigin.Propagated`): it is an estimate of what a person would say, so it teaches and
+never measures. Only a cluster that passed its purity check spreads (`ClusterPropagation.Assess` over the decisions a
+person checked beside the representative); the label weighs the representative's trust times the checked agreement, capped
+by `PropagationPolicy.WeightCap`, with no π, in the training share only — a decision the split holds out takes none, a
+propagated label is not spread again, and a label someone judged always replaces it (`Supersedes`). How many decisions to
+check, how much agreement is enough and how much a spread label may weigh are the `PropagationPolicy` you pass; HoneAI sets
+none of them. A person who is shown a pooled item and cannot tell leaves an `Unsure` response (`PoolAnswers.Unsure`): the
+item was reached, it is no label and no failure of the tier above, and `PoolReach.Unsure` counts them — watch that count
+beside the agreement, for the inputs people cannot tell are the hard ones.
 A judge that does not hold its own answer when the same input is asked again (`RepeatConsistency.Pair`, passed as
 `repeats:`) is unsteady on that decision: `UnsteadyTrustCap` holds the label's trust under a cap, `RefuseUnsteady` keeps it out.
 

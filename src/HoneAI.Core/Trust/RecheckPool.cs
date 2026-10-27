@@ -13,8 +13,9 @@ namespace HoneAI.Trust;
 /// <param name="TierId">The tier measured.</param>
 /// <param name="SliceKey">The slice.</param>
 /// <param name="Pooled">Decisions pooled.</param>
-/// <param name="Reached">Of those, the ones a judge answered or passed.</param>
-public sealed record PoolReach(string TierId, string SliceKey, int Pooled, int Reached)
+/// <param name="Reached">Of those, the ones a judge answered, passed or could not tell.</param>
+/// <param name="Unsure">Of the reached, the ones the judge could not tell (<see cref="PoolResponseKind.Unsure"/>) — in <paramref name="Reached"/>, but with no record in the account.</param>
+public sealed record PoolReach(string TierId, string SliceKey, int Pooled, int Reached, int Unsure = 0)
 {
     /// <summary>The share reached, r — what each reached decision's π is multiplied by.</summary>
     public double Rate => Pooled == 0 ? 0 : (double)Reached / Pooled;
@@ -200,14 +201,15 @@ public static class RecheckPool
         var reach = entries
             .GroupBy(e => (e.Item.TierId, e.Item.SliceKey))
             .OrderBy(g => g.Key.TierId, StringComparer.Ordinal).ThenBy(g => g.Key.SliceKey, StringComparer.Ordinal)
-            .Select(g => new PoolReach(g.Key.TierId, g.Key.SliceKey, g.Count(), g.Count(e => e.Response is not null)))
+            .Select(g => new PoolReach(g.Key.TierId, g.Key.SliceKey, g.Count(), g.Count(e => e.Response is not null),
+                g.Count(e => e.Response?.Kind == PoolResponseKind.Unsure)))
             .ToList();
         if (entries.Any(e => e.Response is null && e.Item.ExpiresAt > now))
             return new PoolAccount(false, [], reach);
 
         var rate = reach.ToDictionary(r => (r.TierId, r.SliceKey), r => r.Rate);
         var records = entries
-            .Where(e => e.Response is not null)
+            .Where(e => e.Response is not null && e.Response.Kind != PoolResponseKind.Unsure)
             .OrderBy(e => e.Item.DecidedAt)
             .Select(e => Record(e.Item, e.Response!, rate[(e.Item.TierId, e.Item.SliceKey)]))
             .ToList();
