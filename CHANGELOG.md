@@ -9,7 +9,7 @@ All notable changes to HoneAI are documented here. The format follows
 ### Changed
 - **Breaking** (source): `IModelLifecycle.RollBackAsync(runId, reason, by = null, cancellationToken = default)` — `by`
   sits before the cancellation token, so a caller that passed the token positionally as the third argument names it
-  (`cancellationToken: ct`).
+  (`cancellationToken: ct`). An implementer of `IModelLifecycle` takes the same parameter.
 
 ### Added
 - `TrainingSizeCurve.Recommend(curve, higherIsBetter, confidence)`: how large a training set needs to be — the smallest
