@@ -41,6 +41,24 @@ public enum LabelShare
     Evaluation = 1,
 }
 
+/// <summary>How a decision reached the judge whose answer became a label.</summary>
+public enum LabelOrigin
+{
+    /// <summary>
+    /// The decision went up, or was drawn for recheck with a known probability π — the label is a sample of every
+    /// such decision, and its weight divides by π.
+    /// </summary>
+    Drawn = 0,
+
+    /// <summary>
+    /// A person corrected a decision nothing drew: there is no π. People correct what they see wrong, so these labels
+    /// are a sample of the errors, not of the decisions — they teach (their weight is capped, never divided by a
+    /// probability they do not have) and never measure (<see cref="LabelShare.Evaluation"/> refuses them), and they are
+    /// counted apart from the person's measured trust.
+    /// </summary>
+    Voluntary = 1,
+}
+
 /// <summary>
 /// A value a tier above — or a person — decided for a decision, ready to be learned from: the label,
 /// who confirmed it, how far that judge is trusted, and the probability the decision reached it.
@@ -135,7 +153,19 @@ public sealed record ConfirmedLabel<TValue>
     /// asked for it — makes the labels kept stand for the ones left out; the trust half counts a judge that is wrong
     /// more often for less.
     /// </summary>
-    public double Weight => Trust / (Probability * ShareProbability * SelectionProbability);
+    public double Weight => Math.Min(Trust / (Probability * ShareProbability * SelectionProbability), WeightCap ?? double.PositiveInfinity);
+
+    /// <summary>
+    /// How the decision reached the judge — <see cref="LabelOrigin.Drawn"/> unless a person corrected a decision nothing
+    /// drew (<see cref="LabelOrigin.Voluntary"/>, <c>LabelConfirmation.Volunteer</c>).
+    /// </summary>
+    public LabelOrigin Origin { get; init; } = LabelOrigin.Drawn;
+
+    /// <summary>
+    /// The most <see cref="Weight"/> may be, when the label has no π to divide by — a voluntary label stands for itself,
+    /// not for decisions it was not drawn from. Null: no cap.
+    /// </summary>
+    public double? WeightCap { get; init; }
 
     /// <summary>
     /// Consumer references the sinks need — the engine's own id for the decision (an MLoop prediction id),

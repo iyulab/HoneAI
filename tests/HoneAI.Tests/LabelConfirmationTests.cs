@@ -447,4 +447,117 @@ public class LabelConfirmationTests
         public Task<MLoopEvaluation> EvaluateAsync(MLoopEvaluationRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<MLoopSample> CreateSampleAsync(MLoopSampleRequest request, CancellationToken ct = default) => throw new NotSupportedException();
     }
+    private static Confirmation<string> Volunteer(
+        string decisionId, PredictionProvenance decision, ITracedPrediction<string> answer,
+        LabelSplit? split = null, LabelAdmission? admission = null, Tier? learner = null)
+        => LabelConfirmation.Volunteer(decisionId, decision, answer, learner ?? Ml, Ladder, _ => null, Now,
+            annotations: new Dictionary<string, string> { [MLoopFeedbackSink<string>.PredictionIdAnnotation] = "p-1" },
+            split: split, admission: admission);
+
+    [Fact]
+    public void APersonsCorrectionOfADecisionNothingDrew_IsAVoluntaryLabel_AtACappedWeight()
+    {
+        // ML settled it and the draw skipped it: there is no π. The person fixed it anyway.
+        var result = Volunteer("d1", SettledBy(Ml, new SampleDraw(0.25, "promise", Drawn: false)), Answer(Person, "danger"));
+
+        Assert.Equal(ConfirmationOutcome.Confirmed, result.Outcome);
+        var label = Assert.IsType<ConfirmedLabel<string>>(result.Label);
+        Assert.Equal(LabelOrigin.Voluntary, label.Origin);
+        Assert.Equal(LabelShare.Training, label.Share);
+        Assert.Equal(1.0, label.Probability);        // nominal — never divided by
+        Assert.Equal(1.0, label.ShareProbability);
+        Assert.Equal(1.0, label.Trust);              // the person's default trust
+        Assert.Equal(1.0, label.Weight, 12);
+    }
+
+    [Fact]
+    public void AVoluntaryLabelsWeightIsCapped_ByTheAdmissionRule()
+    {
+        var result = Volunteer("d1", SettledBy(Ml), Answer(Person, "ok"),
+            admission: new LabelAdmission { VoluntaryWeightCap = 0.4 });
+
+        var label = Assert.IsType<ConfirmedLabel<string>>(result.Label);
+        Assert.Equal(0.4, label.Weight, 12);
+        Assert.Equal(1.0, label.Trust);               // the cap is on the weight, not a claim about the judge
+    }
+
+    [Fact]
+    public void ADrawnLabelsWeight_IsNotCapped()
+    {
+        // Same person, same decision shape, but drawn at π = 0.25: it stands for four decisions, as before.
+        var result = Decide(SettledBy(Ml, new SampleDraw(0.25, "promise", Drawn: true)), [Answer(Person, "ok")]);
+
+        var label = Assert.IsType<ConfirmedLabel<string>>(result.Label);
+        Assert.Equal(LabelOrigin.Drawn, label.Origin);
+        Assert.Null(label.WeightCap);
+        Assert.Equal(4.0, label.Weight, 12);
+    }
+
+    [Fact]
+    public void ACorrectionOfADecisionThatHadAπ_IsNotVoluntary_ItIsDecides()
+    {
+        // Drawn for recheck at 0.25: its label has a π and counts at 1/π through Decide — Volunteer is not a way round that.
+        var drawn = Volunteer("d1", SettledBy(Ml, new SampleDraw(0.25, "promise", Drawn: true)), Answer(Person, "ok"));
+        // Settled by the LLM, above the ML learner: it went up to the LLM, whose answer has π = 1.
+        var wentUp = Volunteer("d1", SettledBy(Llm), Answer(Llm, "ok"));
+
+        Assert.Equal(ConfirmationOutcome.NotALabel, drawn.Outcome);
+        Assert.Contains("Decide", drawn.Reason);
+        Assert.Equal(ConfirmationOutcome.NotALabel, wentUp.Outcome);
+    }
+
+    [Fact]
+    public void ADecisionTheSplitHoldsOutForMeasuring_TakesNoVoluntaryLabel()
+    {
+        var split = new LabelSplit { EvaluationShare = 0.5 };
+        var held = Enumerable.Range(0, 200).Select(i => $"d-{i}")
+            .Where(id => split.Assign(id, "s").Share == LabelShare.Evaluation).ToList();
+        var kept = Enumerable.Range(0, 200).Select(i => $"d-{i}")
+            .Where(id => split.Assign(id, "s").Share == LabelShare.Training).ToList();
+        Assert.NotEmpty(held);
+        Assert.NotEmpty(kept);
+
+        foreach (var id in held)
+        {
+            var result = Volunteer(id, SettledBy(Ml), Answer(Person, "danger"), split);
+            Assert.Equal(ConfirmationOutcome.NotAdmitted, result.Outcome);
+            Assert.Contains("held out", result.Reason);
+            Assert.Null(result.Label);
+        }
+        foreach (var id in kept)
+        {
+            var label = Assert.IsType<ConfirmedLabel<string>>(Volunteer(id, SettledBy(Ml), Answer(Person, "danger"), split).Label);
+            Assert.Equal(LabelShare.Training, label.Share);
+            Assert.Equal(1.0, label.ShareProbability);   // not a sample of the training share either
+        }
+    }
+
+    [Fact]
+    public void AnAnswerFromTheLearnersOwnTier_IsNotAVoluntaryLabel()
+    {
+        var result = Volunteer("d1", SettledBy(Ml), Answer(Ml, "ok"));
+
+        Assert.Equal(ConfirmationOutcome.NotALabel, result.Outcome);
+    }
+
+    [Fact]
+    public void AVoluntaryLabel_IsToldApartOnTheTrailAndInTheManifest()
+    {
+        var voluntary = Assert.IsType<ConfirmedLabel<string>>(Volunteer("d1", SettledBy(Ml), Answer(Person, "danger")).Label);
+        var drawn = Assert.IsType<ConfirmedLabel<string>>(Decide(SettledBy(Llm), [Answer(Llm, "minor")]).Label) with { DecisionId = "d2" };
+
+        Assert.EndsWith("(voluntary)", MLoopFeedbackSink<string>.SourceOf(voluntary));
+        Assert.DoesNotContain("voluntary", MLoopFeedbackSink<string>.SourceOf(drawn));
+
+        var manifest = TrainingSets.Manifest([voluntary, drawn]);
+        Assert.Equal(1, manifest.ByOrigin["Voluntary"]);
+        Assert.Equal(1, manifest.ByOrigin["Drawn"]);
+    }
+
+    [Fact]
+    public void AVoluntaryWeightCapOutsideZeroToOne_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Volunteer("d1", SettledBy(Ml), Answer(Person, "ok"), admission: new LabelAdmission { VoluntaryWeightCap = 1.5 }));
+    }
 }

@@ -23,6 +23,12 @@ public sealed record TrainingSetManifest
     /// <summary>Labels by <see cref="LabelTrustBasis"/> name.</summary>
     public required IReadOnlyDictionary<string, int> ByTrustBasis { get; init; }
 
+    /// <summary>
+    /// Labels by <see cref="LabelOrigin"/> name — how many were a person's own corrections (<c>Voluntary</c>), which teach at a
+    /// capped weight and say nothing about the decisions nobody looked at. Empty for a set recorded before origins were counted.
+    /// </summary>
+    public IReadOnlyDictionary<string, int> ByOrigin { get; init; } = new Dictionary<string, int>();
+
     /// <summary>Labels by slice; a label without one is counted under the empty string.</summary>
     public required IReadOnlyDictionary<string, int> BySlice { get; init; }
 

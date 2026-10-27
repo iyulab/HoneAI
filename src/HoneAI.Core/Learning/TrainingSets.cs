@@ -74,6 +74,7 @@ public static class TrainingSets
             TotalWeight = list.Sum(l => l.Weight),
             BySource = Count(list, Source),
             ByTrustBasis = Count(list, l => l.TrustBasis.ToString()),
+            ByOrigin = Count(list, l => l.Origin.ToString()),
             BySlice = Count(list, l => l.SliceKey ?? string.Empty),
             ByValue = Count(list, l => valueText(l.Value)),
             From = list.Count == 0 ? null : list.Min(l => l.ConfirmedAt),

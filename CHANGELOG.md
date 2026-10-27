@@ -12,6 +12,14 @@ All notable changes to HoneAI are documented here. The format follows
   (`cancellationToken: ct`). An implementer of `IModelLifecycle` takes the same parameter.
 
 ### Added
+- `LabelConfirmation.Volunteer(…)`: a person's own correction of a decision nothing drew for recheck. It has no π, and a person
+  fixes what they see wrong — the corrections are a sample of the errors, not of the decisions — so the label
+  (`ConfirmedLabel.Origin` = `Voluntary`) teaches and never measures: it is in the training share at a weight capped by
+  `LabelAdmission.VoluntaryWeightCap` (1 by default, one ordinary example; never divided by a probability it does not have),
+  a decision the split holds out for measuring takes none (`NotAdmitted`), and it is told apart on the feedback source
+  (`… (voluntary)`) and in the manifest (`TrainingSetManifest.ByOrigin`) so it is not counted with the person's measured
+  trust. A decision that did have a π (it went up, or was drawn) stays `Decide`'s, at its weight. `ConfirmedLabel.Weight`
+  is now `min(…, WeightCap)`; `WeightCap` is null — no change — for every other label.
 - `TrainingSizeCurve.Recommend(curve, higherIsBetter, confidence)`: how large a training set needs to be — the smallest
   size from which no larger measured one is significantly better on the held-out share (one-sided, `confidence` 0.95 by
   default, from each point's standard error). A curve still rising at its largest point says so rather than inventing a

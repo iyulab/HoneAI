@@ -69,7 +69,7 @@ public sealed class MLoopFeedbackSink<TValue> : IConfirmedLabelSink<TValue>
 
     /// <summary>
     /// The feedback source: the confirming tier and its version, and whether its trust was measured —
-    /// <c>llm-central@3 (default trust)</c>, or the participants of a consensus — <c>llm+person-a (consensus)</c>. Lets a slice of the retraining set be told apart by who labelled it.
+    /// <c>llm-central@3 (default trust)</c>, or the participants of a consensus — <c>llm+person-a (consensus)</c>; a person's own correction ends with <c>(voluntary)</c>. Lets a slice of the retraining set be told apart by who labelled it.
     /// </summary>
     public static string SourceOf(ConfirmedLabel<TValue> label)
     {
@@ -81,6 +81,7 @@ public sealed class MLoopFeedbackSink<TValue> : IConfirmedLabelSink<TValue>
             LabelTrustBasis.Consensus => " (consensus)",
             _ => string.Empty,
         };
-        return new JudgeIdentity(label.ConfirmedBy, label.JudgedBy) + version + basis;
+        var origin = label.Origin == LabelOrigin.Voluntary ? " (voluntary)" : string.Empty;
+        return new JudgeIdentity(label.ConfirmedBy, label.JudgedBy) + version + basis + origin;
     }
 }

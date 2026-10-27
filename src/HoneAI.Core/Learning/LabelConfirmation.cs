@@ -250,6 +250,98 @@ public static class LabelConfirmation
     }
 
     /// <summary>
+    /// The label a person's own correction makes — an answer to a decision nothing drew for recheck, so it has no π.
+    /// A person fixes what they see wrong, which makes these labels a sample of the errors and not of the decisions: dividing by a
+    /// probability they do not have would count them as if they stood for the decisions nobody looked at, and
+    /// measuring a model on them would measure it on its mistakes. So a voluntary label (<see cref="LabelOrigin.Voluntary"/>)
+    /// teaches and never measures: it is in <see cref="LabelShare.Training"/> at a weight capped by
+    /// <see cref="LabelAdmission.VoluntaryWeightCap"/>, a decision the split holds out for measuring takes none
+    /// (<see cref="ConfirmationOutcome.NotAdmitted"/> — teaching on it would put the held-out set in the training one), and
+    /// it is counted apart from the person's measured trust (the label says <see cref="ConfirmedLabel{TValue}.Origin"/>).
+    /// </summary>
+    /// <param name="decisionId">The decision.</param>
+    /// <param name="decision">The provenance the decision left HoneAI with.</param>
+    /// <param name="answer">The person's answer, with the provenance of the tier it sits on.</param>
+    /// <param name="learner">The tier the label is for; the person's tier sits above it.</param>
+    /// <param name="tiers">The ladder.</param>
+    /// <param name="teacherCell">The teacher ledger's cell for a judge, or <see langword="null"/> when it has none.</param>
+    /// <param name="confirmedAt">When the label is made.</param>
+    /// <param name="defaults">Trust for an unmeasured judge; <see cref="LabelTrustDefaults.Standard"/> when null.</param>
+    /// <param name="annotations">The references the sinks need, as in <see cref="Decide{TValue}"/>.</param>
+    /// <param name="split">Which decisions are held out; <see cref="LabelSplit.None"/> when null.</param>
+    /// <param name="admission">The admission rules and the weight cap; <see cref="LabelAdmission.All"/> when null.</param>
+    /// <param name="splitKey">The split key of the decision, as in <see cref="Decide{TValue}"/>.</param>
+    /// <returns>
+    /// <see cref="ConfirmationOutcome.NotALabel"/> when the answer is not from a tier above the learner, or when the decision
+    /// <em>was</em> reached with a π (it went up, or was drawn) — that is <see cref="Decide{TValue}"/>'s, at its weight.
+    /// </returns>
+    public static Confirmation<TValue> Volunteer<TValue>(
+        string decisionId,
+        PredictionProvenance decision,
+        ITracedPrediction<TValue> answer,
+        Tier learner,
+        IReadOnlyCollection<Tier> tiers,
+        Func<JudgeIdentity, TeacherCell?> teacherCell,
+        DateTimeOffset confirmedAt,
+        LabelTrustDefaults? defaults = null,
+        IReadOnlyDictionary<string, string>? annotations = null,
+        LabelSplit? split = null,
+        LabelAdmission? admission = null,
+        string? splitKey = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(decisionId);
+        ArgumentNullException.ThrowIfNull(decision);
+        ArgumentNullException.ThrowIfNull(answer);
+        ArgumentNullException.ThrowIfNull(learner);
+        ArgumentNullException.ThrowIfNull(tiers);
+        ArgumentNullException.ThrowIfNull(teacherCell);
+        defaults ??= LabelTrustDefaults.Standard;
+        admission ??= LabelAdmission.All;
+        if (!(admission.VoluntaryWeightCap > 0 && admission.VoluntaryWeightCap <= 1))
+            throw new ArgumentOutOfRangeException(nameof(admission), admission.VoluntaryWeightCap, "A voluntary weight cap is in (0, 1].");
+
+        var tier = tiers.FirstOrDefault(t => t.Id == answer.Provenance.TierId);
+        if (tier is null || tier.CostRank <= learner.CostRank)
+            return new(ConfirmationOutcome.NotALabel, Reason: $"The answer is not from a tier above '{learner.Id}'.");
+
+        if (ReachProbability(decision, [tier], tiers) is not null)
+            return new(ConfirmationOutcome.NotALabel,
+                Reason: $"The decision reached '{tier.Id}' with a probability (it went up or was drawn for recheck); it is a drawn label — use Decide.");
+
+        var (share, _) = (split ?? LabelSplit.None).Assign(decisionId, decision.SliceKey, splitKey);
+        if (share == LabelShare.Evaluation)
+            return new(ConfirmationOutcome.NotAdmitted,
+                Reason: $"Decision '{decisionId}' is held out for measuring the learner; a voluntary correction is not a measurement and must not teach on it.");
+
+        var judge = new JudgeIdentity(tier.Id, answer.Provenance.JudgedBy);
+        var trust = admission.Cap(TrustOf(tier, answer.Provenance.JudgedBy, teacherCell, defaults));
+        if (admission.Refusal(judge, trust.Value) is { } refusal)
+            return new(ConfirmationOutcome.NotAdmitted, Reason: refusal + ".");
+
+        return new(ConfirmationOutcome.Confirmed, new ConfirmedLabel<TValue>
+        {
+            DecisionId = decisionId,
+            SliceKey = decision.SliceKey,
+            Value = answer.Value,
+            ConfirmedBy = tier.Id,
+            JudgedBy = answer.Provenance.JudgedBy,
+            Kind = tier.Kind,
+            ConfirmedByVersion = answer.Provenance.TierVersion ?? tier.Version,
+            SnapshotVersion = decision.SnapshotVersion,
+            Probability = 1.0,
+            Trust = trust.Value,
+            TrustBasis = trust.Basis,
+            ConfirmedAt = confirmedAt,
+            Share = LabelShare.Training,
+            ShareProbability = 1.0,
+            SplitKey = splitKey,
+            Origin = LabelOrigin.Voluntary,
+            WeightCap = admission.VoluntaryWeightCap,
+            Annotations = annotations,
+        });
+    }
+
+    /// <summary>
     /// Whether <paramref name="next"/> replaces <paramref name="previous"/>, a label already sent for the same decision.
     /// A consensus replaces any single judge's label; otherwise the label trusted more stands — on equal trust, a
     /// measured trust over a default one, and then the later label. Send <paramref name="next"/> only when it does:

@@ -35,6 +35,12 @@ public sealed record LabelAdmission
     /// </summary>
     public double? UnsteadyTrustCap { get; init; }
 
+    /// <summary>
+    /// The most a voluntary label (<see cref="LabelConfirmation.Volunteer{TValue}"/>) weighs, in (0, 1]: it has no π to
+    /// divide by, so it counts for itself and for no decision it was not drawn from — 1 by default, one ordinary example.
+    /// </summary>
+    public double VoluntaryWeightCap { get; init; } = 1.0;
+
     /// <summary>Whether a label whose judge did not hold its own answer on a repeat is kept out altogether.</summary>
     public bool RefuseUnsteady { get; init; }
 
