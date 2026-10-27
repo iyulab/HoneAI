@@ -7,6 +7,10 @@ All notable changes to HoneAI are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `MLoopPredictionRequest.Experiment` / `MLoopImagePredictionRequest.Experiment` (MLoop `POST /predict?experiment=`): a
+  candidate experiment answers the same input while production keeps serving — the shadow tier's prediction. The result
+  names the experiment that answered (`MLoopPredictionResult.Model`); `HttpMLoopClient` refuses an answer from another
+  model or one that names none, which is what a server that does not read `experiment` returns. Nothing changes without it.
 - A split key for the held-out split: `LabelConfirmation.Decide` / `Settle` take `splitKey` (the same one at both calls),
   and `LabelSplit.Assign` deals by it instead of the decision id — every decision with one key (the same normalized
   input, document or session) falls in one share, and q is the probability of the key. Without a key the deal is

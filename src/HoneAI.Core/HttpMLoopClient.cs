@@ -38,7 +38,8 @@ public sealed class HttpMLoopClient : IMLoopClient
 
         // MLoop /predict takes an array of feature rows; we send the single row.
         var rows = new[] { request.Features };
-        var uri = "predict" + NameQuery(request.Model);
+        var experiment = ExperimentOf(request.Experiment);
+        var uri = "predict" + PredictQuery(request.Model, experiment);
 
         using var response = await _http.PostAsJsonAsync(uri, rows, JsonOptions, cancellationToken)
             .ConfigureAwait(false);
@@ -46,6 +47,7 @@ public sealed class HttpMLoopClient : IMLoopClient
 
         using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
         var root = doc.RootElement;
+        EnsureExperiment(root, experiment);
 
         if (!root.TryGetProperty("predictions", out var preds)
             || preds.ValueKind != JsonValueKind.Array
@@ -66,12 +68,14 @@ public sealed class HttpMLoopClient : IMLoopClient
         if (request.Images.Count == 0)
             return [];
 
-        using var response = await _http.PostAsJsonAsync("predict" + NameQuery(request.Model), ImagesBody(request.Images), JsonOptions, cancellationToken)
+        var experiment = ExperimentOf(request.Experiment);
+        using var response = await _http.PostAsJsonAsync("predict" + PredictQuery(request.Model, experiment), ImagesBody(request.Images), JsonOptions, cancellationToken)
             .ConfigureAwait(false);
         await EnsureSuccess(response, "predict", cancellationToken).ConfigureAwait(false);
 
         using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
         var root = doc.RootElement;
+        EnsureExperiment(root, experiment);
         if (!root.TryGetProperty("predictions", out var preds) || preds.ValueKind != JsonValueKind.Array
             || preds.GetArrayLength() != request.Images.Count)
         {
@@ -551,6 +555,40 @@ public sealed class HttpMLoopClient : IMLoopClient
 
     private static string NameQuery(string? model)
         => string.IsNullOrWhiteSpace(model) ? string.Empty : "?name=" + Uri.EscapeDataString(model);
+
+    // /predict's query: the model by name, and the experiment that answers instead of production (a shadow prediction).
+    private static string PredictQuery(string? model, string? experiment)
+    {
+        var query = new List<string>();
+        if (!string.IsNullOrWhiteSpace(model))
+            query.Add("name=" + Uri.EscapeDataString(model));
+        if (experiment is not null)
+            query.Add("experiment=" + Uri.EscapeDataString(experiment));
+        return query.Count == 0 ? string.Empty : "?" + string.Join('&', query);
+    }
+
+    // The server trims the id it is given, and answers with the trimmed one; an empty id would silently be production.
+    private static string? ExperimentOf(string? experiment)
+    {
+        if (experiment is null)
+            return null;
+        ArgumentException.ThrowIfNullOrWhiteSpace(experiment, nameof(experiment));
+        return experiment.Trim();
+    }
+
+    // A shadow prediction the server answered with another model — an older server that does not read `experiment` serves
+    // production — would be recorded as the candidate's answer. Refuse it rather than let the ledger believe it.
+    private static void EnsureExperiment(JsonElement root, string? requested)
+    {
+        if (requested is null)
+            return;
+        var answered = String(root, "experimentId");
+        if (!string.Equals(answered, requested, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"MLoop /predict was asked to answer with experiment '{requested}' and answered with "
+                + (answered is null ? "no named experiment" : $"'{answered}'")
+                + " — the server may predate experiment-specific prediction; its answer is not the candidate's.");
+    }
 
     private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response, CancellationToken ct)
     {

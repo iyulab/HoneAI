@@ -3,9 +3,16 @@ namespace HoneAI;
 /// <summary>Request to run a prediction against a promoted MLoop model.</summary>
 /// <param name="Features">Feature name → value map for a single prediction row.</param>
 /// <param name="Model">Target model name; <see langword="null"/> uses MLoop's default model.</param>
+/// <param name="Experiment">
+/// The experiment to answer with (MLoop <c>POST /predict?experiment=</c>) — a candidate in staging, scored on the same
+/// input while production keeps serving, which is how a challenger answers as a shadow before it is promoted.
+/// <see langword="null"/> is the production model. The answer names the experiment that gave it
+/// (<see cref="MLoopPredictionResult.Model"/>); a server that answers with another one is refused, not passed on as the shadow's.
+/// </param>
 public sealed record MLoopPredictionRequest(
     IReadOnlyDictionary<string, object?> Features,
-    string? Model = null);
+    string? Model = null,
+    string? Experiment = null);
 
 /// <summary>
 /// Request to classify images against an MLoop image-classification model, sending the images themselves — their
@@ -13,9 +20,11 @@ public sealed record MLoopPredictionRequest(
 /// </summary>
 /// <param name="Images">The images, at most 64 in one request; answered in the order given.</param>
 /// <param name="Model">Target model name; <see langword="null"/> uses MLoop's default model.</param>
+/// <param name="Experiment">The experiment to answer with, as in <see cref="MLoopPredictionRequest.Experiment"/>; <see langword="null"/> is production.</param>
 public sealed record MLoopImagePredictionRequest(
     IReadOnlyList<ReadOnlyMemory<byte>> Images,
-    string? Model = null);
+    string? Model = null,
+    string? Experiment = null);
 
 /// <summary>Request to turn images into vectors with an encoder installed on the MLoop server (MLoop 0.44+ <c>POST /embed</c>).</summary>
 /// <param name="Images">The images' encoded bytes, at most 64 in one request (8 with <paramref name="Patches"/>); answered in the order given.</param>

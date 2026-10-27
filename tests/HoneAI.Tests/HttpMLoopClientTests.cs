@@ -50,6 +50,67 @@ public class HttpMLoopClientTests
     }
 
     [Fact]
+    public async Task Predict_AsksAnExperimentToAnswer_AndTakesItsAnswerForTheShadows()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "experimentId": "exp-007", "modelSha256": "ab12", "task": "binary",
+              "predictions": [ { "predictedLabel": "NG", "predictionId": "p-9" } ] }
+            """));
+
+        var pred = await Client(handler).PredictAsync(new MLoopPredictionRequest(
+            new Dictionary<string, object?> { ["t"] = 1 }, Model: "weld", Experiment: "exp-007"));
+
+        Assert.Contains("predict?name=weld&experiment=exp-007", handler.LastUri);
+        Assert.Equal("exp-007", pred.Value.Model!.ExperimentId);
+        Assert.Equal("p-9", pred.Value.PredictionId);
+
+        // No experiment, no query: production answers, as before.
+        await Client(handler).PredictAsync(new MLoopPredictionRequest(new Dictionary<string, object?> { ["t"] = 1 }));
+        Assert.EndsWith("predict", handler.LastUri);
+        await Client(handler).PredictAsync(new MLoopPredictionRequest(new Dictionary<string, object?> { ["t"] = 1 }, Experiment: "exp-007"));
+        Assert.EndsWith("predict?experiment=exp-007", handler.LastUri);
+
+        // The server trims the id and answers with it trimmed: a padded id is the same experiment.
+        var padded = await Client(handler).PredictAsync(new MLoopPredictionRequest(new Dictionary<string, object?> { ["t"] = 1 }, Experiment: " exp-007 "));
+        Assert.EndsWith("predict?experiment=exp-007", handler.LastUri);
+        Assert.Equal("exp-007", padded.Value.Model!.ExperimentId);
+    }
+
+    [Fact]
+    public async Task Predict_RefusesAShadowAnswerThatAnotherModelGave()
+    {
+        // A server that does not read `experiment` answers with production — or does not say who answered.
+        foreach (var body in new[]
+        {
+            """{ "experimentId": "exp-001", "predictions": [ { "predictedLabel": "OK" } ] }""",
+            """{ "predictions": [ { "predictedLabel": "OK" } ] }""",
+        })
+        {
+            var handler = new StubHandler(_ => Json(HttpStatusCode.OK, body));
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => Client(handler).PredictAsync(
+                new MLoopPredictionRequest(new Dictionary<string, object?> { ["t"] = 1 }, Experiment: "exp-007")));
+            Assert.Contains("exp-007", error.Message);
+        }
+
+        await Assert.ThrowsAsync<ArgumentException>(() => Client(new StubHandler(_ => Json(HttpStatusCode.OK, "{}"))).PredictAsync(
+            new MLoopPredictionRequest(new Dictionary<string, object?> { ["t"] = 1 }, Experiment: " ")));
+    }
+
+    [Fact]
+    public async Task PredictImages_CanAskAnExperimentToAnswerToo()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "experimentId": "exp-003", "task": "image-classification", "predictions": [ { "predictedLabel": "ok" } ] }
+            """));
+
+        var answered = await Client(handler).PredictImagesAsync(
+            new MLoopImagePredictionRequest([new byte[] { 1, 2, 3 }], Model: "parts", Experiment: "exp-003"));
+
+        Assert.Single(answered);
+        Assert.Contains("predict?name=parts&experiment=exp-003", handler.LastUri);
+    }
+
+    [Fact]
     public async Task Predict_NamesTheAnsweringModel_ByExperimentAndContent()
     {
         var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
