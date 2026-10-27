@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using HoneAI;
+using HoneAI.Trust;
 using Xunit;
 
 namespace HoneAI.Tests;
@@ -292,6 +293,64 @@ public class ModelLifecycleTests : IDisposable
 
         Assert.Same(run.Status, (await lifecycle.RollBackAsync("run-1", "again"))!.Status);   // once
         Assert.Single(mloop.RolledBack);
+    }
+
+    [Fact]
+    public async Task ThePromotionAndTheRollback_SayWhoDecidedThem_WhenAPersonDid()
+    {
+        var mloop = new FakeMLoop { CompletedExperimentId = "exp-9", ProductionExperimentId = "exp-2" };
+        var reviews = new InMemoryReviewStore();
+        var lifecycle = Lifecycle(mloop, reviews);
+        await lifecycle.StartAsync(new LifecycleRequest(Train, ReviewId: "rev-1"));
+        await reviews.DecideAsync("rev-1", new ReviewDecision("approve", ReviewerKey: "alice"));
+        var promoted = await lifecycle.ResumeAsync("run-1");
+
+        var review = promoted!.Steps.Single(s => s.Stage == LifecycleStage.Review);
+        Assert.Equal("alice", review.By);
+        Assert.Null(promoted.Steps.Single(s => s.Stage == LifecycleStage.Promote).By);          // the lifecycle's own act
+
+        var rolled = await lifecycle.RollBackAsync("run-1", "vetoed after the fact", by: "bob");
+        Assert.Equal("bob", rolled!.Steps[^1].By);
+        Assert.Equal(("weld", (string?)"exp-2"), Assert.Single(mloop.RolledBack));
+
+        // A rollback nothing asked a person for carries no name.
+        var automatic = Lifecycle(new FakeMLoop { CompletedExperimentId = "exp-9", ProductionExperimentId = "exp-2" }, reviews);
+        await reviews.DecideAsync("rev-2", new ReviewDecision("approve"));
+        await automatic.StartAsync(new LifecycleRequest(Train, ReviewId: "rev-2"));
+        await automatic.ResumeAsync("run-1");
+        Assert.Null((await automatic.RollBackAsync("run-1", "demoted"))!.Steps[^1].By);
+    }
+
+    [Fact]
+    public async Task AFrozenPromotion_WaitsEvenWhenTheReviewApproved_AndGoesThroughOnceTheHoldIsLifted()
+    {
+        var mloop = new FakeMLoop { CompletedExperimentId = "exp-9" };
+        var reviews = new InMemoryReviewStore();
+        SliceFreeze? hold = new("operator-1", DateTimeOffset.UtcNow, "manual labels under review");
+        var gate = new FreezablePromotionGate(new ReviewPromotionGate(reviews), (_, _) => Task.FromResult<SliceFreeze?>(hold));
+        var lifecycle = new ModelLifecycle(mloop, gate, pollDelay: NoDelay, runIdFactory: () => "run-1");
+        await lifecycle.StartAsync(new LifecycleRequest(Train, ReviewId: "rev-1"));
+        await reviews.DecideAsync("rev-1", new ReviewDecision("approve", ReviewerKey: "alice"));
+
+        var held = await lifecycle.ResumeAsync("run-1");
+        Assert.Equal("waiting_review", held!.Status);
+        Assert.Null(mloop.Promoted);
+
+        var verdict = await gate.JudgeAsync(new PromotionCandidate("run-1", "weld", "exp-9") { ReviewId = "rev-1" });
+        Assert.Equal(PromotionDecision.Wait, verdict.Decision);
+        Assert.Equal("operator-1", verdict.By);
+        Assert.Contains("frozen by operator-1", verdict.Reason);
+
+        // A refusal is not a release: it passes through the hold, so a rejection during the freeze stands.
+        var refused = new PromotionCandidate("run-2", "weld", "exp-10") { ReviewId = "rev-2" };
+        await gate.JudgeAsync(refused);
+        await reviews.DecideAsync("rev-2", new ReviewDecision("reject"));
+        Assert.Equal(PromotionDecision.Refuse, (await gate.JudgeAsync(refused)).Decision);
+
+        hold = null;
+        var released = await lifecycle.ResumeAsync("run-1");
+        Assert.Equal("completed", released!.Status);
+        Assert.Equal(("weld", "exp-9"), mloop.Promoted);
     }
 
     [Fact]

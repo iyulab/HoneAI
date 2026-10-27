@@ -226,7 +226,7 @@ public sealed class ModelLifecycle : IModelLifecycle
 
             var promote = verdict.Decision == PromotionDecision.Promote;
             run = await RecordAsync(run with { ProvenNoWorse = promote && verdict.ProvenNoWorse }, LifecycleStage.Review,
-                promote ? "completed" : "rejected", verdict.Reason, verdict.DecidedBy, cancellationToken).ConfigureAwait(false);
+                promote ? "completed" : "rejected", verdict.Reason, verdict.DecidedBy, cancellationToken, verdict.By).ConfigureAwait(false);
             if (!promote)
                 return await SaveAsync(run with { Status = "completed" }, cancellationToken).ConfigureAwait(false); // completed without promotion
 
@@ -247,7 +247,7 @@ public sealed class ModelLifecycle : IModelLifecycle
     }
 
     /// <inheritdoc />
-    public async Task<LifecycleRun?> RollBackAsync(string runId, string reason, CancellationToken cancellationToken = default)
+    public async Task<LifecycleRun?> RollBackAsync(string runId, string reason, string? by = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(runId);
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
@@ -259,27 +259,27 @@ public sealed class ModelLifecycle : IModelLifecycle
             if (run is null)
                 return null;
             if (!run.Steps.Any(s => s.Stage == LifecycleStage.Promote && s.Status == "completed") || run.ExperimentId is not { } promoted)
-                return await NoteAsync(run, $"{reason} — the run did not promote, so there is nothing to put back", cancellationToken).ConfigureAwait(false);
+                return await NoteAsync(run, $"{reason} — the run did not promote, so there is nothing to put back", by, cancellationToken).ConfigureAwait(false);
             if (run.Status == "rolled_back")
                 return run;
             if (run.ReplacedExperimentId is not { } replaced)
-                return await NoteAsync(run, $"{reason} — {promoted} was the first model, there is nothing to put back", cancellationToken).ConfigureAwait(false);
+                return await NoteAsync(run, $"{reason} — {promoted} was the first model, there is nothing to put back", by, cancellationToken).ConfigureAwait(false);
 
             var model = run.Request?.Training.Model ?? "default";
             var current = (await _mloop.GetInfoAsync(model, cancellationToken).ConfigureAwait(false))?.ExperimentId;
             if (!string.Equals(current, promoted, StringComparison.OrdinalIgnoreCase))
                 return await NoteAsync(run, $"{reason} — production is now {current ?? "empty"}, not {promoted}; a later change is not undone in this run's name",
-                    cancellationToken).ConfigureAwait(false);
+                    by, cancellationToken).ConfigureAwait(false);
 
             var rollback = await _mloop.RollbackAsync(model, replaced, cancellationToken).ConfigureAwait(false);
-            run = await RecordAsync(run, LifecycleStage.Rollback, "completed", $"{reason} — {promoted} → {rollback.ExperimentId}", JudgeKind.Ml, cancellationToken)
-                .ConfigureAwait(false);
+            run = await RecordAsync(run, LifecycleStage.Rollback, "completed", $"{reason} — {promoted} → {rollback.ExperimentId}",
+                by is null ? JudgeKind.Ml : JudgeKind.Human, cancellationToken, by).ConfigureAwait(false);
             return await SaveAsync(run with { Status = "rolled_back" }, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             var run = await _runs.GetAsync(runId, cancellationToken).ConfigureAwait(false);
-            return run is null ? null : await NoteAsync(run, $"{reason} — rollback failed: {ex.Message}", cancellationToken).ConfigureAwait(false);
+            return run is null ? null : await NoteAsync(run, $"{reason} — rollback failed: {ex.Message}", by, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -288,18 +288,18 @@ public sealed class ModelLifecycle : IModelLifecycle
     }
 
     // A rollback that did not happen, on the trail; the run keeps its status.
-    private Task<LifecycleRun> NoteAsync(LifecycleRun run, string detail, CancellationToken cancellationToken)
-        => SaveAsync(run with { Steps = [.. run.Steps, new LifecycleStep(LifecycleStage.Rollback, "skipped", detail)] }, cancellationToken);
+    private Task<LifecycleRun> NoteAsync(LifecycleRun run, string detail, string? by, CancellationToken cancellationToken)
+        => SaveAsync(run with { Steps = [.. run.Steps, new LifecycleStep(LifecycleStage.Rollback, "skipped", detail) { By = by }] }, cancellationToken);
 
     private async Task<LifecycleRun> RecordAsync(
-        LifecycleRun run, LifecycleStage stage, string status, string? detail, JudgeKind kind, CancellationToken cancellationToken)
+        LifecycleRun run, LifecycleStage stage, string status, string? detail, JudgeKind kind, CancellationToken cancellationToken, string? by = null)
     {
-        run = await SaveAsync(run with { Status = "running", Steps = [.. run.Steps, new LifecycleStep(stage, status, detail)] }, cancellationToken)
+        run = await SaveAsync(run with { Status = "running", Steps = [.. run.Steps, new LifecycleStep(stage, status, detail) { By = by }] }, cancellationToken)
             .ConfigureAwait(false);
         if (_provenance is not null)
         {
             await _provenance.AppendAsync(run.RunId,
-                new PredictionProvenance { Kind = kind, Rationale = $"{stage}:{status}" },
+                new PredictionProvenance { Kind = kind, JudgedBy = by, Rationale = $"{stage}:{status}" },
                 cancellationToken).ConfigureAwait(false);
         }
         return run;

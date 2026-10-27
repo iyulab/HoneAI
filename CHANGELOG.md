@@ -6,7 +6,19 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Breaking** (source): `IModelLifecycle.RollBackAsync(runId, reason, by = null, cancellationToken = default)` — `by`
+  sits before the cancellation token, so a caller that passed the token positionally as the third argument names it
+  (`cancellationToken: ct`).
+
 ### Added
+- `FreezablePromotionGate`: wraps a promotion gate and holds a promotion it would grant while the candidate is frozen
+  (`SliceFreeze`) — the run waits and goes through once the hold is lifted. The wrapped gate is still asked, so a review
+  can be decided during the hold; a refusal passes through. A new version into production is a release, like the ones
+  the controller's freeze stops.
+- Who decided a step: `LifecycleStep.By` and `PromotionVerdict.By` (the review's `ReviewerKey`) are recorded on the
+  review step of a run, `RollBackAsync(…, by:)` on the rollback step (and as the provenance's `JudgedBy`), so a person's
+  act and the lifecycle's own are told apart on the trail.
 - A person's freeze on a slice: `SliceWindow.Freeze` (`SliceFreeze { By, At, Reason, MinimumRate }`) makes
   `TrustController.Close` stop *releasing* it — no move toward active or stable, no window counted toward stable (so no
   approval is queued either), and a stable slice is rechecked at no less than `MinimumRate` (the extra counts in the

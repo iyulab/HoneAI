@@ -46,6 +46,9 @@ public sealed record PromotionVerdict(PromotionDecision Decision, string? Reason
     /// standing on (<c>LiveSignals.VersionProvenNoWorse</c>) instead of starting again in shadow.
     /// </summary>
     public bool ProvenNoWorse { get; init; }
+
+    /// <summary>Who decided, when a person did — a review's <see cref="ReviewDecision.ReviewerKey"/>; null for evidence.</summary>
+    public string? By { get; init; }
 }
 
 /// <summary>

@@ -38,7 +38,15 @@ public enum LifecycleStage
 /// <param name="Stage">Which stage this entry records.</param>
 /// <param name="Status">Coarse status (e.g. "pending", "running", "completed", "failed", "skipped", "waiting_input").</param>
 /// <param name="Detail">Optional output, log, or error detail.</param>
-public sealed record LifecycleStep(LifecycleStage Stage, string Status, string? Detail = null);
+public sealed record LifecycleStep(LifecycleStage Stage, string Status, string? Detail = null)
+{
+    /// <summary>
+    /// Who decided the step, when a person did — the reviewer who approved or refused a promotion
+    /// (<see cref="ReviewDecision.ReviewerKey"/>), the one who rolled it back. A manual act and an automatic one are told
+    /// apart on the trail by this. Null for a step the lifecycle took by itself.
+    /// </summary>
+    public string? By { get; init; }
+}
 
 /// <summary>
 /// A lifecycle run: its status, its step trail, and what it needs to continue from where it stopped —
@@ -153,5 +161,9 @@ public interface IModelLifecycle
     /// A run that did not promote, or promoted the first model, is left as it is with the reason recorded.
     /// <see langword="null"/> when no run is stored under the id.
     /// </summary>
-    Task<LifecycleRun?> RollBackAsync(string runId, string reason, CancellationToken cancellationToken = default);
+    /// <param name="runId">The run whose promotion is undone.</param>
+    /// <param name="reason">Why, for the trail.</param>
+    /// <param name="by">Who rolled it back, when a person did — recorded on the step (<see cref="LifecycleStep.By"/>); null for a demotion the ledger made.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    Task<LifecycleRun?> RollBackAsync(string runId, string reason, string? by = null, CancellationToken cancellationToken = default);
 }

@@ -31,6 +31,9 @@ public sealed class ReviewPromotionGate : IPromotionGate
         var review = await _reviews.OpenAsync(candidate.ReviewId ?? candidate.RunId, candidate.RunId, cancellationToken).ConfigureAwait(false);
         if (review.Decision is not { } decision)
             return new(PromotionDecision.Wait, "the review is not decided", JudgeKind.Human);
-        return new(Approves(decision.Verdict) ? PromotionDecision.Promote : PromotionDecision.Refuse, decision.Comment, JudgeKind.Human);
+        return new(Approves(decision.Verdict) ? PromotionDecision.Promote : PromotionDecision.Refuse, decision.Comment, JudgeKind.Human)
+        {
+            By = decision.ReviewerKey,
+        };
     }
 }

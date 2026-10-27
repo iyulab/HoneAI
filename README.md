@@ -144,7 +144,9 @@ A person can hold a slice: pass `SliceWindow.Freeze` (`SliceFreeze` — who, whe
 slice may be rechecked at) and the controller stops releasing it — no step toward active or stable, no window counted
 toward stable, no approval queued. Tightening is not held: a frozen slice that gets worse is still demoted and
 rechecked more, so the lever that stops an automatic change does not stop the safety net. Windows keep being judged,
-and the step says what the hold held. Keep the freeze where you keep standings; lift it by not passing it.
+and the step says what the hold held. Keep the freeze where you keep standings; lift it by not passing it. A freeze
+reaches the router with the next snapshot, not the one already issued. Wrap the promotion gate in
+`FreezablePromotionGate` to hold a new version's promotion the same way; a refusal and a rollback are not held.
 
 ### A judge that comes when it comes (`RecheckPool`)
 
