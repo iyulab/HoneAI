@@ -12,6 +12,15 @@ All notable changes to HoneAI are documented here. The format follows
   (`cancellationToken: ct`).
 
 ### Added
+- `ProbeSelector.Select(candidates, policy, version)`: one selection policy for every judge and every method. A
+  `ProbeCandidate` is an item put to a judge (`Target`) by a `ProbeMethod` (recheck, double check, repeat, plant,
+  anchoring) from a pool, with a `Value` the consumer computes (risk, disagreement, a new slice, impact, miss exposure,
+  staleness); the plan gives each its probability π and a replayable draw (a hash of the item, method, judge and plan
+  version). Probabilities are proportional to value within a pool and method, floored (`MinimumProbability`, never
+  zero), capped at 1 with the excess spread over the rest; a pool's budget is shared between methods by `MethodShares`
+  or equally. π is the method's own — a ledger counts each method on its own denominator. Weighting the drawn probes by
+  1/π estimates the whole, whatever the priority. Running a probe stays the caller's (a call for a model, a card in a
+  person's queue).
 - `FreezablePromotionGate`: wraps a promotion gate and holds a promotion it would grant while the candidate is frozen
   (`SliceFreeze`) — the run waits and goes through once the hold is lifted. The wrapped gate is still asked, so a review
   can be decided during the hold; a refusal passes through. A new version into production is a release, like the ones

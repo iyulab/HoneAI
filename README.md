@@ -201,6 +201,12 @@ per near-duplicate unit, per slice and in all, with floors that keep a rare slic
 labels and policy. A cap rebalances the set — a big slice counts for less than it had; `Compensate` makes the labels
 kept carry the weight of those left out instead. The manifest says what was offered and what each limit left out.
 
+Which items to put to which judge by which method — recheck, double check, repeat, plant, anchoring — is one
+policy: `ProbeSelector.Select` takes the candidates (each with a value you compute) and the pools' budgets, and gives
+each probe its probability π and a replayable draw. Priority enters only through π, so weighting by 1/π keeps the
+measurement unbiased; each method keeps its own π and its own denominator in the ledger. How a probe is put — a
+call, a lookup, a card in a person's queue — is the caller's.
+
 A decision can be labelled twice — a teacher first, a person or a consensus later. MLoop counts the most recent
 feedback of a prediction, so send a later label only when `LabelConfirmation.Supersedes(previous, next)` says it
 replaces the earlier one: a consensus over any one judge, otherwise the more trusted.
