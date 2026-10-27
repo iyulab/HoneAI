@@ -204,12 +204,21 @@ More labels than should be learned from? `TrainingSetSelector.Select(labels, pol
 per near-duplicate unit, per slice and in all, with floors that keep a rare slice whole, the same set for the same
 labels and policy. A cap rebalances the set — a big slice counts for less than it had; `Compensate` makes the labels
 kept carry the weight of those left out instead. The manifest says what was offered and what each limit left out.
+Some labels are worth more to learn from than others — the ones the cheap tier most likely got wrong. Pass a `priority`
+(`TrainingSetSelector.PriorityFrom` takes it from the selection fitted for the recheck) and a limit keeps those with
+the higher chance instead of an even one — a fixed-size draw, so the same labels and policy still give the same set — and with
+`Compensate` the set still stands for the labels left out. An even share of the chance (`PriorityUniformMix`) keeps a badly
+ranking signal from costing much.
 
 Which items to put to which judge by which method — recheck, double check, repeat, plant, anchoring — is one
 policy: `ProbeSelector.Select` takes the candidates (each with a value you compute) and the pools' budgets, and gives
 each probe its probability π and a replayable draw. Priority enters only through π, so weighting by 1/π keeps the
-measurement unbiased; each method keeps its own π and its own denominator in the ledger. How a probe is put — a
-call, a lookup, a card in a person's queue — is the caller's.
+measurement unbiased; each method keeps its own π and its own denominator in the ledger. How a probe is put is the
+adapter's, and that is all that differs by kind of judge: `ProbeDispatch.RunAsync(plan, adapters)` hands each drawn probe to
+the first `IProbeAdapter` that accepts its target and method — `MachineProbeAdapter` calls a tier of the router
+(blind, or shown an answer for anchoring), `PoolProbeAdapter` sets a recheck or a plant in the recheck pool at the probe's own
+π — and says what became of each (`Judged`, `Queued`, `Declined`); a probe drawn and put to nobody is counted as not
+reached, not dropped. A new tier is a `Tier` and, for a new kind of judge, an adapter.
 
 A teacher that is wrong in a systematic way is agreed with by a lower tier with the same bias, so agreement with the
 teacher cannot see it. `MetaMaskMeasure` asks the teacher again with one piece of the input's metadata masked (you do
@@ -223,6 +232,10 @@ replaces the earlier one: a consensus over any one judge, otherwise the more tru
 Which confirmations may become labels is yours to set (`LabelAdmission`): a judge that is not qualified — a teacher
 whose must-catch recall has not cleared the floor — cannot confirm, an unmeasured judge's default trust can be capped,
 and a label under a minimum trust is kept out (`ConfirmationOutcome.NotAdmitted`, with the reason).
+A person's own correction of a decision nothing drew has no π, and people correct what they see wrong — such
+labels are a sample of the errors. `LabelConfirmation.Volunteer` makes them as voluntary labels (`LabelOrigin.Voluntary`):
+they teach, at a weight capped by `LabelAdmission.VoluntaryWeightCap` (1 by default), and never measure — a decision the
+split holds out takes none — and the feedback source and the manifest count them apart.
 A judge that does not hold its own answer when the same input is asked again (`RepeatConsistency.Pair`, passed as
 `repeats:`) is unsteady on that decision: `UnsteadyTrustCap` holds the label's trust under a cap, `RefuseUnsteady` keeps it out.
 
