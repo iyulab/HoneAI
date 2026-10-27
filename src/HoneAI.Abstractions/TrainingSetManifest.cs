@@ -76,6 +76,13 @@ public sealed record TrainingSetManifest
     public bool? Compensated { get; init; }
 
     /// <summary>
+    /// Whether the selection favored some labels over others (a priority was given) — the set then leans toward what the
+    /// priority ranks first; null when no selection was made. Its keep probabilities are on the labels
+    /// (<see cref="ConfirmedLabel{TValue}.SelectionProbability"/>) when <see cref="Compensated"/>.
+    /// </summary>
+    public bool? Prioritized { get; init; }
+
+    /// <summary>
     /// SHA-256 of the labels' contents (decision, value, confirming judge and version, weight), in decision order —
     /// the same labels give the same hash, whatever order they were kept in.
     /// </summary>

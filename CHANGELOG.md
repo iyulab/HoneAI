@@ -57,6 +57,15 @@ All notable changes to HoneAI are documented here. The format follows
   (`RepeatConsistency.Pair`), and a label whose confirming judge did not hold its own answer on one
   (`RepeatRecord.Consistent` false) is trusted at most `LabelAdmission.UnsteadyTrustCap` (whatever the trust basis) or,
   with `RefuseUnsteady`, kept out — the next admitted judge stands, or `NotAdmitted` says why.
+- `TrainingSetSelector.Select(…, priority:)`: active selection — when a limit forces a choice, the labels worth most are
+  kept with the higher chance. `priority` is each label's worth relative to an ordinary one (1); a group that has to be
+  thinned is drawn at a fixed size by a systematic draw in hash order, with inclusion probabilities proportional to it
+  mixed with an even share (`TrainingSetPolicy.PriorityUniformMix`, 0.1 — a signal that ranks badly costs little and no label
+  falls to zero), so the same labels and policy still give the same set. Each label's own chance is its keep probability:
+  with `Compensate` the labels kept still stand for the ones left out (an unbiased count of the whole), and the manifest
+  says `Prioritized`. `TrainingSetSelector.PriorityFrom(selection, signalOf)` takes it from the selection fitted for the
+  recheck (`SelectionScore.Priority` — the rule that sets the recheck rate): the decisions most likely wrong are the ones
+  most worth learning from. Nothing is prioritized unless a consumer passes one.
 - `TrainingSetSelector.Select(labels, policy)`: the training set picked from the labels that stand, by a
   `TrainingSetPolicy` — at most N labels per unit (`MaxPerUnit`, near-duplicates), per slice (`MaxPerSlice`) and in all
   (`MaxLabels`, shared out between slices in proportion after the `MinPerSlice` floors). Each limit thins a group by the

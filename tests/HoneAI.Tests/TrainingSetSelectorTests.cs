@@ -135,4 +135,104 @@ public class TrainingSetSelectorTests
 
         Assert.Equal(6, selection.Labels.Count);
     }
+    // A tenth of the labels are worth ten times the others.
+    private static double Tenfold(ConfirmedLabel<string> l) => l.DecisionId.EndsWith('7') ? 10.0 : 1.0;
+
+    [Fact]
+    public void APriority_TiltsAThinnedSetTowardTheLabelsItRanksFirst_AtTheSameSize()
+    {
+        var labels = Many("s", 1000);
+        var even = TrainingSetSelector.Select(labels, new TrainingSetPolicy { MaxLabels = 100 });
+        var tilted = TrainingSetSelector.Select(labels, new TrainingSetPolicy { MaxLabels = 100 }, priority: Tenfold);
+
+        Assert.Equal(100, tilted.Labels.Count);                                    // a fixed-size draw
+        Assert.True(tilted.Manifest.Prioritized);
+        Assert.False(even.Manifest.Prioritized ?? false);
+        var favored = tilted.Labels.Count(l => Tenfold(l) > 1);
+        Assert.InRange(favored, 35, 100);                                          // ≈ 40 of 100 vs ≈ 10 by chance
+        Assert.True(favored > even.Labels.Count(l => Tenfold(l) > 1));
+        Assert.Equal(900, tilted.Manifest.Dropped!["budget"]);
+    }
+
+    [Fact]
+    public void APriority_WithCompensate_KeepsEveryLabelsOwnChance_AndStandsForTheWholeOnAverage()
+    {
+        var labels = Many("s", 400);
+        var totals = Enumerable.Range(0, 200).Select(seed =>
+        {
+            var set = TrainingSetSelector.Select(labels,
+                new TrainingSetPolicy { MaxLabels = 80, Compensate = true, Salt = $"salt-{seed}" }, priority: Tenfold);
+            Assert.All(set.Labels, l => Assert.InRange(l.SelectionProbability, 1e-6, 1.0));
+            return set.Labels.Sum(l => 1 / l.SelectionProbability);                 // Horvitz-Thompson count of the offered labels
+        }).ToList();
+
+        Assert.Equal(400, totals.Average(), 400 * 0.03);                           // unbiased within sampling noise
+    }
+
+    [Fact]
+    public void APrioritizedSelection_IsRepeatable_WhateverOrderTheLabelsCameIn()
+    {
+        var labels = Many("a", 300).Concat(Many("b", 60)).ToList();
+        var policy = new TrainingSetPolicy { MaxLabels = 100, Compensate = true };
+        var once = TrainingSetSelector.Select(labels, policy, priority: Tenfold);
+        var again = TrainingSetSelector.Select(Enumerable.Reverse(labels), policy, priority: Tenfold);
+
+        Assert.Equal(once.Labels.Select(l => l.DecisionId), again.Labels.Select(l => l.DecisionId));
+        Assert.Equal(once.Manifest.ContentSha256, again.Manifest.ContentSha256);
+    }
+
+    [Fact]
+    public void InclusionProbabilities_SumToTheSize_StayInZeroToOne_AndHoldTheOverwhelmingOnesAtOne()
+    {
+        // Two labels dominate: their even-proportion chance would exceed 1 for a set of 5.
+        double[] priorities = [1000, 1000, 1, 1, 1, 1, 1, 1, 1, 1];
+        var p = TrainingSetSelector.InclusionProbabilities(priorities, 5, 0.1);
+
+        Assert.Equal(5.0, p.Sum(), 9);
+        Assert.All(p, x => Assert.InRange(x, 1e-9, 1.0));
+        Assert.Equal(1.0, p[0], 9);
+        Assert.Equal(1.0, p[1], 9);
+        Assert.True(p[2] > 0.05);                                                  // the uniform mix keeps the rest alive
+    }
+
+    [Fact]
+    public void ASystematicDraw_PicksExactlyTheSize_WhateverTheStart()
+    {
+        double[] inclusion = [0.3, 0.9, 0.5, 0.6, 0.7, 1.0, 0.25, 0.75];            // sums to 5
+        foreach (var start in new[] { 0.0, 0.2, 0.5, 0.999 })
+            Assert.Equal(5, TrainingSetSelector.SystematicDraw(inclusion, start).Count(x => x > 0));
+    }
+
+    [Fact]
+    public void ABadPriority_OrMix_IsRefused()
+    {
+        var labels = Many("s", 20);
+        Assert.Throws<ArgumentException>(() =>
+            TrainingSetSelector.Select(labels, new TrainingSetPolicy { MaxLabels = 5 }, priority: _ => -1));
+        Assert.Throws<ArgumentException>(() =>
+            TrainingSetSelector.Select(labels, new TrainingSetPolicy { MaxLabels = 5 }, priority: _ => double.NaN));
+        Assert.Throws<ArgumentException>(() =>
+            TrainingSetSelector.Select(labels, new TrainingSetPolicy { MaxLabels = 5, PriorityUniformMix = 1.5 }, priority: _ => 1));
+    }
+
+    [Fact]
+    public void PriorityFrom_ReadsTheRechecksSelection_AndTreatsAnUnscoredLabelAsOrdinary()
+    {
+        var selection = new KnobSelection
+        {
+            Shape = SelectionShape.WeightedRisk,
+            Calibration = [new RiskBin(0.5, 0.1), new RiskBin(1.0, 0.7)],
+            MeanScore = 0.4,
+            UniformMix = 0.2,
+        };
+        var risks = new Dictionary<string, double> { ["low"] = 0.2, ["high"] = 0.9 };
+        var priority = TrainingSetSelector.PriorityFrom<string>(selection,
+            l => risks.TryGetValue(l.DecisionId, out var r) ? new SelectionSignal { Risk = r } : null);
+
+        Assert.Equal(0.4, priority(Label("low", "s")), 9);                         // 0.8 · 0.1 / 0.4 + 0.2
+        Assert.Equal(1.6, priority(Label("high", "s")), 9);                        // 0.8 · 0.7 / 0.4 + 0.2
+        Assert.Equal(1.0, priority(Label("no-signal", "s")), 9);
+        Assert.Equal(1.0, TrainingSetSelector.PriorityFrom<string>(selection with { Calibration = [] },
+            _ => new SelectionSignal { Risk = 0.9 })(Label("high", "s")), 9);       // not calibrated: nothing to tilt by
+    }
 }

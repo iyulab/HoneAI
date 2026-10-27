@@ -71,10 +71,20 @@ public static class SelectionScore
     /// signal is calibrated, or for a decision with no signal at all, the knob's own rate.
     /// </summary>
     public static double Rate(double knobRate, KnobSelection? selection, SelectionSignal? signal)
+        => selection is null || Priority(selection, signal) is not { } priority ? knobRate : Math.Min(1, knobRate * priority);
+
+    /// <summary>
+    /// How much more (or less) than an ordinary decision a decision is worth picking under <paramref name="selection"/>:
+    /// <c>(1 − τ) · score ÷ mean + τ</c> — 1 is ordinary, the uniform mix τ keeps every decision above zero. Null when
+    /// there is no signal or the selection is not calibrated yet. The same priority sets the recheck rate
+    /// (<see cref="Rate"/>) and the odds a label is kept when a training set is thinned (<c>TrainingSetSelector</c>).
+    /// </summary>
+    public static double? Priority(KnobSelection selection, SelectionSignal? signal)
     {
-        if (selection is null || signal is null || ScoreOf(selection, signal) is not { } score)
-            return knobRate;
+        ArgumentNullException.ThrowIfNull(selection);
+        if (signal is null || ScoreOf(selection, signal) is not { } score)
+            return null;
         var tau = Math.Clamp(selection.UniformMix, 0, 1);
-        return Math.Min(1, knobRate * ((1 - tau) * score / selection.MeanScore + tau));
+        return (1 - tau) * score / selection.MeanScore + tau;
     }
 }
