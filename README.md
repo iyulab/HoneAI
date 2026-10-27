@@ -207,6 +207,11 @@ each probe its probability π and a replayable draw. Priority enters only throug
 measurement unbiased; each method keeps its own π and its own denominator in the ledger. How a probe is put — a
 call, a lookup, a card in a person's queue — is the caller's.
 
+A teacher that is wrong in a systematic way is agreed with by a lower tier with the same bias, so agreement with the
+teacher cannot see it. `MetaMaskMeasure` asks the teacher again with one piece of the input's metadata masked (you do
+the masking) and counts, per metadata value and answer, the moves off and onto it — symmetric if the metadata changes
+nothing, lopsided where the teacher leans on it. It marks where to look; it is not a verdict and moves no standing.
+
 A decision can be labelled twice — a teacher first, a person or a consensus later. MLoop counts the most recent
 feedback of a prediction, so send a later label only when `LabelConfirmation.Supersedes(previous, next)` says it
 replaces the earlier one: a consensus over any one judge, otherwise the more trusted.

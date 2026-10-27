@@ -12,6 +12,13 @@ All notable changes to HoneAI are documented here. The format follows
   (`cancellationToken: ct`).
 
 ### Added
+- `MetaMaskMeasure` (experimental, off unless used): whether a teacher leans on an input's metadata. Judge an input
+  again with one piece of its metadata masked (the masking is the caller's — HoneAI does not know which part of an input
+  is metadata) and pair the two blind judgments (`MetaMaskMeasure.Pair` → `MaskedPairRecord`). `Compute` counts, per
+  metadata value and answer, a = the original said it and the masked one did not, c = the opposite, and gives the exact
+  McNemar p-value (`AnchoringMeasure.McNemarExactP`) with a Bonferroni correction over the cells tested. A cell says
+  *where* the teacher leans on the metadata, not that it is wrong — metadata can rightly bear on the answer — and
+  nothing here changes a teacher's qualification.
 - `ProbeSelector.Select(candidates, policy, version)`: one selection policy for every judge and every method. A
   `ProbeCandidate` is an item put to a judge (`Target`) by a `ProbeMethod` (recheck, double check, repeat, plant,
   anchoring) from a pool, with a `Value` the consumer computes (risk, disagreement, a new slice, impact, miss exposure,
