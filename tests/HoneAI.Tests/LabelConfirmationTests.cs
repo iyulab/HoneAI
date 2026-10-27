@@ -307,6 +307,51 @@ public class LabelConfirmationTests
     }
 
     [Fact]
+    public void ASplit_ByAKey_DealsEveryDecisionOfTheKeyToOneShare_AndKeepsTheKeysProbability()
+    {
+        var split = new LabelSplit { EvaluationShare = 0.2, KeyKind = "normalized-text" };
+        // 400 keys, each reached by five near-duplicate decisions.
+        var labels = Enumerable.Range(0, 2000)
+            .Select(i => LabelConfirmation.Decide($"d{i}", SettledBy(Llm), [Answer(Llm, "minor")], Ml, Ladder, Policy,
+                _ => null, Now, split: split, splitKey: $"k{i / 5}").Label!)
+            .ToList();
+
+        foreach (var group in labels.GroupBy(l => l.SplitKey))
+            Assert.Single(group.Select(l => l.Share).Distinct());
+        Assert.All(labels.Where(l => l.Share == LabelShare.Evaluation), l => Assert.Equal(0.2, l.ShareProbability));
+        Assert.All(labels.Where(l => l.Share == LabelShare.Training), l => Assert.Equal(0.8, l.ShareProbability, 12));
+        var heldOutKeys = labels.Where(l => l.Share == LabelShare.Evaluation).Select(l => l.Unit).Distinct().Count();
+        Assert.InRange(heldOutKeys, 55, 105);                                // ~ 80 of 400 keys
+
+        // Without the key the same decisions straddle: what the key is for.
+        var straddled = Enumerable.Range(0, 2000)
+            .Select(i => (Key: $"k{i / 5}", Share: split.Assign($"d{i}", "s").Share))
+            .GroupBy(x => x.Key)
+            .Count(g => g.Select(x => x.Share).Distinct().Count() > 1);
+        Assert.True(straddled > 100);
+    }
+
+    [Fact]
+    public void ASplit_WithoutAKey_DealsByTheDecisionAsBefore_AndAKeyedLabelFollowsItsKeyInASettle()
+    {
+        var split = new LabelSplit { EvaluationShare = 0.3 };
+        foreach (var i in Enumerable.Range(0, 200))
+            Assert.Equal(split.Assign($"d{i}", "s"), split.Assign($"d{i}", "s", splitKey: null));
+
+        foreach (var i in Enumerable.Range(0, 50))
+        {
+            var decided = LabelConfirmation.Decide($"d{i}", SettledBy(Llm), [Answer(Llm, "minor")], Ml, Ladder, Policy,
+                _ => null, Now, split: split, splitKey: $"k{i % 7}").Label!;
+            var settled = LabelConfirmation.Settle(SettledBy(Llm), Consensus("minor", "person-a", "llm") with { DecisionId = $"d{i}" },
+                Ml, Ladder, split: split, splitKey: $"k{i % 7}").Label!;
+            Assert.Equal(decided.Share, settled.Share);
+            Assert.Equal($"k{i % 7}", settled.SplitKey);
+        }
+
+        Assert.Throws<ArgumentException>(() => split.Assign("d1", "s", " "));
+    }
+
+    [Fact]
     public void ASplit_PerSlice_AndNeverASliceHeldOutWhole()
     {
         var split = new LabelSplit { EvaluationShare = 0, BySlice = new Dictionary<string, double> { ["rare"] = 0.5 } };

@@ -66,6 +66,10 @@ public static class LabelConfirmation
     /// answer under <see cref="MLoopFeedbackSink{TValue}.PredictionIdAnnotation"/>.
     /// </param>
     /// <param name="split">Which decisions are held out for measuring the learner; <see cref="LabelSplit.None"/> when null.</param>
+    /// <param name="splitKey">
+    /// The unit the decision belongs to when it is bigger than the decision (decisions with one normalized input);
+    /// <paramref name="split"/> deals by it, so those decisions share a share. Pass the same key to <see cref="Settle{TValue}"/>.
+    /// </param>
     /// <param name="admission">
     /// Which confirmations may become labels; <see cref="LabelAdmission.All"/> when null. A judge it keeps out cannot
     /// confirm — the most trusted admitted one stands, and with none, <see cref="ConfirmationOutcome.NotAdmitted"/>.
@@ -82,7 +86,8 @@ public static class LabelConfirmation
         LabelTrustDefaults? defaults = null,
         IReadOnlyDictionary<string, string>? annotations = null,
         LabelSplit? split = null,
-        LabelAdmission? admission = null)
+        LabelAdmission? admission = null,
+        string? splitKey = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(decisionId);
         ArgumentNullException.ThrowIfNull(decision);
@@ -128,7 +133,7 @@ public static class LabelConfirmation
             .ThenByDescending(x => x.Tier.CostRank)
             .First();
 
-        var (share, shareProbability) = (split ?? LabelSplit.None).Assign(decisionId, decision.SliceKey);
+        var (share, shareProbability) = (split ?? LabelSplit.None).Assign(decisionId, decision.SliceKey, splitKey);
         return new(ConfirmationOutcome.Confirmed, new ConfirmedLabel<TValue>
         {
             DecisionId = decisionId,
@@ -145,6 +150,7 @@ public static class LabelConfirmation
             ConfirmedAt = confirmedAt,
             Share = share,
             ShareProbability = shareProbability,
+            SplitKey = splitKey,
             Annotations = annotations,
         });
     }
@@ -162,6 +168,7 @@ public static class LabelConfirmation
     /// <param name="annotations">The references the sinks need, as in <see cref="Decide{TValue}"/>.</param>
     /// <param name="split">Which decisions are held out, as in <see cref="Decide{TValue}"/> — a consensus is split like any other label.</param>
     /// <param name="admission">The admission rules; a consensus is held to <see cref="LabelAdmission.MinimumTrust"/> only.</param>
+    /// <param name="splitKey">The split key of the decision, as in <see cref="Decide{TValue}"/> — the same one, or the label may fall in the other share.</param>
     /// <exception cref="ArgumentException">
     /// The consensus is not one: fewer than two distinct participants, a participant whose tier is not on the
     /// ladder, or one at or below the learner — a judge agreeing with itself is not evidence, and neither is the learner.
@@ -174,7 +181,8 @@ public static class LabelConfirmation
         LabelTrustDefaults? defaults = null,
         IReadOnlyDictionary<string, string>? annotations = null,
         LabelSplit? split = null,
-        LabelAdmission? admission = null)
+        LabelAdmission? admission = null,
+        string? splitKey = null)
     {
         ArgumentNullException.ThrowIfNull(decision);
         ArgumentNullException.ThrowIfNull(consensus);
@@ -211,7 +219,7 @@ public static class LabelConfirmation
             .OrderBy(p => p.Tier.CostRank)
             .ThenBy(p => p.Judge.ToString(), StringComparer.Ordinal)
             .ToList();
-        var (share, shareProbability) = (split ?? LabelSplit.None).Assign(consensus.DecisionId, decision.SliceKey);
+        var (share, shareProbability) = (split ?? LabelSplit.None).Assign(consensus.DecisionId, decision.SliceKey, splitKey);
         return new(ConfirmationOutcome.Confirmed, new ConfirmedLabel<TValue>
         {
             DecisionId = consensus.DecisionId,
@@ -227,6 +235,7 @@ public static class LabelConfirmation
             ConfirmedAt = consensus.ReachedAt,
             Share = share,
             ShareProbability = shareProbability,
+            SplitKey = splitKey,
             Annotations = annotations,
         });
     }

@@ -13,7 +13,7 @@ namespace HoneAI.Learning;
 /// <param name="ByTrustBasis">Count changes by trust basis.</param>
 /// <param name="BySlice">Count changes by slice.</param>
 /// <param name="ByValue">Count changes by value.</param>
-/// <param name="SplitChanged">The held-out split differs — the two sets were not drawn from the same decisions.</param>
+/// <param name="SplitChanged">The held-out split differs (share, salt, slice shares or the kind of key it dealt by) — the two sets were not drawn from the same decisions.</param>
 public sealed record TrainingSetChange(
     int Labels,
     IReadOnlyDictionary<string, int> BySource,
@@ -21,6 +21,24 @@ public sealed record TrainingSetChange(
     IReadOnlyDictionary<string, int> BySlice,
     IReadOnlyDictionary<string, int> ByValue,
     bool SplitChanged);
+
+/// <summary>
+/// How a set of confirmed labels fell in the two shares — labels and independent units (split keys) of each — and
+/// what looks wrong with the deal.
+/// </summary>
+/// <param name="TrainingLabels">Labels for learning.</param>
+/// <param name="TrainingUnits">Distinct units among them.</param>
+/// <param name="EvaluationLabels">Labels held out for measuring.</param>
+/// <param name="EvaluationUnits">Distinct units among them — the sample size of a measurement, not <paramref name="EvaluationLabels"/>.</param>
+/// <param name="StraddlingUnits">Units with labels in both shares: the split was not dealt by one key for them.</param>
+/// <param name="Warnings">What to look at before trusting a measurement on the held-out share; empty when nothing.</param>
+public sealed record LabelShareSummary(
+    int TrainingLabels,
+    int TrainingUnits,
+    int EvaluationLabels,
+    int EvaluationUnits,
+    int StraddlingUnits,
+    IReadOnlyList<string> Warnings);
 
 /// <summary>Describes and compares the sets of confirmed labels a learning tier is trained on.</summary>
 public static class TrainingSets
@@ -63,8 +81,36 @@ public static class TrainingSets
             EvaluationShare = held?.EvaluationShare,
             EvaluationShareBySlice = held?.BySlice,
             SplitSalt = held?.Salt,
+            SplitKeyKind = held?.KeyKind,
+            Units = list.Select(l => l.Unit).Distinct(StringComparer.Ordinal).Count(),
             ContentSha256 = Hash(list, valueText),
         };
+    }
+
+    /// <summary>
+    /// How <paramref name="labels"/> — the labels that stand, both shares — fell in the two shares, counted by independent
+    /// unit as well as by label: a measurement on 400 held-out labels of 12 units is a measurement of 12 things.
+    /// </summary>
+    /// <param name="labels">The labels that stand, one per decision.</param>
+    /// <param name="minimumEvaluationUnits">Units the held-out share needs before a measurement on it is trusted; a warning below.</param>
+    public static LabelShareSummary Summarize<TValue>(IEnumerable<ConfirmedLabel<TValue>> labels, int minimumEvaluationUnits = 30)
+    {
+        ArgumentNullException.ThrowIfNull(labels);
+        var list = labels.ToList();
+        foreach (var label in list)
+            ArgumentNullException.ThrowIfNull(label, nameof(labels));
+        var training = list.Where(l => l.Share == LabelShare.Training).ToList();
+        var evaluation = list.Where(l => l.Share == LabelShare.Evaluation).ToList();
+        var trainingUnits = training.Select(l => l.Unit).ToHashSet(StringComparer.Ordinal);
+        var evaluationUnits = evaluation.Select(l => l.Unit).ToHashSet(StringComparer.Ordinal);
+        var straddling = trainingUnits.Count(evaluationUnits.Contains);
+
+        var warnings = new List<string>();
+        if (straddling > 0)
+            warnings.Add($"{straddling} unit(s) have labels in both shares: the held-out share has seen-by-the-learner input — pass the same splitKey at every Decide/Settle.");
+        if (evaluation.Count > 0 && evaluationUnits.Count < minimumEvaluationUnits)
+            warnings.Add($"The held-out share has {evaluationUnits.Count} independent unit(s) in {evaluation.Count} label(s); a measurement on it stands on {evaluationUnits.Count}, under {minimumEvaluationUnits}.");
+        return new(training.Count, trainingUnits.Count, evaluation.Count, evaluationUnits.Count, straddling, warnings);
     }
 
     /// <summary>What changed from <paramref name="earlier"/> to <paramref name="later"/>.</summary>
@@ -74,6 +120,7 @@ public static class TrainingSets
         ArgumentNullException.ThrowIfNull(later);
         var splitChanged = earlier.EvaluationShare != later.EvaluationShare
             || earlier.SplitSalt != later.SplitSalt
+            || earlier.SplitKeyKind != later.SplitKeyKind
             || !SameShares(earlier.EvaluationShareBySlice, later.EvaluationShareBySlice);
         return new(
             later.Labels - earlier.Labels,

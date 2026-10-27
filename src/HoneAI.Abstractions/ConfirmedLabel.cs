@@ -113,6 +113,16 @@ public sealed record ConfirmedLabel<TValue>
     public double ShareProbability { get; init; } = 1.0;
 
     /// <summary>
+    /// The key the split dealt this label's decision by, when the unit was bigger than the decision (decisions with one
+    /// normalized input); null when the decision itself was the unit. It counts the independent units of a share
+    /// (<see cref="Unit"/>).
+    /// </summary>
+    public string? SplitKey { get; init; }
+
+    /// <summary>The independent unit of the split this label belongs to: <see cref="SplitKey"/>, else the decision.</summary>
+    public string Unit => SplitKey ?? DecisionId;
+
+    /// <summary>
     /// How much the label counts: <see cref="Trust"/> / (<see cref="Probability"/> · <see cref="ShareProbability"/>).
     /// The 1/π half makes the labels a sample of every decision rather than of the ones sent up or drawn, and the 1/q
     /// half keeps each share a sample of them too; the trust half counts a judge that is wrong more often for less.

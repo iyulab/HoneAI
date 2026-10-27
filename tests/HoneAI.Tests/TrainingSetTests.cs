@@ -73,6 +73,49 @@ public class TrainingSetTests
         Assert.Null(TrainingSets.Manifest([label], LabelSplit.None).EvaluationShare);
     }
 
+    private static ConfirmedLabel<string> Keyed(string id, string key, LabelShare share)
+        => Label(id, "ok", Now) with { SplitKey = key, Share = share, ShareProbability = share == LabelShare.Evaluation ? 0.2 : 0.8 };
+
+    [Fact]
+    public void AManifest_CountsTheIndependentUnits_AndRecordsTheKindOfKey()
+    {
+        var labels = new[] { Keyed("d1", "k1", LabelShare.Training), Keyed("d2", "k1", LabelShare.Training), Label("d3", "ok", Now) };
+        var manifest = TrainingSets.Manifest(labels, new LabelSplit { EvaluationShare = 0.2, KeyKind = "normalized-text" });
+
+        Assert.Equal(3, manifest.Labels);
+        Assert.Equal(2, manifest.Units);                                     // k1 twice, d3 on its own
+        Assert.Equal("normalized-text", manifest.SplitKeyKind);
+        Assert.Null(TrainingSets.Manifest(labels, new LabelSplit { EvaluationShare = 0.2 }).SplitKeyKind);
+
+        // A set dealt by another kind of unit was not drawn alike.
+        var byDecision = TrainingSets.Manifest([Label("d1", "ok", Now)], new LabelSplit { EvaluationShare = 0.2 });
+        var byKey = TrainingSets.Manifest([Label("d1", "ok", Now)], new LabelSplit { EvaluationShare = 0.2, KeyKind = "session" });
+        Assert.True(TrainingSets.Compare(byDecision, byKey).SplitChanged);
+    }
+
+    [Fact]
+    public void Summarize_CountsUnitsOfEachShare_AndWarnsOfAStraddledKeyOrAThinHeldOutShare()
+    {
+        var dealt = Enumerable.Range(0, 40)
+            .Select(i => Keyed($"d{i}", $"k{i / 2}", i % 10 < 2 ? LabelShare.Evaluation : LabelShare.Training))
+            .ToList();
+        var summary = TrainingSets.Summarize(dealt, minimumEvaluationUnits: 5);
+
+        Assert.Equal((32, 8), (summary.TrainingLabels, summary.EvaluationLabels));
+        Assert.Equal((16, 4), (summary.TrainingUnits, summary.EvaluationUnits));
+        Assert.Equal(0, summary.StraddlingUnits);
+        Assert.Single(summary.Warnings);                                    // 4 held-out units, under 5
+        Assert.Contains("4 independent unit", summary.Warnings[0]);
+
+        // One key with labels in both shares is the deal the split key exists to prevent.
+        var straddling = dealt.Append(Keyed("d99", "k0", LabelShare.Training)).ToList();
+        var warned = TrainingSets.Summarize(straddling, minimumEvaluationUnits: 1);
+        Assert.Equal(1, warned.StraddlingUnits);
+        Assert.Contains("both shares", Assert.Single(warned.Warnings));
+
+        Assert.Empty(TrainingSets.Summarize<string>([]).Warnings);
+    }
+
     [Fact]
     public void Compare_ListsWhatChanged_AndWhetherTheSplitDid()
     {

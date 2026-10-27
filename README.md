@@ -183,6 +183,11 @@ by a hash of the decision id, so every label a decision ever gets lands in the s
 challenger is measured against the model in production; `LabelShareSink<T>` routes each share to its sink, and the
 MLoop sink refuses a held-out label. No slice is held out whole — the hard decisions are learned from too.
 
+When the unit that must not straddle the shares is bigger than a decision — near-duplicate inputs, one document, one
+session — pass its key as `splitKey` to `Decide` / `Settle` (the same key at both): the split is dealt by the key,
+so those decisions fall in one share, and `TrainingSets.Summarize` counts the held-out share in independent units
+and warns if a key has labels in both shares.
+
 A decision can be labelled twice — a teacher first, a person or a consensus later. MLoop counts the most recent
 feedback of a prediction, so send a later label only when `LabelConfirmation.Supersedes(previous, next)` says it
 replaces the earlier one: a consensus over any one judge, otherwise the more trusted.

@@ -6,6 +6,15 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- A split key for the held-out split: `LabelConfirmation.Decide` / `Settle` take `splitKey` (the same one at both calls),
+  and `LabelSplit.Assign` deals by it instead of the decision id — every decision with one key (the same normalized
+  input, document or session) falls in one share, and q is the probability of the key. Without a key the deal is
+  unchanged. `ConfirmedLabel.SplitKey` / `Unit` carry it; `LabelSplit.KeyKind` names what the keys are, and
+  `TrainingSetManifest.SplitKeyKind` / `Units` record it (`TrainingSets.Compare` reports a different kind of key as a
+  changed split). `TrainingSets.Summarize` counts labels and independent units of each share and warns of a key with
+  labels in both shares or a held-out share with too few units. Keep a key inside one slice.
+
 ## [0.13.0] - 2026-10-27
 
 ### Added

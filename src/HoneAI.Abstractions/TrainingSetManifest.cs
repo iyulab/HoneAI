@@ -45,6 +45,19 @@ public sealed record TrainingSetManifest
     public string? SplitSalt { get; init; }
 
     /// <summary>
+    /// What the split's keys were (<see cref="LabelSplit.KeyKind"/>), when the split dealt by a unit bigger than the
+    /// decision; null when decisions were dealt individually or nothing was held out. Two sets dealt by different
+    /// kinds of unit were not drawn alike.
+    /// </summary>
+    public string? SplitKeyKind { get; init; }
+
+    /// <summary>
+    /// The independent units in the set — distinct split keys, a decision without one counting as its own. Fewer than
+    /// <see cref="Labels"/> when decisions share a key; null for a set recorded before units were counted.
+    /// </summary>
+    public int? Units { get; init; }
+
+    /// <summary>
     /// SHA-256 of the labels' contents (decision, value, confirming judge and version, weight), in decision order —
     /// the same labels give the same hash, whatever order they were kept in.
     /// </summary>
