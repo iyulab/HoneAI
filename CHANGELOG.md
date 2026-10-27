@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-27
+
 ### Added
 - Held-out labels for measuring the learning tier: `LabelSplit` (a share of decisions, overall or per slice, under 1)
   passed to `LabelConfirmation.Decide` / `Settle` sets `ConfirmedLabel.Share` (`LabelShare.Training` / `Evaluation`)
