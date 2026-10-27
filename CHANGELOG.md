@@ -7,6 +7,10 @@ All notable changes to HoneAI are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Repeat consistency as an admission rule: `LabelConfirmation.Decide(…, repeats:)` takes the repeats made of the decision
+  (`RepeatConsistency.Pair`), and a label whose confirming judge did not hold its own answer on one
+  (`RepeatRecord.Consistent` false) is trusted at most `LabelAdmission.UnsteadyTrustCap` (whatever the trust basis) or,
+  with `RefuseUnsteady`, kept out — the next admitted judge stands, or `NotAdmitted` says why.
 - `TrainingSetSelector.Select(labels, policy)`: the training set picked from the labels that stand, by a
   `TrainingSetPolicy` — at most N labels per unit (`MaxPerUnit`, near-duplicates), per slice (`MaxPerSlice`) and in all
   (`MaxLabels`, shared out between slices in proportion after the `MinPerSlice` floors). Each limit thins a group by the

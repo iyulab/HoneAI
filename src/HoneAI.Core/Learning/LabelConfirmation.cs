@@ -70,6 +70,11 @@ public static class LabelConfirmation
     /// The unit the decision belongs to when it is bigger than the decision (decisions with one normalized input);
     /// <paramref name="split"/> deals by it, so those decisions share a share. Pass the same key to <see cref="Settle{TValue}"/>.
     /// </param>
+    /// <param name="repeats">
+    /// The repeats made of this decision (<c>RepeatConsistency.Pair</c>), if any. A judge whose own repeat disagreed is
+    /// <em>unsteady</em> on this decision: <see cref="LabelAdmission.UnsteadyTrustCap"/> caps its trust and
+    /// <see cref="LabelAdmission.RefuseUnsteady"/> keeps it out. Only a repeat by the confirming judge counts.
+    /// </param>
     /// <param name="admission">
     /// Which confirmations may become labels; <see cref="LabelAdmission.All"/> when null. A judge it keeps out cannot
     /// confirm — the most trusted admitted one stands, and with none, <see cref="ConfirmationOutcome.NotAdmitted"/>.
@@ -87,7 +92,8 @@ public static class LabelConfirmation
         IReadOnlyDictionary<string, string>? annotations = null,
         LabelSplit? split = null,
         LabelAdmission? admission = null,
-        string? splitKey = null)
+        string? splitKey = null,
+        IReadOnlyCollection<RepeatRecord>? repeats = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(decisionId);
         ArgumentNullException.ThrowIfNull(decision);
@@ -122,8 +128,11 @@ public static class LabelConfirmation
         admission ??= LabelAdmission.All;
         var candidates = above
             .Select(x => (x.Answer, x.Tier, Judge: new JudgeIdentity(x.Tier.Id, x.Answer.Provenance.JudgedBy),
-                Trust: admission.Cap(TrustOf(x.Tier, x.Answer.Provenance.JudgedBy, teacherCell, defaults))))
-            .Select(x => (x.Answer, x.Tier, x.Trust, Refusal: admission.Refusal(x.Judge, x.Trust.Value)))
+                Unsteady: repeats?.Any(r => r.Consistent == false && r.DecisionId == decisionId
+                    && r.Judge == new JudgeIdentity(x.Tier.Id, x.Answer.Provenance.JudgedBy)) == true))
+            .Select(x => (x.Answer, x.Tier, x.Judge, x.Unsteady,
+                Trust: admission.CapUnsteady(admission.Cap(TrustOf(x.Tier, x.Answer.Provenance.JudgedBy, teacherCell, defaults)), x.Unsteady)))
+            .Select(x => (x.Answer, x.Tier, x.Trust, Refusal: admission.Refusal(x.Judge, x.Trust.Value, x.Unsteady)))
             .ToList();
         if (candidates.All(x => x.Refusal is not null))
             return new(ConfirmationOutcome.NotAdmitted, Reason: string.Join("; ", candidates.Select(x => x.Refusal)) + ".");

@@ -171,6 +171,59 @@ public class TrainingSetTests
         Assert.Contains("not qualified", none.Reason);
     }
 
+    private static RepeatRecord Repeat(string decisionId, Tier tier, bool? consistent)
+        => new()
+        {
+            DecisionId = decisionId,
+            Judge = new JudgeIdentity(tier.Id, null),
+            Kind = tier.Kind,
+            SliceKey = "s",
+            JudgedAt = Now,
+            Consistent = consistent,
+        };
+
+    [Fact]
+    public void Admission_CapsOrRefusesALabelWhoseJudgeDidNotHoldItsAnswerOnARepeat()
+    {
+        var shaky = new[] { Repeat("d1", Llm, consistent: false) };
+
+        // Capped: the LLM's default trust 0.8 comes down to 0.3, whatever the basis.
+        var capped = LabelConfirmation.Decide("d1", WentUp, [Answer(Llm, "ok")], Ml, Ladder, Policy, _ => null, Now,
+            admission: new LabelAdmission { UnsteadyTrustCap = 0.3 }, repeats: shaky);
+        Assert.Equal(0.3, capped.Label!.Trust);
+        Assert.Equal(0.3, capped.Label.Weight);
+
+        // Refused: nothing else answered, so nothing is admitted — and it says why.
+        var refused = LabelConfirmation.Decide("d1", WentUp, [Answer(Llm, "ok")], Ml, Ladder, Policy, _ => null, Now,
+            admission: new LabelAdmission { RefuseUnsteady = true }, repeats: shaky);
+        Assert.Equal(ConfirmationOutcome.NotAdmitted, refused.Outcome);
+        Assert.Contains("did not hold its own answer", refused.Reason);
+
+        // With a steady judge above it, the steady judge's answer stands.
+        var passedOver = LabelConfirmation.Decide("d1", WentUp, [Answer(Llm, "minor"), Answer(Person, "ok")], Ml, Ladder, Policy, _ => null, Now,
+            admission: new LabelAdmission { RefuseUnsteady = true }, repeats: [Repeat("d1", Person, consistent: false)]);
+        Assert.Equal("minor", passedOver.Label!.Value);
+    }
+
+    [Fact]
+    public void Admission_LeavesALabelAloneUnlessItsOwnJudgeWasUnsteadyOnThisDecision()
+    {
+        var admission = new LabelAdmission { UnsteadyTrustCap = 0.3, RefuseUnsteady = false };
+        double TrustWith(IReadOnlyCollection<RepeatRecord>? repeats)
+            => LabelConfirmation.Decide("d1", WentUp, [Answer(Llm, "ok")], Ml, Ladder, Policy, _ => null, Now,
+                admission: admission, repeats: repeats).Label!.Trust;
+
+        Assert.Equal(0.8, TrustWith(null));
+        Assert.Equal(0.8, TrustWith([Repeat("d1", Llm, consistent: true)]));
+        Assert.Equal(0.8, TrustWith([Repeat("d1", Llm, consistent: null)]));      // no answer on one side: not a disagreement
+        Assert.Equal(0.8, TrustWith([Repeat("d2", Llm, consistent: false)]));     // another decision
+        Assert.Equal(0.8, TrustWith([Repeat("d1", Person, consistent: false)]));  // another judge
+        Assert.Equal(0.3, TrustWith([Repeat("d1", Llm, consistent: false)]));
+        // Not asked for: a disagreeing repeat changes nothing.
+        Assert.Equal(0.8, LabelConfirmation.Decide("d1", WentUp, [Answer(Llm, "ok")], Ml, Ladder, Policy, _ => null, Now,
+            repeats: [Repeat("d1", Llm, consistent: false)]).Label!.Trust);
+    }
+
     [Fact]
     public void Admission_CapsAnUnmeasuredJudgesTrust_AndHoldsLabelsToAMinimum()
     {

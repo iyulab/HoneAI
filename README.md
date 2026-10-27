@@ -200,6 +200,8 @@ replaces the earlier one: a consensus over any one judge, otherwise the more tru
 Which confirmations may become labels is yours to set (`LabelAdmission`): a judge that is not qualified — a teacher
 whose must-catch recall has not cleared the floor — cannot confirm, an unmeasured judge's default trust can be capped,
 and a label under a minimum trust is kept out (`ConfirmationOutcome.NotAdmitted`, with the reason).
+A judge that does not hold its own answer when the same input is asked again (`RepeatConsistency.Pair`, passed as
+`repeats:`) is unsteady on that decision: `UnsteadyTrustCap` holds the label's trust under a cap, `RefuseUnsteady` keeps it out.
 
 What a run learned from is a `TrainingSetManifest` (`TrainingSets.Manifest` over the labels you kept): counts by
 confirming judge, trust basis, slice and value, the time span, the split, and a hash of the contents. Pass it as
