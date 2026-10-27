@@ -12,6 +12,20 @@ All notable changes to HoneAI are documented here. The format follows
   (`cancellationToken: ct`). An implementer of `IModelLifecycle` takes the same parameter.
 
 ### Added
+- Probe adapters — how a drawn probe is put to a judge, the part that differs by kind of judge (the selection,
+  `ProbeSelector`, is one for all). `IProbeAdapter<TValue>` accepts a candidate (its target and method) and puts a
+  drawn probe; `ProbeDispatch.RunAsync(plan, adapters)` puts every drawn probe to the first adapter that accepts it and
+  says what became of each (`ProbeDelivery`: `Judged` with the verdict, `Queued`, or `Declined` with the reason).
+  `MachineProbeAdapter` puts a probe to a tier of a `TieredRouter` on the spot — the blind `RecheckAsync`, or
+  `RecheckShownAsync` with the answer the consumer says to show for an anchoring probe; what the result is for (a recheck
+  record, a repeat pair, a plant, a double check) follows the probe's method. `PoolProbeAdapter` sets a recheck or a plant
+  in the recheck pool at the π the selector drew it with, for a judge that comes when it comes (`ProbeSubject` carries the
+  tier measured, when it was decided, where the input is, when the item expires — the pool's reach accounting and the
+  ledger's 1/(π·r) then count it as any pooled item). A repeat and a second opinion are made from answered items by the
+  session's mix and an anchoring probe shows another's answer, so the pool does not accept them. A drawn probe nobody puts
+  is `Declined`, not dropped (`ProbeRun.Declined` counts them per pool and method): it was drawn at π, so it counts as
+  not reached. A judge's capacity is the pool's budget (`ProbePolicy.PoolBudgets`) plus whether the answer comes back at
+  once or later; adding a tier to the ladder is a tier and, for a new kind of judge, an adapter.
 - `LabelConfirmation.Volunteer(…)`: a person's own correction of a decision nothing drew for recheck. It has no π, and a person
   fixes what they see wrong — the corrections are a sample of the errors, not of the decisions — so the label
   (`ConfirmedLabel.Origin` = `Voluntary`) teaches and never measures: it is in the training share at a weight capped by
