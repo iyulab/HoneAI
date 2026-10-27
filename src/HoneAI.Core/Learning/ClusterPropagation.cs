@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace HoneAI.Learning;
@@ -62,9 +63,12 @@ public static class ClusterPropagation
         if (check.Checked < policy.MinimumChecked)
             return check with { Reason = $"Only {check.Checked} decision(s) of the cluster were checked; {policy.MinimumChecked} are required." };
         if (check.Agreement < policy.MinimumAgreement)
-            return check with { Reason = $"The representative's value held for {check.Agreement:P0} of the checked decisions; {policy.MinimumAgreement:P0} is required." };
+            return check with { Reason = $"The representative's value held for {Percent(check.Agreement)} of the checked decisions; {Percent(policy.MinimumAgreement)} is required." };
         return check with { Passed = true };
     }
+
+    // The reason is read by people and asserted by tests; it must not change with the machine's culture.
+    private static string Percent(double share) => (share * 100).ToString("0", CultureInfo.InvariantCulture) + "%";
 
     /// <summary>
     /// The label a person's answer to <paramref name="representative"/> makes for another decision of its cluster, when the
