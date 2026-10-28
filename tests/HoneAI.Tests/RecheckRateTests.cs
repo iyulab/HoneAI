@@ -74,6 +74,37 @@ public class RecheckRateTests
     }
 
     [Fact]
+    public void AnAbsoluteAllowance_SizesTheMissTerm_WhereNothingWasCaught()
+    {
+        var policy = Policy with { Targets = Targets with { HiddenMustCatchLimit = 30 } };
+
+        var choice = RecheckRate.Solve(policy, new SliceTraffic(Decisions: 1_000_000, Caught: 0));
+
+        // ln 20 / 30 ≈ 0.0999: zero misses at that π bound the hidden count by 30.
+        Assert.Equal(RateTerm.Miss, choice.SetBy);
+        Assert.Equal(Math.Log(20) / 30, choice.MissTerm, 9);
+        Assert.False(choice.Capped);
+    }
+
+    [Fact]
+    public void TheLargerAllowance_Wins_AndWithNoLimitTheTermIsTheRatesOwn()
+    {
+        // 3,000 caught at m = 2 % allow 61.2 hidden; a limit of 10 does not shrink that, one of 100 grows it.
+        var caught = new SliceTraffic(Decisions: 20_000, Caught: 3_000);
+        var rate = RecheckRate.Solve(Policy, caught).MissTerm;
+
+        Assert.Equal(rate, RecheckRate.Solve(Policy with { Targets = Targets with { HiddenMustCatchLimit = 10 } }, caught).MissTerm, 12);
+        Assert.Equal(Math.Log(20) / 100, RecheckRate.Solve(Policy with { Targets = Targets with { HiddenMustCatchLimit = 100 } }, caught).MissTerm, 12);
+    }
+
+    [Theory]
+    [InlineData(-1.0)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NaN)]
+    public void AHiddenLimitThatIsNotAFiniteCount_IsRefused(double limit)
+        => Assert.Throws<ArgumentOutOfRangeException>(() => RecheckRate.Solve(Policy with { Targets = Targets with { HiddenMustCatchLimit = limit } }, new SliceTraffic(10, 10)));
+
+    [Fact]
     public void ABarTheTierCannotClear_NeedsEverythingAndStaysUp()
     {
         var policy = Policy with { Targets = Targets with { Agreement = 0.99 } };   // 0.99 + 0.01 + 0.03 > 1

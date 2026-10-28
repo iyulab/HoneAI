@@ -205,7 +205,8 @@ public static class TrustController
         ArgumentNullException.ThrowIfNull(window);
         if (window.MissRateUpper is not { } u)
             return null;
-        return u >= 1 ? double.PositiveInfinity : u * window.Caught / (1 - u);
+        // With nothing caught the rate is 1 for any miss, but the count bound is still finite: it is the exposure.
+        return u >= 1 ? window.MissesUpper ?? double.PositiveInfinity : u * window.Caught / (1 - u);
     }
 }
 

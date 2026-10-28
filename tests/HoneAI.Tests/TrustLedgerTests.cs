@@ -139,6 +139,20 @@ public sealed class TrustLedgerTests : IDisposable
     }
 
     [Fact]
+    public void NothingCaught_MakesTheMissRateOne_ButTheHiddenCountStaysBounded()
+    {
+        // 500 rechecks at π = 0.1, none a must-catch, and the tier above caught no must-catch decision at all: any miss
+        // would be every must-catch decision the slice has, so the rate's bound is 1 — whatever the sample. The count is not.
+        var records = Enumerable.Range(0, 500).Select(i => Record($"d{i}", 0.1, RecheckOutcome.Agreed)).ToList();
+
+        var cell = TrustLedger.Compute(records, "ml", "s", T0, T0.AddDays(1), caught: 0);
+
+        Assert.Equal(1.0, cell.MissRateUpper!.Value, 9);
+        Assert.Equal(TrustLedger.BinomialCountUpperBound(0, 0.1, 0.05), cell.MissesUpper!.Value, 9);
+        Assert.InRange(cell.MissesUpper!.Value, Math.Log(20) / 0.1 - 3, Math.Log(20) / 0.1);   // ≈ 29, the zero-misses rule
+    }
+
+    [Fact]
     public void AnEmptyWindow_SaysNothing()
     {
         var cell = TrustLedger.Compute([], "ml", "s", T0, T0.AddDays(1));
@@ -148,6 +162,7 @@ public sealed class TrustLedgerTests : IDisposable
         Assert.Null(cell.AgreementLower);
         Assert.Null(cell.MissRate);
         Assert.Null(cell.MissRateUpper);
+        Assert.Null(cell.MissesUpper);
     }
 
     [Theory]

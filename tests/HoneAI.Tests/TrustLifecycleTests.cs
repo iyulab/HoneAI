@@ -95,6 +95,33 @@ public class TrustLifecycleTests
     }
 
     [Fact]
+    public void NothingCaught_ReleasesOnAnAbsoluteAllowance_WhenTheHiddenCountIsShownWithinIt()
+    {
+        var allowed = Policy with { Targets = Policy.Targets with { HiddenMustCatchLimit = 30 } };
+        var uncaught = Cell(missUpper: 1.0) with { Caught = 0, MissesUpper = 25 };
+
+        var step = TrustLifecycle.Release(SliceStanding.New("v1", Start), uncaught, true, V1, allowed, Later);
+
+        Assert.Equal(TrustState.Active, step.To);
+    }
+
+    [Fact]
+    public void NothingCaught_DoesNotRelease_WhenTheHiddenCountIsOverTheAllowance_OrThereIsNone()
+    {
+        var uncaught = Cell(missUpper: 1.0) with { Caught = 0, MissesUpper = 25 };
+
+        var over = TrustLifecycle.Release(SliceStanding.New("v1", Start),
+            uncaught with { MissesUpper = 35 }, true, V1, Policy with { Targets = Policy.Targets with { HiddenMustCatchLimit = 30 } }, Later);
+        Assert.False(over.Moved);
+        Assert.Contains("hidden must-catch count", over.Reason);
+
+        // The default allowance is none: the slice stays where it was, as before.
+        var none = TrustLifecycle.Release(SliceStanding.New("v1", Start), uncaught, true, V1, Policy, Later);
+        Assert.False(none.Moved);
+        Assert.Contains("miss rate upper bound", none.Reason);
+    }
+
+    [Fact]
     public void ActiveBecomesStable_OnlyAfterKWindowsInARow()
     {
         var active = new SliceStanding(TrustState.Active, Start, "v1");

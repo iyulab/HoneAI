@@ -26,6 +26,16 @@ public sealed record TrustTargets
     /// </summary>
     public required double MissLimit { get; init; }
 
+    /// <summary>
+    /// The must-catch decisions a window may hide in a slice, however few were caught (L; 0 = none beyond the miss rate).
+    /// The miss rate is a share of the must-catch decisions the slice has, so a slice where the tier above caught none
+    /// has rate 1 for any miss at all and can never be released on it. This is the person's statement of how many hidden
+    /// must-catch decisions per window the consumer accepts there: a window whose hidden count is shown to be at most L
+    /// meets the miss condition, and the recheck rate is sized to show it. Where the tier above does catch some, the
+    /// larger of this and the rate's allowance m·C/(1 − m) applies.
+    /// </summary>
+    public double HiddenMustCatchLimit { get; init; }
+
     /// <summary>How long a breach may go unseen (D) — the window a release is judged on.</summary>
     public required TimeSpan Deadline { get; init; }
 
@@ -110,9 +120,10 @@ public static class RecheckRate
         if (traffic.Decisions < 0 || traffic.Caught < 0)
             throw new ArgumentOutOfRangeException(nameof(traffic), traffic, "Expected counts cannot be negative.");
 
-        var miss = traffic.Caught > 0
-            ? Math.Log(1 / targets.Alpha) * (1 - targets.MissLimit) / (targets.MissLimit * traffic.Caught)
-            : double.PositiveInfinity;
+        // Zero misses seen among rechecks at π bound the hidden count by ln(1/α)/π; the allowance it must fit under is the
+        // rate's m·C/(1 − m) or the person's absolute limit, whichever is larger.
+        var allowance = Math.Max(targets.MissLimit * traffic.Caught / (1 - targets.MissLimit), targets.HiddenMustCatchLimit);
+        var miss = allowance > 0 ? Math.Log(1 / targets.Alpha) / allowance : double.PositiveInfinity;
         var agreement = traffic.Decisions > 0
             ? RechecksForAgreement(policy) / traffic.Decisions
             : double.PositiveInfinity;
@@ -192,6 +203,8 @@ public static class RecheckRate
         Open(targets.MissLimit, nameof(TrustTargets.MissLimit));
         Open(targets.Alpha, nameof(TrustTargets.Alpha));
         Open(targets.Power, nameof(TrustTargets.Power));
+        if (!(targets.HiddenMustCatchLimit >= 0 && double.IsFinite(targets.HiddenMustCatchLimit)))
+            throw new ArgumentOutOfRangeException(nameof(targets), targets.HiddenMustCatchLimit, "The hidden must-catch limit is a finite count of zero or more.");
         if (targets.Deadline <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(targets), targets.Deadline, "The deadline must be positive.");
         if (!(targets.RateFloor > 0 && targets.RateFloor <= targets.RateCeiling && targets.RateCeiling <= 1))

@@ -193,10 +193,17 @@ public static class TrustLifecycle
             return $"effective sample {window.EffectiveSampleSize:F0} is under {policy.MinimumEffectiveSample:F0}";
         if (!(window.AgreementLower >= p0 + policy.Margin))
             return $"agreement lower bound {window.AgreementLower:P1} is under {p0 + policy.Margin:P1}";
-        if (window.MissRateUpper is null)
-            return "no caught must-catch decision to bound the miss rate against";
-        if (window.MissRateUpper > policy.Targets.MissLimit)
-            return $"miss rate upper bound {window.MissRateUpper:P1} is over {policy.Targets.MissLimit:P1}";
+        var limit = policy.Targets.HiddenMustCatchLimit;
+        var withinAllowance = limit > 0 && window.MissesUpper is { } hidden && hidden <= limit;
+        if (!withinAllowance)
+        {
+            if (window.MissRateUpper is null)
+                return "no caught must-catch decision to bound the miss rate against";
+            if (window.MissRateUpper > policy.Targets.MissLimit)
+                return limit > 0
+                    ? $"miss rate upper bound {window.MissRateUpper:P1} is over {policy.Targets.MissLimit:P1}, and the hidden must-catch count {window.MissesUpper:F1} is over {limit:F1}"
+                    : $"miss rate upper bound {window.MissRateUpper:P1} is over {policy.Targets.MissLimit:P1}";
+        }
         if (!teacherQualified)
             return "the tier above is not qualified to teach";
         if (window.UpperFailureRate > policy.MaximumUpperFailureRate)

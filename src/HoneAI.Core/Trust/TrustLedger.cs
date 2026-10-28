@@ -87,12 +87,13 @@ public static class TrustLedger
         var missesEstimated = misses.Sum(Weight);
         double? missRate = missesEstimated + caught > 0 ? missesEstimated / (missesEstimated + caught) : null;
 
-        double? missRateUpper = null;
+        double? missRateUpper = null, missesUpperCount = null;
         if (window.Count > 0)
         {
             var seen = misses.Count + failed;
             var smallestPi = window.Min(r => r.Probability);
             var missesUpper = BinomialCountUpperBound(seen, smallestPi, 1 - confidence);
+            missesUpperCount = missesUpper;
             if (missesUpper + caught > 0)
                 missRateUpper = Math.Max(missesUpper / (missesUpper + caught), missRate ?? 0);
         }
@@ -120,6 +121,7 @@ public static class TrustLedger
             Caught = caught,
             MissRate = missRate,
             MissRateUpper = missRateUpper,
+            MissesUpper = missesUpperCount,
             MissRateLower = missRateLower,
             Confidence = confidence,
             ConfidenceRankAuc = ConfidenceRankAuc(answered),

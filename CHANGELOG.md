@@ -22,6 +22,12 @@ All notable changes to HoneAI are documented here. The format follows
 - `HoneAI.Core`'s package description says what the package ships now (the tier router, trust ledger and lifecycle, review store), not the pre-tier dual-check router; the doc comments on `PolicySnapshot`'s expiry times and on tightening say what the library does and what the consumer applies.
 
 ### Added
+- **`TrustTargets.HiddenMustCatchLimit` — an absolute allowance for a slice where the tier above caught no must-catch decision.** The
+  miss rate is a share of the must-catch decisions the slice has, so with none caught any miss at all makes it 1 and the slice could
+  never be released, however many decisions it had. The allowance is the number of hidden must-catch decisions per window a person
+  accepts there (default 0: unchanged). A window whose hidden count `LedgerCell.MissesUpper` (new; the count bound behind
+  `MissRateUpper`) is shown to be at most the allowance meets the release condition, and the recheck rate's miss term becomes
+  `ln(1/α) / max(m·C/(1 − m), L)`. Where decisions are caught, the larger allowance applies.
 - Propagated labels — a person's answer to one decision of a cluster, spread to the cluster's others. `ClusterPropagation.Assess`
   judges a cluster from the decisions a person checked beside the representative against a `PropagationPolicy` (the fewest
   decisions to check, the agreement required, the cap on the weight — none has a default); `ClusterPropagation.Propagate`
