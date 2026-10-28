@@ -89,7 +89,7 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
         var slice = _sliceKey.KeyOf(input);
         var snapshot = _snapshot();
         var now = _options.Clock();
-        var hardExpired = snapshot is not null && now >= snapshot.HardExpiresAt;
+        var hardExpired = snapshot is not null && snapshot.IsHardExpired(now);
         // Trust earned under another slice-key definition is about other slices: none of it applies.
         var entriesApply = snapshot is not null
             && (snapshot.SliceKeyVersion is null || snapshot.SliceKeyVersion == _sliceKey.Version);

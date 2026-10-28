@@ -22,6 +22,12 @@ All notable changes to HoneAI are documented here. The format follows
 - `HoneAI.Core`'s package description says what the package ships now (the tier router, trust ledger and lifecycle, review store), not the pre-tier dual-check router; the doc comments on `PolicySnapshot`'s expiry times and on tightening say what the library does and what the consumer applies.
 
 ### Added
+- **`SnapshotExpiry.MayApply(snapshot, step, now)`** and `PolicySnapshot.IsSoftExpired` / `IsHardExpired`: the soft expiry a snapshot has
+  always carried now has a reader. A release (shadow → active, active → stable) judged under a snapshot may not take effect at or
+  after its soft expiry — it is judged again against a fresh snapshot — while a step that keeps or loses ground (staying, tightening,
+  falling back) is never held back by an expiry. The controller releases in one place and issues a fresh snapshot each time, so the
+  check belongs where a release that awaited a person's approval is finally applied; which approval path that is stays the
+  consumer's. The router now reads the hard expiry through the same predicate.
 - `RecheckRecords.FromShadow` — a decision settled by a tier above gives each tier that was in shadow for its slice a ledger record: the
   shadow tier's answer is checked against the settling tier's at probability 1 (knob `shadow`), with the settlement policy's agreement and
   must-catch rules, so a shadow window fills the ledger cell a settling tier's rechecks do and the shadow → active release can be judged on

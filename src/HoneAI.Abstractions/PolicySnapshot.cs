@@ -30,17 +30,24 @@ public sealed record PolicySnapshot
     public required DateTimeOffset IssuedAt { get; init; }
 
     /// <summary>
-    /// After this, no tier is to gain ground under this snapshot. The library issues and serializes the time;
-    /// applying it is the consumer's.
+    /// From this time on, no tier is to gain ground under this snapshot. The controller releases in one place
+    /// and issues a fresh snapshot each time, so the expiry is read where a release judged earlier is applied
+    /// later — by a person's approval, say: <c>SnapshotExpiry.MayApply</c> (in <c>HoneAI.Trust</c>) is that check,
+    /// and a release it holds back is judged again. Which approval path applies a release is the consumer's.
     /// </summary>
     public required DateTimeOffset SoftExpiresAt { get; init; }
 
     /// <summary>
-    /// After this, the snapshot is not to be trusted: stable tiers are to be held to active, decisions go up
-    /// where a tier above can be reached, and where none can they are marked unverified. The library issues and
-    /// serializes the time; applying it is the consumer's.
+    /// From this time on, the snapshot is not to be trusted: the router stops settling below the top tier —
+    /// decisions go up where a tier above can be reached, and where none can they are marked unverified.
     /// </summary>
     public required DateTimeOffset HardExpiresAt { get; init; }
+
+    /// <summary>Whether <paramref name="now"/> is at or past <see cref="SoftExpiresAt"/>.</summary>
+    public bool IsSoftExpired(DateTimeOffset now) => now >= SoftExpiresAt;
+
+    /// <summary>Whether <paramref name="now"/> is at or past <see cref="HardExpiresAt"/>.</summary>
+    public bool IsHardExpired(DateTimeOffset now) => now >= HardExpiresAt;
 
     /// <summary>Version of the slice-key definition the entries were computed under.</summary>
     public string? SliceKeyVersion { get; init; }
