@@ -8,6 +8,16 @@ All notable changes to HoneAI are documented here. The format follows
 
 ### Changed
 
+- **⚠ Breaking: the agreement term of the recheck rate is sized by the release and tightening tests themselves.** `RecheckRate.Solve` and
+  `RecheckRate.RechecksForAgreement` take a `LifecyclePolicy` (they need its margin ε) instead of `TrustTargets`. The sample was
+  the one-sided test of a drop of δ below the promise; release judges the Wilson lower bound against `p0 + ε` and tightening the
+  upper bound against `p0 − ε`, so that sample released a tier δ above the promise only about half the time (measured against the
+  exact binomial: 0.52 at 0.98 with the old 326 rechecks). The window now needs the larger of `RechecksToRelease` (a tier δ above the
+  release bar clears it with probability `Power`) and `RechecksToTighten` (a tier δ under the tightening bar is tightened with
+  probability `Power`), with a continuity correction for the count — about 587 instead of 326 for p0 0.95, ε 0.01, δ 0.03, so
+  recheck probabilities rise and small slices reach the ceiling more often. `TrustTargets.DetectableDrop` now means how far across
+  its bars a tier must be to be seen. Migration: pass the policy where the targets were passed; budget pools sized against the
+  old rates grow by about the same factor.
 - `HoneAI.Agents` depends on `IronHive.Agent` 0.77.0 (was 0.75.0); `Microsoft.Extensions.Logging.Abstractions` 10.0.14.
 - `HoneAI.Core`'s package description says what the package ships now (the tier router, trust ledger and lifecycle, review store), not the pre-tier dual-check router; the doc comments on `PolicySnapshot`'s expiry times and on tightening say what the library does and what the consumer applies.
 

@@ -170,7 +170,8 @@ public class TrustControllerTests
     [Fact]
     public void AnUnmeasuredTier_IsFundedBeforeAMeasuredOne()
     {
-        var policy = Policy with { PoolBudgets = new Dictionary<string, double> { ["tenant-a"] = 600 } };
+        // Each slice needs 587 rechecks a window (the agreement tests, over 10,000 decisions): the pool funds one in full after both floors.
+        var policy = Policy with { PoolBudgets = new Dictionary<string, double> { ["tenant-a"] = 700 } };
 
         var step = TrustController.Close("s-14", Now,
         [

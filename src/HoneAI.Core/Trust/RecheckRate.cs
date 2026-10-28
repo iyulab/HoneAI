@@ -13,7 +13,10 @@ public sealed record TrustTargets
     /// <summary>The agreement with the tier above the tier is held to (p0).</summary>
     public required double Agreement { get; init; }
 
-    /// <summary>A drop in agreement the window must be able to see (δ).</summary>
+    /// <summary>
+    /// How far across its bars a tier must be for the window to see it (δ): a tier δ above the release bar p0 + ε is
+    /// released, and one δ under the tightening bar p0 − ε is tightened, each with probability <see cref="Power"/>.
+    /// </summary>
     public required double DetectableDrop { get; init; }
 
     /// <summary>
@@ -29,7 +32,7 @@ public sealed record TrustTargets
     /// <summary>Significance of the bounds (α).</summary>
     public double Alpha { get; init; } = 0.05;
 
-    /// <summary>Probability of seeing a drop of <see cref="DetectableDrop"/> when there is one (1 − β).</summary>
+    /// <summary>Probability of seeing a tier <see cref="DetectableDrop"/> across a bar when there is one (1 − β).</summary>
     public double Power { get; init; } = 0.8;
 
     /// <summary>The smallest recheck probability any settled decision is drawn at. Above zero, always.</summary>
@@ -50,7 +53,7 @@ public static class RateTerm
     /// <summary>The must-catch bound: enough misses must be drawn to bound the miss rate by m.</summary>
     public const string Miss = "miss";
 
-    /// <summary>The agreement test: enough rechecks to see a drop of δ at the window's end.</summary>
+    /// <summary>The agreement tests: enough rechecks for release and tightening to see a tier δ across their bars.</summary>
     public const string Agreement = "agreement";
 
     /// <summary>Neither term needed more than the floor.</summary>
@@ -82,20 +85,27 @@ public sealed record RecheckRateChoice(double Rate, string SetBy, double MissTer
 /// window. The rarer risk is in a slice, the larger π — at the ceiling, the slice stays up.
 /// </para>
 /// <para>
-/// <b>Agreement.</b> Release is a fixed-sample test at the window's end, so it needs
-/// n = (z_{1−α} + z_{power})² · p0(1 − p0) / δ² rechecks (one-sided), and π_agreement = n / decisions.
-/// Tightening is judged on a running cell at the confidence the caller computes it at — stricter than
-/// release's, to pay for the repeated looks (see <see cref="TrustLifecycle"/>) — so it fires early on a
+/// <b>Agreement.</b> The rechecks a window needs are those the lifecycle's own tests need, not a test of
+/// the promise alone. Release asks the agreement's lower bound (Wilson, two-sided at α) to clear the bar
+/// b = p0 + ε, so it must clear it with probability 1 − β for a tier δ above the bar:
+/// n_release = (z_c·√(b(1 − b)) + z_β·√(p₁(1 − p₁)))² / (p₁ − b)², p₁ = b + δ (z_c = z_{1−α/2}), with the
+/// continuity correction a count needs (n′ = n/4 · (1 + √(1 + 2/(n·|p₁ − b|)))²). Tightening asks
+/// the upper bound to fall under b′ = p0 − ε, so it must do so for a tier δ below that bar: the same
+/// formula with b′ and p₂ = b′ − δ. The window needs the larger of the two, and π_agreement = n / decisions.
+/// A bar too close to 1 for p₁ to lie under it cannot be cleared — the term is infinite and the slice
+/// stays up. Tightening is judged on a running cell at the confidence the caller computes it at — stricter
+/// than release's, to pay for the repeated looks (see <see cref="TrustLifecycle"/>) — so it fires early on a
 /// clear drop, while release is judged exactly at the boundary.
 /// </para>
 /// <para>π = clip(max(π_miss, π_agreement), floor, ceiling).</para>
 /// </remarks>
 public static class RecheckRate
 {
-    /// <summary>The recheck probability <paramref name="traffic"/> needs under <paramref name="targets"/>.</summary>
-    public static RecheckRateChoice Solve(TrustTargets targets, SliceTraffic traffic)
+    /// <summary>The recheck probability <paramref name="traffic"/> needs under <paramref name="policy"/>.</summary>
+    public static RecheckRateChoice Solve(LifecyclePolicy policy, SliceTraffic traffic)
     {
-        Validate(targets);
+        Validate(policy);
+        var targets = policy.Targets;
         ArgumentNullException.ThrowIfNull(traffic);
         if (traffic.Decisions < 0 || traffic.Caught < 0)
             throw new ArgumentOutOfRangeException(nameof(traffic), traffic, "Expected counts cannot be negative.");
@@ -104,7 +114,7 @@ public static class RecheckRate
             ? Math.Log(1 / targets.Alpha) * (1 - targets.MissLimit) / (targets.MissLimit * traffic.Caught)
             : double.PositiveInfinity;
         var agreement = traffic.Decisions > 0
-            ? RechecksForAgreement(targets) / traffic.Decisions
+            ? RechecksForAgreement(policy) / traffic.Decisions
             : double.PositiveInfinity;
 
         var needed = Math.Max(miss, agreement);
@@ -114,14 +124,59 @@ public static class RecheckRate
     }
 
     /// <summary>
-    /// Rechecks a window needs to see a drop of <see cref="TrustTargets.DetectableDrop"/> from
-    /// <see cref="TrustTargets.Agreement"/>: (z_{1−α} + z_{power})² · p0(1 − p0) / δ².
+    /// Rechecks a window needs for its release and tightening tests to see a tier
+    /// <see cref="TrustTargets.DetectableDrop"/> across their bars with probability <see cref="TrustTargets.Power"/>:
+    /// the larger of <see cref="RechecksToRelease"/> and <see cref="RechecksToTighten"/>.
     /// </summary>
-    public static double RechecksForAgreement(TrustTargets targets)
+    public static double RechecksForAgreement(LifecyclePolicy policy)
     {
-        Validate(targets);
-        var z = TrustLedger.NormalQuantile(1 - targets.Alpha) + TrustLedger.NormalQuantile(targets.Power);
-        return z * z * targets.Agreement * (1 - targets.Agreement) / (targets.DetectableDrop * targets.DetectableDrop);
+        Validate(policy);
+        return Math.Max(RechecksToRelease(policy), RechecksToTighten(policy));
+    }
+
+    /// <summary>
+    /// Rechecks that let a tier whose true agreement is δ above the release bar p0 + ε clear it with probability
+    /// <see cref="TrustTargets.Power"/>. Infinite when p0 + ε + δ reaches 1 — no sample size clears a bar above certainty.
+    /// </summary>
+    public static double RechecksToRelease(LifecyclePolicy policy)
+    {
+        Validate(policy);
+        var bar = policy.Targets.Agreement + policy.Margin;
+        var truth = bar + policy.Targets.DetectableDrop;
+        return truth >= 1 ? double.PositiveInfinity : SampleSize(policy.Targets, bar, truth);
+    }
+
+    /// <summary>
+    /// Rechecks that let a tier whose true agreement is δ below the tightening bar p0 − ε fall under it with probability
+    /// <see cref="TrustTargets.Power"/>. Zero when the bar is not above 0 — nothing could fall under it.
+    /// </summary>
+    public static double RechecksToTighten(LifecyclePolicy policy)
+    {
+        Validate(policy);
+        var bar = policy.Targets.Agreement - policy.Margin;
+        if (bar <= 0) return 0;
+        return SampleSize(policy.Targets, bar, Math.Max(0, bar - policy.Targets.DetectableDrop));
+    }
+
+    private static double SampleSize(TrustTargets targets, double bar, double truth)
+    {
+        var zBound = TrustLedger.NormalQuantile(1 - targets.Alpha / 2);
+        var zPower = TrustLedger.NormalQuantile(targets.Power);
+        var gap = Math.Abs(truth - bar);
+        var spread = zBound * Math.Sqrt(bar * (1 - bar)) + zPower * Math.Sqrt(truth * (1 - truth));
+        var normal = spread * spread / (gap * gap);
+        // Fleiss' continuity correction: the bound moves in steps of 1/n, so the normal sample size reaches the asked
+        // power only about three windows in four (measured against the exact binomial: 0.77 and 0.79 for 0.8 asked).
+        var corrected = normal / 4 * Math.Pow(1 + Math.Sqrt(1 + 2 / (normal * gap)), 2);
+        return corrected;
+    }
+
+    internal static void Validate(LifecyclePolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        Validate(policy.Targets);
+        if (!(policy.Margin >= 0 && policy.Margin < 1))
+            throw new ArgumentOutOfRangeException(nameof(policy), policy.Margin, "The margin ε lies in [0, 1).");
     }
 
     internal static void Validate(TrustTargets targets)

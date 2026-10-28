@@ -139,7 +139,7 @@ public static class TrustController
             if (held)
                 step = new StandingChange(s.Standing.State, s.Standing.State, $"{s.Freeze!.Describe()}; held: {step.Reason}", false, s.Standing);
             var committed = step.AwaitsApproval ? s.Standing : step.Standing;
-            return (Slice: s, Step: step, Committed: committed, Need: RecheckRate.Solve(policy.Lifecycle.Targets, s.Traffic), Held: held);
+            return (Slice: s, Step: step, Committed: committed, Need: RecheckRate.Solve(policy.Lifecycle, s.Traffic), Held: held);
         }).ToList();
 
         var pools = new Dictionary<string, BudgetAllocation>(StringComparer.Ordinal);
