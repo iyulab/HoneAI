@@ -168,6 +168,26 @@ public class TrustControllerTests
     }
 
     [Fact]
+    public void ASliceWhereNothingWasCaught_IsOnlyFundedOnceAPersonStatesAHiddenAllowance()
+    {
+        // 10,000 decisions, no must-catch decision caught: any miss makes the rate 1, so the rate-based term is infinite.
+        var quiet = Good(missUpper: 1.0) with { Caught = 0, MissesUpper = 25 };
+        var open = TrustController.Close("s-q1", Now, [Slice("quiet", TrustState.Stable, quiet, caught: 0)], Policy);
+        var allowed = TrustController.Close("s-q2", Now, [Slice("quiet", TrustState.Stable, quiet, caught: 0)],
+            Policy with { Lifecycle = Policy.Lifecycle with { Targets = Policy.Lifecycle.Targets with { HiddenMustCatchLimit = 30 } } });
+
+        var without = open.Slices.Single();
+        Assert.True(without.Need.Capped);
+        Assert.False(without.Grant!.Funded);                  // 10,000 rechecks against a pool of 2,000
+
+        var with = allowed.Slices.Single();
+        Assert.Equal(Math.Log(20) / 30, with.Need.MissTerm, 9);
+        Assert.Equal(RateTerm.Miss, with.Need.SetBy);
+        Assert.False(with.Need.Capped);
+        Assert.True(with.Grant!.Funded);                      // ≈ 1,000 rechecks fit the pool
+    }
+
+    [Fact]
     public void AnUnmeasuredTier_IsFundedBeforeAMeasuredOne()
     {
         // Each slice needs 587 rechecks a window (the agreement tests, over 10,000 decisions): the pool funds one in full after both floors.
