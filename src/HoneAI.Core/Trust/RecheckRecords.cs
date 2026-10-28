@@ -59,6 +59,52 @@ public static class RecheckRecords
         };
     }
 
+    /// <summary>The knob a shadow tier's records are drawn under: every shadowed decision is checked, so π = 1.</summary>
+    public const string ShadowKnob = "shadow";
+
+    /// <summary>
+    /// The records a settled decision gives the tiers that were in shadow for its slice: a shadow tier answered
+    /// something it would have settled, and the tier that did settle the decision answered it too — so the one is
+    /// checked against the other at no more cost, with probability 1. Agreement and a must-catch value are the
+    /// settlement policy's, counted as a live recheck counts them (the shadow tier's answer is what is checked; the
+    /// settling tier's is the check), so a shadow window fills the same ledger cell a stable tier's rechecks do and the
+    /// shadow → active release can be judged on it. A decision settled while a policy snapshot was expired is not a
+    /// check — nothing vouched for the settling answer — and gives none.
+    /// </summary>
+    public static IReadOnlyList<RecheckRecord> FromShadow<TValue>(RoutedDecision<TValue> decision, ISettlementPolicy<TValue> policy)
+    {
+        ArgumentNullException.ThrowIfNull(decision);
+        ArgumentNullException.ThrowIfNull(policy);
+        var provenance = decision.Prediction.Provenance;
+        if (provenance.Unverified)
+            return [];
+        var settled = decision.Steps.LastOrDefault(s => s.Outcome == StepOutcome.Settled);
+        if (settled is null || !settled.Verdict.Answered)
+            return [];
+
+        var records = new List<RecheckRecord>();
+        foreach (var step in decision.Steps)
+        {
+            if (step.Outcome != StepOutcome.Shadowed || !step.Verdict.Answered)
+                continue;
+            records.Add(new RecheckRecord
+            {
+                DecisionId = decision.DecisionId,
+                TierId = step.Tier.Id,
+                SliceKey = provenance.SliceKey ?? "",
+                DecidedAt = decision.DecidedAt,
+                Probability = 1.0,
+                Knob = ShadowKnob,
+                SnapshotVersion = provenance.SnapshotVersion,
+                Outcome = policy.Agrees(step.Verdict.Value!, settled.Verdict.Value!) ? RecheckOutcome.Agreed : RecheckOutcome.Disagreed,
+                Confidence = step.Verdict.Confidence,
+                UpperMustCatch = policy.MustCatch(settled.Verdict.Value!),
+                CheckedBy = settled.Tier.Id,
+            });
+        }
+        return records;
+    }
+
     /// <summary>
     /// The tiers below the settling one that answered and sent the decision up, when the answer it
     /// was settled with is a must-catch value — each one's "caught" in its ledger cell. Fully

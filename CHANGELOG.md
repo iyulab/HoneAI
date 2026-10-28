@@ -22,6 +22,10 @@ All notable changes to HoneAI are documented here. The format follows
 - `HoneAI.Core`'s package description says what the package ships now (the tier router, trust ledger and lifecycle, review store), not the pre-tier dual-check router; the doc comments on `PolicySnapshot`'s expiry times and on tightening say what the library does and what the consumer applies.
 
 ### Added
+- `RecheckRecords.FromShadow` — a decision settled by a tier above gives each tier that was in shadow for its slice a ledger record: the
+  shadow tier's answer is checked against the settling tier's at probability 1 (knob `shadow`), with the settlement policy's agreement and
+  must-catch rules, so a shadow window fills the ledger cell a settling tier's rechecks do and the shadow → active release can be judged on
+  it without the consumer building the records. A decision settled unverified gives none.
 - **`TrustTargets.HiddenMustCatchLimit` — an absolute allowance for a slice where the tier above caught no must-catch decision.** The
   miss rate is a share of the must-catch decisions the slice has, so with none caught any miss at all makes it 1 and the slice could
   never be released, however many decisions it had. The allowance is the number of hidden must-catch decisions per window a person
