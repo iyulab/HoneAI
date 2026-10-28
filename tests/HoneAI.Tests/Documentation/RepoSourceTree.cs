@@ -13,7 +13,7 @@ internal static class RepoSourceTree
     /// Build files are on the list as well as sources and documents: a comment in a project file is
     /// as public as one in a class, and it is the one nobody rereads.
     /// </remarks>
-    internal static readonly string[] PublishedPatterns = ["*.md", "*.cs", "*.csproj", "*.props", "*.yml"];
+    internal static readonly string[] PublishedPatterns = ["*.md", "*.cs", "*.csproj", "*.props", "*.yml", "*.sh", "*.ps1", ".gitignore"];
 
     /// <summary>The repository root, found by walking up from the build output.</summary>
     internal static string RepoRoot { get; } = FindRepoRoot();

@@ -6,7 +6,7 @@ nupkg/
 artifacts/
 
 # Secrets — never commit (this is a public OSS repo). Real endpoints/keys for live
-# integration tests live in the private mloop-umbrella repo, not here.
+# integration tests live in a private repository, not here.
 .env
 .env.*
 !.env.example

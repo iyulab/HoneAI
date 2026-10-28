@@ -30,7 +30,7 @@ public class InternalTokenContractTests
     /// bodies, hash algorithms (<c>SHA-256</c>), ADR numbering, and <c>N</c> as a count in a formula.
     /// </summary>
     private static readonly HashSet<string> PublicPrefixes =
-        new(StringComparer.Ordinal) { "UTF", "ISO", "CP", "CVE", "RFC", "ADR", "SHA", "N" };
+        new(StringComparer.Ordinal) { "UTF", "ISO", "CP", "CVE", "RFC", "ADR", "SHA", "N", "NET" };
 
     /// <summary>
     /// An internal id: a short upper-case prefix (or the literal <c>cycle</c>) and a number.
@@ -53,6 +53,21 @@ public class InternalTokenContractTests
     /// <summary>Names of the private working tree this package is developed in.</summary>
     private static readonly Regex PrivateWorkspaceRef =
         new(@"\b(claudedocs|HANDOFF|dev-docs)\b", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The private workspace repository this package is developed beside, named the way such repositories are
+    /// named — <c>&lt;product&gt;-umbrella</c> — or the phrases that point at its policy or its repository.
+    /// The bare word is ordinary English ("an umbrella package") and is left alone.
+    /// </summary>
+    private static readonly Regex PrivateRepoRef =
+        new(@"\b[A-Za-z0-9]+-umbrella\b|\bumbrella (?:policy|repo(?:sitory)?|CLAUDE)\b", RegexOptions.Compiled);
+
+    /// <summary>
+    /// A sequence number of a private data collection ("SEQ020"): it names a dataset only the team holds, so a
+    /// reader cannot look it up, and which collection it came from is itself the thing not to publish.
+    /// </summary>
+    private static readonly Regex DatasetSequenceId =
+        new(@"\bSEQ\d{3}\b", RegexOptions.Compiled);
 
     [Fact]
     public void TheScanReachesAFileThatIsNotAddedYet()
@@ -100,7 +115,7 @@ public class InternalTokenContractTests
             var lines = File.ReadAllLines(file);
             for (var i = 0; i < lines.Length; i++)
             {
-                foreach (var token in InternalTokensIn(lines[i], isProse))
+                foreach (var token in TokensInFileLine(relative, lines[i], isProse))
                     findings.Add($"{relative}:{i + 1}  {token}");
             }
         }
@@ -126,6 +141,11 @@ public class InternalTokenContractTests
     [InlineData("found during sprint-35", true, "sprint id")]
     [InlineData(@"open D:\data\project", true, "absolute path on one machine")]
     [InlineData("tracked in claudedocs/plans", true, "private working tree")]
+    [InlineData("kept in the mloop-umbrella repo", true, "private workspace repository name")]
+    [InlineData("see the umbrella policy for the cadence", true, "pointer at the private workspace's policy")]
+    [InlineData("seen on SEQ020 at 50K rows", true, "private data collection id")]
+    [InlineData("an umbrella package that pulls the others in", false, "the ordinary word")]
+    [InlineData("a SEQUENCE of 12 steps", false, "an ordinary word that starts with the letters")]
     [InlineData("the design is in dev-docs/HoneAI", true, "private design tree")]
     [InlineData("the next step is in HANDOFF", true, "private working tree")]
     [InlineData("see CVE-2024-1234 and RFC-4180", false, "public identifiers")]
@@ -141,6 +161,30 @@ public class InternalTokenContractTests
             Assert.True(found.Length > 0, $"the guard no longer recognizes a {what}: \"{line}\"");
         else
             Assert.True(found.Length == 0, $"the guard now flags {what}, which is public vocabulary: {string.Join(", ", found)}");
+    }
+
+    /// <summary>
+    /// The tokens one line of a published file carries. An ignore file's pattern lines name paths — keeping a
+    /// private working tree out of a clone is what such a line is for — so only its comments are read as prose.
+    /// </summary>
+    private static IEnumerable<string> TokensInFileLine(string relativePath, string line, bool isProse)
+    {
+        var isIgnoreFile = relativePath.EndsWith(".gitignore", StringComparison.Ordinal);
+        if (isIgnoreFile && !line.TrimStart().StartsWith('#'))
+            return [];
+
+        return InternalTokensIn(line, isProse);
+    }
+
+    [Theory]
+    [InlineData(".gitignore", "claudedocs/", false, "an ignore pattern that keeps a private tree out of a clone")]
+    [InlineData(".gitignore", "# the notes live in the mloop-umbrella repo", true, "an ignore file's comment is prose")]
+    [InlineData("docs/guide.md", "claudedocs/", true, "the same text in a document")]
+    public void IgnoreFilePatternsAreExemptAndItsCommentsAreNot(string path, string line, bool isInternal, string what)
+    {
+        var found = TokensInFileLine(path, line, isProse: path.EndsWith(".md", StringComparison.Ordinal)).ToArray();
+
+        Assert.True(isInternal == (found.Length > 0), $"{what}: \"{line}\" in {path} -> {(found.Length > 0 ? string.Join(", ", found) : "nothing")}");
     }
 
     private static IEnumerable<string> InternalTokensIn(string line, bool isProse)
@@ -162,5 +206,11 @@ public class InternalTokenContractTests
 
         foreach (Match match in PrivateWorkspaceRef.Matches(line))
             yield return match.Value + "  (private working tree)";
+
+        foreach (Match match in PrivateRepoRef.Matches(line))
+            yield return match.Value + "  (private workspace repository)";
+
+        foreach (Match match in DatasetSequenceId.Matches(line))
+            yield return match.Value + "  (private data collection id)";
     }
 }
