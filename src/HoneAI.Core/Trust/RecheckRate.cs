@@ -84,8 +84,9 @@ public sealed record RecheckRateChoice(double Rate, string SetBy, double MissTer
 /// <para>
 /// <b>Agreement.</b> Release is a fixed-sample test at the window's end, so it needs
 /// n = (z_{1−α} + z_{power})² · p0(1 − p0) / δ² rechecks (one-sided), and π_agreement = n / decisions.
-/// Tightening uses an anytime-valid bound that is wider at the same α — it fires early on a clear
-/// drop, while release is judged exactly at the boundary.
+/// Tightening is judged on a running cell at the confidence the caller computes it at — stricter than
+/// release's, to pay for the repeated looks (see <see cref="TrustLifecycle"/>) — so it fires early on a
+/// clear drop, while release is judged exactly at the boundary.
 /// </para>
 /// <para>π = clip(max(π_miss, π_agreement), floor, ceiling).</para>
 /// </remarks>

@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>HoneAI.Core</PackageId>
     <IsPackable>true</IsPackable>
-    <Description>Assembly layer for HoneAI — composes MLoop (L2 AutoML, over HTTP/MCP transport) and an IChatClient (L3 frontier) behind the HoneAI.Abstractions contracts. Ships the dual-check reasoning router, JSONL provenance sink, HTTP MLoop client, in-memory HITL gate, and train→review→promote lifecycle.</Description>
+    <Description>Assembly layer for HoneAI — a tiered, provenance-carrying decision pipeline behind the HoneAI.Abstractions contracts. Ships the tier router and settlement policy, the recheck sampler and trust ledger with the per-slice trust lifecycle, the JSONL provenance sink, the HTTP MLoop client, the review store and the train→review→promote lifecycle.</Description>
     <Company>iyulab</Company>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/iyulab/HoneAI</PackageProjectUrl>

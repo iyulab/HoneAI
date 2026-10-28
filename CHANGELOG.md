@@ -9,6 +9,7 @@ All notable changes to HoneAI are documented here. The format follows
 ### Changed
 
 - `HoneAI.Agents` depends on `IronHive.Agent` 0.77.0 (was 0.75.0); `Microsoft.Extensions.Logging.Abstractions` 10.0.14.
+- `HoneAI.Core`'s package description says what the package ships now (the tier router, trust ledger and lifecycle, review store), not the pre-tier dual-check router; the doc comments on `PolicySnapshot`'s expiry times and on tightening say what the library does and what the consumer applies.
 
 ### Added
 - Propagated labels — a person's answer to one decision of a cluster, spread to the cluster's others. `ClusterPropagation.Assess`

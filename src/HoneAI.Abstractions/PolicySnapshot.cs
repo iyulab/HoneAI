@@ -29,12 +29,16 @@ public sealed record PolicySnapshot
     /// <summary>When it was issued.</summary>
     public required DateTimeOffset IssuedAt { get; init; }
 
-    /// <summary>After this, no tier gains ground under this snapshot.</summary>
+    /// <summary>
+    /// After this, no tier is to gain ground under this snapshot. The library issues and serializes the time;
+    /// applying it is the consumer's.
+    /// </summary>
     public required DateTimeOffset SoftExpiresAt { get; init; }
 
     /// <summary>
-    /// After this, the snapshot is not trusted: stable tiers are held to active, decisions go up
-    /// where a tier above can be reached, and where none can they are marked unverified.
+    /// After this, the snapshot is not to be trusted: stable tiers are to be held to active, decisions go up
+    /// where a tier above can be reached, and where none can they are marked unverified. The library issues and
+    /// serializes the time; applying it is the consumer's.
     /// </summary>
     public required DateTimeOffset HardExpiresAt { get; init; }
 
