@@ -55,6 +55,13 @@ All notable changes to HoneAI are documented here. The format follows
   reached (`PoolReach.Reached`, so the reach rate), is no failure of the tier above and leaves no recheck record;
   `PoolReach.Unsure` counts them.
 
+### Fixed
+
+- **`IMLoopClient.PredictImagesAsync` reads an image-anomaly model's answer.** Such a model answers per image under `images` (a distance
+  `score`, the scored crop and the patch distances), not under `predictions`, so the call failed with "answered 0 predictions". Each image
+  is now one prediction whose outputs are that row, with a confidence of 0: the score is a distance, not a probability, and reading it as
+  one would call the worst image certain. The caller compares `score` with a threshold of its own.
+
 ## [0.14.0] - 2026-10-27
 
 ### Changed

@@ -76,13 +76,16 @@ public sealed class HttpMLoopClient : IMLoopClient
         using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
         var root = doc.RootElement;
         EnsureExperiment(root, experiment);
-        if (!root.TryGetProperty("predictions", out var preds) || preds.ValueKind != JsonValueKind.Array
+
+        // An image-anomaly model answers per image in "images" (a distance score, where the other tasks answer in "predictions").
+        var anomaly = root.TryGetProperty("task", out var task) && task.ValueKind == JsonValueKind.String && task.GetString() == "image-anomaly";
+        if (!root.TryGetProperty(anomaly ? "images" : "predictions", out var preds) || preds.ValueKind != JsonValueKind.Array
             || preds.GetArrayLength() != request.Images.Count)
         {
             throw new InvalidOperationException(
                 $"MLoop /predict answered {(preds.ValueKind == JsonValueKind.Array ? preds.GetArrayLength() : 0)} predictions for {request.Images.Count} images.");
         }
-        return [.. preds.EnumerateArray().Select(row => Traced(root, row))];
+        return [.. preds.EnumerateArray().Select(row => Traced(root, row, unscored: anomaly))];
     }
 
     /// <inheritdoc />
@@ -174,13 +177,15 @@ public sealed class HttpMLoopClient : IMLoopClient
         => new() { ["images"] = [.. images.Select(image => Convert.ToBase64String(image.Span))] };
 
     // One answered row as a traced prediction: its outputs, MLoop's confidence, and the id it was logged under.
-    private static TracedPrediction<MLoopPredictionResult> Traced(JsonElement root, JsonElement row)
+    // `unscored`: the row's score is a distance, not a probability — its confidence is 0 (unknown, so an upper tier is asked),
+    // and the caller reads `score` against a threshold of its own.
+    private static TracedPrediction<MLoopPredictionResult> Traced(JsonElement root, JsonElement row, bool unscored = false)
     {
         var outputs = ToObjectMap(row);
         var provenance = new PredictionProvenance
         {
             Kind = JudgeKind.Ml,
-            Confidence = ConfidenceOf(row),
+            Confidence = unscored ? 0.0 : ConfidenceOf(row),
             Rationale = root.TryGetProperty("task", out var t) && t.ValueKind == JsonValueKind.String
                 ? $"mloop:{t.GetString()}"
                 : "mloop",

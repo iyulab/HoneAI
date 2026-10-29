@@ -176,6 +176,31 @@ public class HttpMLoopClientTests
     }
 
     [Fact]
+    public async Task PredictImages_ReadsAnImageAnomalyAnswer_AsAScoreWithNoConfidenceOfItsOwn()
+    {
+        // MLoop POST /predict for an image-anomaly model answers per image in "images": a distance score, the crop it
+        // scored and the patch distances — not "predictions", and not a probability.
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            {
+              "modelName": "tiles",
+              "task": "image-anomaly",
+              "baseline": 1.4,
+              "images": [
+                { "score": 6.8, "crop": { "x0": 0, "y0": 0, "x1": 224, "y1": 224 }, "distances": [0.2, 6.8] },
+                { "score": 1.1, "crop": { "x0": 0, "y0": 0, "x1": 224, "y1": 224 }, "distances": [0.3, 1.1] }
+              ]
+            }
+            """));
+
+        var answers = await Client(handler).PredictImagesAsync(new MLoopImagePredictionRequest([new byte[] { 1 }, new byte[] { 2 }], Model: "tiles"));
+
+        Assert.Equal(2, answers.Count);
+        Assert.Equal(6.8, Convert.ToDouble(answers[0].Value.Outputs["score"]), precision: 6);
+        Assert.Equal(0.0, answers[0].Provenance.Confidence!.Value);   // 6.8 is a distance: reading it as a confidence would call the worst image certain
+        Assert.Equal("mloop:image-anomaly", answers[1].Provenance.Rationale);
+    }
+
+    [Fact]
     public async Task PredictImages_RefusesAnAnswerThatDoesNotCoverEveryImage()
     {
         var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """{ "predictions": [ { "predictedLabel": "ok" } ] }"""));
