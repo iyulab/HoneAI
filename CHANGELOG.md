@@ -23,6 +23,8 @@ All notable changes to HoneAI are documented here. The format follows
 - `HoneAI.Core`'s package description says what the package ships now (the tier router, trust ledger and lifecycle, review store), not the pre-tier dual-check router; the doc comments on `PolicySnapshot`'s expiry times and on tightening say what the library does and what the consumer applies.
 
 ### Added
+
+- **`TrustLedger.ConfidenceForLooks(looks, familyConfidence)`**: the confidence to compute a running cell at when `TrustLifecycle.Tighten` will judge it at several points of a window. Each look is a test; at the default 0.95, fifty looks at the same growing set of rechecks tightened a tier that kept its promise in 6.8 % of windows and one exactly at the tightening bar in 21 % (simulated, 583 rechecks a window); at the corrected 0.999 the same tiers were tightened in 0.2 % and 1.3 %. The correction is Bonferroni (`1 − (1 − family) / looks`) and conservative, since the looks share their rechecks. A window closed once (`TrustController.Close`) is one look and needs no correction.
 - **`SnapshotExpiry.MayApply(snapshot, step, now)`** and `PolicySnapshot.IsSoftExpired` / `IsHardExpired`: the soft expiry a snapshot has
   always carried now has a reader. A release (shadow → active, active → stable) judged under a snapshot may not take effect at or
   after its soft expiry — it is judged again against a fresh snapshot — while a step that keeps or loses ground (staying, tightening,

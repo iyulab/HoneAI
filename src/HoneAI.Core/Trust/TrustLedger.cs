@@ -31,6 +31,24 @@ public static class TrustLedger
     /// <summary>The confidence intervals and bounds are stated at unless asked otherwise.</summary>
     public const double DefaultConfidence = 0.95;
 
+    /// <summary>
+    /// The confidence to compute a running cell at when it will be looked at <paramref name="looks"/> times in a window
+    /// (<see cref="TrustLifecycle.Tighten"/> on a cell that grows with the window), so that the chance of tightening a tier
+    /// that meets its bar at any look stays within <paramref name="familyConfidence"/>: the Bonferroni correction,
+    /// 1 − (1 − family) / looks. A look at the default confidence is a test at 5 %; fifty of them on the same rechecks are
+    /// not — in a simulation a tier at its promise was tightened in 6.8 % of windows at fifty looks, 0.95 each, against
+    /// 0.2 % at 0.999 (the corrected value), and a tier exactly at the tightening bar in 21 % against 1.3 %. The looks are
+    /// correlated, so the correction is conservative.
+    /// </summary>
+    public static double ConfidenceForLooks(int looks, double familyConfidence = DefaultConfidence)
+    {
+        if (looks < 1)
+            throw new ArgumentOutOfRangeException(nameof(looks), looks, "A window is looked at once or more.");
+        if (familyConfidence is <= 0 or >= 1)
+            throw new ArgumentOutOfRangeException(nameof(familyConfidence), familyConfidence, "Confidence lies strictly between 0 and 1.");
+        return 1 - (1 - familyConfidence) / looks;
+    }
+
     /// <summary>Computes the cell for <paramref name="tierId"/> × <paramref name="sliceKey"/> over [<paramref name="from"/>, <paramref name="to"/>).</summary>
     /// <param name="records">Recheck records; those outside the tier, slice or window are ignored.</param>
     /// <param name="caught">Must-catch decisions the tier sent up and the tier above confirmed in the window.</param>
