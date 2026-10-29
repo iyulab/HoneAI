@@ -11,8 +11,8 @@ namespace HoneAI.Trust;
 /// <para>
 /// Each recheck stands for 1/π decisions like it, so agreement is the Horvitz–Thompson ratio of
 /// agreed to answered weight — unbiased however the draw was tilted, as long as every π is
-/// recorded and above zero. The interval is Wilson's, on the Kish effective sample size of those
-/// weights. A recheck the tier above did not answer is not dropped: hard inputs fail more often,
+/// recorded and above zero. The interval is Wilson's, on the smaller of the Kish effective sample
+/// size of those weights and the size their outcomes' own variance implies (<see cref="RatioSize"/>). A recheck the tier above did not answer is not dropped: hard inputs fail more often,
 /// so dropping them would flatter the tier. It counts as a disagreement at the interval's lower end
 /// and as an agreement at its upper end.
 /// </para>
@@ -78,9 +78,8 @@ public static class TrustLedger
         if (window.Count > 0)
         {
             var allWeight = answeredWeight + failedWeight;
-            var nAll = EffectiveSize(window.Select(Weight));
-            lower = Wilson(agreedWeight / allWeight, nAll, z).Lower;
-            upper = Wilson((agreedWeight + failedWeight) / allWeight, nAll, z).Upper;
+            lower = Wilson(agreedWeight / allWeight, RatioSize(window, r => r.Outcome == RecheckOutcome.Agreed ? 1 : 0), z).Lower;
+            upper = Wilson((agreedWeight + failedWeight) / allWeight, RatioSize(window, r => r.Outcome == RecheckOutcome.Disagreed ? 0 : 1), z).Upper;
         }
 
         var misses = answered.Where(r => r.UpperMustCatch).ToList();
@@ -217,6 +216,44 @@ public static class TrustLedger
             i = j;
         }
         return favorable / (disagreedTotal * agreedTotal);
+    }
+
+    /// <summary>
+    /// The sample size a weighted ratio of 0/1 outcomes is judged on: the smaller of Kish's size and the size its own
+    /// linearized variance implies, n = p̂(1 − p̂) / V̂ with V̂ = Σw²(y − p̂)² / (Σw)².
+    /// </summary>
+    /// <remarks>
+    /// Kish's size reads the weights alone, which is the variance only when the outcomes do not depend on them. Where
+    /// the draw was tilted toward the decisions that fail (what a good selection signal does) the ratio is steadier than
+    /// Kish says and the interval merely stays wide; where it was tilted away from them (a signal that points the wrong
+    /// way) it is less steady, and an interval on Kish's size covered the true agreement 0.90–0.93 of the time instead of
+    /// 0.95 in a Monte Carlo of the ledger. Taking the smaller size widens the interval in that case and leaves
+    /// it as it was in every other — uniform weights give the same size both ways, and a window with no variation in its
+    /// outcomes (all agreed, none agreed) has no variance estimate and keeps Kish's.
+    /// </remarks>
+    private static double RatioSize(IReadOnlyList<RecheckRecord> records, Func<RecheckRecord, double> outcome)
+    {
+        double sum = 0, sumSquares = 0, hit = 0;
+        foreach (var r in records)
+        {
+            var w = 1.0 / r.Probability;
+            sum += w;
+            sumSquares += w * w;
+            hit += w * outcome(r);
+        }
+        var kish = sum * sum / sumSquares;
+        var p = hit / sum;
+        double residual = 0;
+        foreach (var r in records)
+        {
+            var w = 1.0 / r.Probability;
+            var d = outcome(r) - p;
+            residual += w * w * d * d;
+        }
+        if (residual <= 0)
+            return kish;
+        var linearized = p * (1 - p) * sum * sum / residual;
+        return linearized < kish * (1 - 1e-9) ? linearized : kish;
     }
 
     /// <summary>Kish's effective sample size of weighted observations: (Σw)² / Σw².</summary>
