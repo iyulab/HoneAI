@@ -49,6 +49,10 @@ an adapter on the consumer's side or HoneAI's — never by the engine depending 
 5. **One-way dependency** — HoneAI → engines over transport or adapters; never the reverse.
    Enforced by `ImportBoundaryTests`.
 6. **Provider neutrality is inherited, not re-abstracted.**
+7. **A person is measured only to calibrate the system, never to rate them** — per-reviewer accuracy is kept under an
+   anonymous key, for a stated retention period and with the reviewer's agreement, and it weights and qualifies
+   judgments. It is not an input to evaluating, ranking or deciding about the person; a consumer that wants that
+   builds it outside this library and on its own responsibility.
 
 ## 4. Direction (nearer = more concrete)
 
