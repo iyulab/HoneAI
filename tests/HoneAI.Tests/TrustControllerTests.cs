@@ -115,6 +115,21 @@ public class TrustControllerTests
     }
 
     [Fact]
+    public void AHoldPlacedAutomatically_IsReadLikeAPersons_ItHoldsBackARelease()
+    {
+        var hold = AutoFreeze.Decide(
+            [new StandingEvent(Now.AddDays(-3), StandingEventKind.RolledBack), new StandingEvent(Now.AddDays(-1), StandingEventKind.RolledBack)],
+            new AutoFreezePolicy(ConsecutiveRollbacks: 2, VersionChanges: 0, Within: TimeSpan.FromDays(7)), Now);
+
+        var step = TrustController.Close("s-auto", Now, [Slice("ready", TrustState.Shadow, Good()) with { Freeze = hold }], Policy);
+
+        var outcome = Assert.Single(step.Slices);
+        Assert.True(outcome.Held);
+        Assert.Equal(TrustState.Shadow, outcome.Committed.State);
+        Assert.Contains($"frozen by {AutoFreeze.By}", outcome.Step.Reason);
+    }
+
+    [Fact]
     public void AFrozenSlice_IsStillTightened_BecauseTheHoldStopsReleasesNotTheSafetyNet()
     {
         var step = TrustController.Close("s-24", Now, [
