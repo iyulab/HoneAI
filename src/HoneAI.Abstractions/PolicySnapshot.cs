@@ -84,6 +84,14 @@ public sealed record PolicyEntry
     /// <summary>Share of its least confident answers the tier abstains on, when set.</summary>
     public double? AbstainQuantile { get; init; }
 
+    /// <summary>
+    /// The expected loss (weight × calibrated probability the tier is wrong) at or above which the router hands a
+    /// decision up instead of settling it, when set — the general form of <see cref="AbstainQuantile"/>, which ranks
+    /// answers by the judge's own confidence alone. Read where the decision's selection signal carries a risk and the
+    /// entry carries a calibration; otherwise the decision settles as before.
+    /// </summary>
+    public double? AbstainExpectedLossAbove { get; init; }
+
     /// <summary>Which term set the recheck probability, for the audit (a deadline, a budget, a floor).</summary>
     public string? RateSetBy { get; init; }
 }

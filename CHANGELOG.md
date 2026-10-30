@@ -6,6 +6,18 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **A tier can hand up a decision by its expected loss, not only by its own confidence** (`PolicyEntry.AbstainExpectedLossAbove`). `AbstainQuantile`
+  ranks answers by the judge's confidence alone, so a decision that would be costly if wrong but that the judge is sure of settles anyway. The
+  line is on the expected loss - the decision's `SelectionSignal.Weight` times the calibrated probability the tier is wrong at its `Risk` (the
+  calibration the entry's selection already carries): at or above it the router escalates the decision to the next tier instead of settling it.
+  A decision with no risk, an entry with no calibration and an entry without a line settle exactly as before, so a consumer that gives no weights
+  sees no change. `ExpectedLoss.Of` works the loss out; `ExpectedLoss.Line(losses, share)` gives the line that hands up a share of a slice's
+  recent decisions, which the caller passes in `SliceWindow.AbstainExpectedLossAbove` (the controller carries it into the snapshot unchanged,
+  and the canonical JSON gains an `abstainExpectedLossAbove` field only where it is set). The selection signal is asked once per decision, as
+  before.
+
 ### Changed
 
 - **`TrustLedger.ConfidenceForLooks` uses Pocock's constant boundary instead of the union bound.** The looks of a window are the same rechecks

@@ -62,6 +62,13 @@ public sealed record SliceWindow(
     public double? AbstainQuantile { get; init; }
 
     /// <summary>
+    /// The expected loss at or above which the tier hands a decision up, as the caller worked it out from the slice's recent
+    /// decisions (<see cref="HoneAI.Routing.ExpectedLoss.Line"/>); null leaves the rule off. The controller carries it into the
+    /// snapshot unchanged — the ledger holds rechecks, not every decision, so the distribution it comes from is the caller's.
+    /// </summary>
+    public double? AbstainExpectedLossAbove { get; init; }
+
+    /// <summary>
     /// The tier's confidence passed its calibration check (for an ML tier, MLoop's <c>ece</c>). True
     /// for a tier whose confidence has no calibration to check.
     /// </summary>
@@ -177,6 +184,7 @@ public static class TrustController
                 OtherKnobRates = j.Slice.OtherKnobRates,
                 Selection = j.Slice.Selection,
                 AbstainQuantile = ConfidenceAbstain.Quantile(j.Slice.Window, j.Slice.AbstainQuantile, j.Slice.Calibrated),
+                AbstainExpectedLossAbove = j.Slice.AbstainExpectedLossAbove,
             }).ToList(),
             policy.Issue, sliceKeyVersion);
 

@@ -162,7 +162,20 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
 
             var settled = new RoutedStep<TValue>(tier, verdict, StepOutcome.Settled, null, state, passHints);
             steps.Add(settled);
-            return Settle(decisionId, slice, snapshot, steps, settled, Draw(input, decisionId, slice, snapshot!, entry!, settled, steps), unverified: false);
+            // A decision whose expected loss is at or above the tier's line goes up instead of settling here; the signal it was
+            // judged on is the one the draw uses, asked once.
+            (bool Known, SelectionSignal? Value)? signal = null;
+            if (entry?.AbstainExpectedLossAbove is { } line)
+            {
+                var asked = SignalOf(input, decisionId, slice, settled, steps);
+                signal = (true, asked);
+                if (ExpectedLoss.Of(entry, asked) is { } loss && loss >= line)
+                {
+                    steps[^1] = settled with { Outcome = StepOutcome.Escalated, Detail = "expected loss at or above the tier's line" };
+                    continue;
+                }
+            }
+            return Settle(decisionId, slice, snapshot, steps, settled, Draw(input, decisionId, slice, snapshot!, entry!, settled, steps, signal), unverified: false);
         }
 
         if (candidate is not null)
@@ -254,9 +267,9 @@ public sealed class TieredRouter<TInput, TValue> : IReasoningRouter<TInput, TVal
 
     private SampleDraw Draw(
         TInput input, string decisionId, string slice, PolicySnapshot snapshot, PolicyEntry entry,
-        RoutedStep<TValue> settled, List<RoutedStep<TValue>> steps)
+        RoutedStep<TValue> settled, List<RoutedStep<TValue>> steps, (bool Known, SelectionSignal? Value)? asked = null)
     {
-        var signal = SignalOf(input, decisionId, slice, settled, steps);
+        var signal = asked is { Known: true } known ? known.Value : SignalOf(input, decisionId, slice, settled, steps);
 
         // Each knob's rate for this decision: its expected rate, tilted by its selection when it has one.
         Dictionary<string, double>? knobRates = null;

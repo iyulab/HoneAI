@@ -83,6 +83,8 @@ public static class PolicySnapshotJson
                 }
                 if (e.AbstainQuantile is { } q)
                     w.WriteNumber("abstainQuantile", q);
+                if (e.AbstainExpectedLossAbove is { } line)
+                    w.WriteNumber("abstainExpectedLossAbove", line);
                 if (e.RateSetBy is { } by)
                     w.WriteString("rateSetBy", by);
                 w.WriteEndObject();

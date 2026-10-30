@@ -38,6 +38,9 @@ public sealed record SliceIssue(string TierId, string SliceKey, SliceStanding St
 
     /// <summary>The share of least confident answers to abstain on — only where the ledger showed confidence ranks mistakes.</summary>
     public double? AbstainQuantile { get; init; }
+
+    /// <summary>The expected loss at or above which the tier hands a decision up (<see cref="ExpectedLoss.Line"/>); null leaves it off.</summary>
+    public double? AbstainExpectedLossAbove { get; init; }
 }
 
 /// <summary>
@@ -109,6 +112,7 @@ public static class PolicySnapshotIssuer
             SampleRates = rates,
             Selection = rate is null ? null : slice.Selection,
             AbstainQuantile = slice.Standing.State == TrustState.Shadow ? null : slice.AbstainQuantile,
+            AbstainExpectedLossAbove = slice.Standing.State == TrustState.Shadow ? null : slice.AbstainExpectedLossAbove,
             RateSetBy = setBy,
         };
     }
