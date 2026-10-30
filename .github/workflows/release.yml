@@ -2,7 +2,7 @@ name: Release
 
 # HoneAI.Abstractions / HoneAI.Core / HoneAI.Agents 를 nuget.org 에 배포한다.
 # 트리거: Directory.Build.props 의 <Version> 변경(버전 상승) 또는 수동(workflow_dispatch).
-# 전제: 신뢰 게시(NuGet/login, 환경 release)로 받은 단명 키를 먼저 쓰고, 실패하면 NUGET_API_KEY 로 폴백한다.
+# 전제: 신뢰 게시(NuGet/login, 환경 release)로 받은 단명 키로 게시한다. 로그인이 실패하면 작업이 실패한다.
 # 세 패키지는 Directory.Build.props 의 단일 <Version> 을 공유한다(동시 상승).
 
 on:
@@ -91,19 +91,14 @@ jobs:
       - name: NuGet login (trusted publishing)
         id: login
         if: steps.version.outputs.tag_exists == 'false'
-        continue-on-error: true
         uses: NuGet/login@v1
         with:
           user: ${{ secrets.NUGET_USER }}
 
-      - name: Warn when falling back to the long-lived key
-        if: steps.version.outputs.tag_exists == 'false' && steps.login.outcome != 'success'
-        run: echo "::warning::NuGet trusted-publishing login failed; pushing with NUGET_API_KEY"
-
       - name: Push to NuGet.org
         if: steps.version.outputs.tag_exists == 'false'
         env:
-          NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY || secrets.NUGET_API_KEY }}
+          NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: dotnet nuget push ./nupkg/*.nupkg --api-key "$NUGET_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
 
       - name: Tag release
