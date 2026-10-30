@@ -8,6 +8,7 @@ All notable changes to HoneAI are documented here. The format follows
 
 ### Added
 
+- **`UpperTierShare.Curve` reports how the share of decisions that reach the tiers above the first changes over time.** From the recorded provenance (`ProvenanceRecord`s), per window of a length you choose counted from an origin, optionally for one slice: the decisions, how many climbed above the first tier (`Escalated`), how many the first tier settled that were drawn for a recheck (`Rechecked`), the calls to upper tiers (a shadow answer is a call), and the `Share` and `CallsPerDecision` they give. It is a report to show a team how much work the first tier has earned, not a target: standing is earned slice by slice from evidence, and a new slice or a new version of a tier climbs back up, so the curve may rise as well as fall.
 - **A tier can hand up a decision by its expected loss, not only by its own confidence** (`PolicyEntry.AbstainExpectedLossAbove`). `AbstainQuantile`
   ranks answers by the judge's confidence alone, so a decision that would be costly if wrong but that the judge is sure of settles anyway. The
   line is on the expected loss - the decision's `SelectionSignal.Weight` times the calibrated probability the tier is wrong at its `Risk` (the
