@@ -18,6 +18,14 @@ All notable changes to HoneAI are documented here. The format follows
   and the canonical JSON gains an `abstainExpectedLossAbove` field only where it is set). The selection signal is asked once per decision, as
   before.
 
+- **`TeacherLedger.MustCatchPlantsToQualify` sizes the planted must-catch items a teacher needs.** `Qualifies` judges a teacher by the lower bound on its
+  must-catch recall, so too few plants leave even a flawless teacher "shown nothing" (twenty caught out of twenty cannot clear a 0.90 floor), and until now
+  there was no way to say how many to plant. Given the recall the teacher is expected to have, the floor, the confidence and the power wanted, it returns the
+  fewest plants from which the teacher qualifies that often and keeps doing so for every larger count (the exact bound moves in steps), or `null` when no
+  count up to the cap does - always so for a recall no higher than the floor. At 95 % confidence and power 0.8: a floor of 0.90 needs 46 plants for a teacher
+  that catches 99 %, 61 for 98 %; a floor of 0.95 needs 124 and 286. The count is for one cell: a cell pooled over slices cannot see a miss confined to
+  one of them, so size the plants for each slice the teacher is to be trusted on.
+
 ### Changed
 
 - **`TrustLedger.ConfidenceForLooks` uses Pocock's constant boundary instead of the union bound.** The looks of a window are the same rechecks

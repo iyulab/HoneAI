@@ -61,6 +61,69 @@ public class TeacherLedgerTests
         Assert.Equal(TeacherLedger.ClopperPearsonLower(91, 99, 0.05), cell.AccuracyLower!.Value, 12);
     }
 
+    // The chance, worked out by judging every possible catch count with the product's own Qualifies, that a teacher of true
+    // recall `recall` qualifies on `plants` must-catch plants.
+    private static double QualifyingChanceBy(int plants, double recall, double floor)
+    {
+        var chance = 0.0;
+        for (var caught = 0; caught <= plants; caught++)
+        {
+            var records = Enumerable.Range(0, plants)
+                .Select(i => Plant($"p{i}", true, i < caught ? PlantOutcome.Correct : PlantOutcome.Wrong, answeredMustCatch: i < caught))
+                .ToList();
+            if (!TeacherLedger.Qualifies(TeacherLedger.Compute(records, "teacher", Now.AddHours(-1), Now), floor))
+                continue;
+            var upTo = TrustLedger.BinomialCdf(caught, plants, recall);
+            var below = caught == 0 ? 0 : TrustLedger.BinomialCdf(caught - 1, plants, recall);
+            chance += upTo - below;
+        }
+        return chance;
+    }
+
+    [Theory]
+    [InlineData(0.99, 0.90, 0.8)]
+    [InlineData(0.97, 0.90, 0.8)]
+    [InlineData(0.99, 0.95, 0.8)]
+    [InlineData(0.98, 0.90, 0.9)]
+    public void MustCatchPlantsToQualify_IsTheFirstCountFromWhichTheTeacherQualifiesAsOftenAsAsked(double recall, double floor, double power)
+    {
+        var plants = TeacherLedger.MustCatchPlantsToQualify(recall, floor, power: power, maxPlants: 400);
+
+        Assert.NotNull(plants);
+        Assert.True(QualifyingChanceBy(plants!.Value, recall, floor) >= power);
+        // The count before it does not reach the power (the answer starts a run that never breaks).
+        Assert.True(QualifyingChanceBy(plants.Value - 1, recall, floor) < power);
+        // …and the run holds for the counts after it.
+        for (var m = plants.Value; m <= Math.Min(400, plants.Value + 25); m++)
+            Assert.True(QualifyingChanceBy(m, recall, floor) >= power, $"power fell under {power} at {m} plants");
+    }
+
+    [Fact]
+    public void MustCatchPlantsToQualify_HasNoAnswerForATeacherNoBetterThanTheFloor()
+    {
+        Assert.Null(TeacherLedger.MustCatchPlantsToQualify(0.90, 0.90));
+        Assert.Null(TeacherLedger.MustCatchPlantsToQualify(0.85, 0.90));
+        // Above the floor but too close to reach the power within the cap.
+        Assert.Null(TeacherLedger.MustCatchPlantsToQualify(0.905, 0.90, maxPlants: 300));
+    }
+
+    [Fact]
+    public void MustCatchPlantsToQualify_AFlawlessTeacherNeedsOnlyTheCountThatShowsTheFloor()
+    {
+        // All caught: the bound is 0.05^(1/n); it first reaches 0.9 at n = 29 (0.05^(1/29) ≈ 0.902).
+        Assert.Equal(29, TeacherLedger.MustCatchPlantsToQualify(1.0, 0.90));
+    }
+
+    [Fact]
+    public void MustCatchPlantsToQualify_RefusesNonsense()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => TeacherLedger.MustCatchPlantsToQualify(0, 0.9));
+        Assert.Throws<ArgumentOutOfRangeException>(() => TeacherLedger.MustCatchPlantsToQualify(0.99, 1.0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => TeacherLedger.MustCatchPlantsToQualify(0.99, 0.9, confidence: 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => TeacherLedger.MustCatchPlantsToQualify(0.99, 0.9, power: 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => TeacherLedger.MustCatchPlantsToQualify(0.99, 0.9, maxPlants: 0));
+    }
+
     [Fact]
     public void ATeacherQualifies_OnlyWhenItsRecallLowerBoundClearsTheFloor()
     {
