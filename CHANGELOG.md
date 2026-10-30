@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-30
+
 ### Changed
 
 - **⚠ Breaking: the agreement term of the recheck rate is sized by the release and tightening tests themselves.** `RecheckRate.Solve` and
