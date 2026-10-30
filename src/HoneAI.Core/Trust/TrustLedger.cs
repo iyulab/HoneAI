@@ -34,11 +34,17 @@ public static class TrustLedger
     /// <summary>
     /// The confidence to compute a running cell at when it will be looked at <paramref name="looks"/> times in a window
     /// (<see cref="TrustLifecycle.Tighten"/> on a cell that grows with the window), so that the chance of tightening a tier
-    /// that meets its bar at any look stays within <paramref name="familyConfidence"/>: the Bonferroni correction,
-    /// 1 − (1 − family) / looks. A look at the default confidence is a test at 5 %; fifty of them on the same rechecks are
-    /// not — in a simulation a tier at its promise was tightened in 6.8 % of windows at fifty looks, 0.95 each, against
-    /// 0.2 % at 0.999 (the corrected value), and a tier exactly at the tightening bar in 21 % against 1.3 %. The looks are
-    /// correlated, so the correction is conservative.
+    /// that meets its bar at any look stays within <paramref name="familyConfidence"/>. A look at the default confidence is a
+    /// test at 5 %; fifty of them on the same rechecks are not — in a simulation a tier at its promise was tightened in 6.8 %
+    /// of windows at fifty looks, 0.95 each, and a tier exactly at the tightening bar in 21 %.
+    /// <para>
+    /// The looks are the same rechecks growing, so they are correlated, and the correction that fits is Pocock's constant
+    /// boundary for equally spaced looks: the one interval width that keeps the chance of an interval missing at any look
+    /// within the family. The union bound, 1 − (1 − family) / looks, keeps the same promise with a wider interval — at twelve
+    /// looks it tightened a tier standing on its line in 1.7 % of windows against 3.6 % here (the promise is 5 %), and caught
+    /// a one-window drop of the agreement 72 % of the time against 79 %. The boundary assumes the looks are equally spaced in
+    /// rechecks. Above <see cref="MaxExactLooks"/> looks the union bound is used.
+    /// </para>
     /// </summary>
     public static double ConfidenceForLooks(int looks, double familyConfidence = DefaultConfidence)
     {
@@ -46,8 +52,16 @@ public static class TrustLedger
             throw new ArgumentOutOfRangeException(nameof(looks), looks, "A window is looked at once or more.");
         if (familyConfidence is <= 0 or >= 1)
             throw new ArgumentOutOfRangeException(nameof(familyConfidence), familyConfidence, "Confidence lies strictly between 0 and 1.");
-        return 1 - (1 - familyConfidence) / looks;
+        if (looks == 1)
+            return familyConfidence;
+        if (looks > MaxExactLooks)
+            return 1 - (1 - familyConfidence) / looks;
+        var z = PocockBoundary.Critical(looks, 1 - familyConfidence);
+        return 1 - PocockBoundary.TwoSidedTail(z);
     }
+
+    /// <summary>The most looks <see cref="ConfidenceForLooks"/> solves exactly; above it the union bound is used.</summary>
+    public const int MaxExactLooks = PocockBoundary.MaxLooks;
 
     /// <summary>Computes the cell for <paramref name="tierId"/> × <paramref name="sliceKey"/> over [<paramref name="from"/>, <paramref name="to"/>).</summary>
     /// <param name="records">Recheck records; those outside the tier, slice or window are ignored.</param>

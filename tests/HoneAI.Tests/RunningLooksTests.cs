@@ -23,11 +23,39 @@ public class RunningLooksTests
 
     [Theory]
     [InlineData(1, 0.95, 0.95)]
-    [InlineData(10, 0.95, 0.995)]
-    [InlineData(50, 0.95, 0.999)]
-    [InlineData(20, 0.99, 0.9995)]
-    public void TheCorrectedConfidence_SpreadsTheFamilyRiskOverTheLooks(int looks, double family, double expected)
+    [InlineData(1, 0.99, 0.99)]
+    public void OneLook_IsTheFamilyConfidence(int looks, double family, double expected)
         => Assert.Equal(expected, TrustLedger.ConfidenceForLooks(looks, family), 12);
+
+    /// <summary>The interval half-width multiplier a confidence stands for, as <see cref="TrustLedger.Compute"/> reads it.</summary>
+    private static double Z(double confidence) => TrustLedger.NormalQuantile(1 - (1 - confidence) / 2);
+
+    [Theory]
+    // Pocock's published constants for a two-sided 5 % family.
+    [InlineData(2, 2.178)]
+    [InlineData(5, 2.413)]
+    [InlineData(10, 2.555)]
+    public void TheCorrectedConfidence_IsPococksConstantBoundary(int looks, double expectedZ)
+        => Assert.Equal(expectedZ, Z(TrustLedger.ConfidenceForLooks(looks, 0.95)), 2);
+
+    [Theory]
+    [InlineData(0.95)]
+    [InlineData(0.99)]
+    public void TheCorrectedConfidence_LiesBetweenOneLookAndTheUnionBound_AndRisesWithTheLooks(double family)
+    {
+        var previous = family;
+        foreach (var looks in new[] { 2, 3, 5, 8, 12, 20, 50, 100 })
+        {
+            var confidence = TrustLedger.ConfidenceForLooks(looks, family);
+            Assert.True(confidence > previous, $"{looks} looks: {confidence} should exceed {previous}");
+            Assert.True(confidence <= 1 - (1 - family) / looks + 1e-9, $"{looks} looks: {confidence} is wider than the union bound");
+            previous = confidence;
+        }
+    }
+
+    [Fact]
+    public void AboveTheExactLimit_TheUnionBoundIsUsed()
+        => Assert.Equal(1 - 0.05 / 500, TrustLedger.ConfidenceForLooks(500, 0.95), 12);
 
     [Theory]
     [InlineData(0, 0.95)]
@@ -39,7 +67,6 @@ public class RunningLooksTests
     /// <summary>Share of windows in which any of <paramref name="looks"/> looks tightens a tier whose true agreement is <paramref name="agreement"/>.</summary>
     private static double TightenedShare(double agreement, int looks, double confidence, int windows, int seed)
     {
-        var rng = new Random(seed);
         var standing = new SliceStanding(TrustState.Active, Decided.AddDays(-30), "v1");
         var signals = new LiveSignals("v1");
         var rate = RecheckRate.Solve(Policy, new SliceTraffic(10000, 5000)).Rate;
@@ -47,6 +74,7 @@ public class RunningLooksTests
         var tightened = 0;
         for (var w = 0; w < windows; w++)
         {
+            var rng = new Random(seed * 100_003 + w);
             var records = new List<RecheckRecord>();
             for (var look = 1; look <= looks; look++)
             {
@@ -92,5 +120,17 @@ public class RunningLooksTests
     {
         var share = TightenedShare(0.90, looks: 50, TrustLedger.ConfidenceForLooks(50), windows: 400, seed: 23);
         Assert.InRange(share, 0.0, 0.02);
+    }
+
+    [Fact]
+    public void TwelveLooks_AtTheConstantBoundary_CatchADropTheUnionBoundMisses_WithinTheSameFamilyRisk()
+    {
+        const int looks = 12;
+        var constant = TrustLedger.ConfidenceForLooks(looks);
+        var union = 1 - (1 - TrustLedger.DefaultConfidence) / looks;
+
+        // The same records at each rule: a wider interval cannot tighten a window the narrower one leaves alone.
+        Assert.True(TightenedShare(0.84, looks, constant, windows: 300, seed: 31) >= TightenedShare(0.84, looks, union, windows: 300, seed: 31));
+        Assert.InRange(TightenedShare(0.88, looks, constant, windows: 400, seed: 32), 0.0, 0.05);
     }
 }

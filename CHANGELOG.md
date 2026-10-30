@@ -6,6 +6,17 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **`TrustLedger.ConfidenceForLooks` uses Pocock's constant boundary instead of the union bound.** The looks of a window are the same rechecks
+  growing, so they are correlated, and dividing the family risk by the number of looks spends only a third of it. The constant boundary keeps
+  the same promise — the chance that an interval misses at any look stays within `1 − familyConfidence` — with the narrowest single width that
+  does. In a simulation of twelve looks, a tier standing exactly on its tightening line was tightened in 3.6 % of windows (the promise is 5 %)
+  against 1.7 % before, and a one-window drop of the agreement was caught 79 % of the time against 72 %. The signature is unchanged; the
+  confidence it returns for two or more looks is lower than before (so the cell's interval is narrower and `TrustLifecycle.Tighten` acts
+  sooner on the same rechecks), and for one look it is the family confidence. The looks are assumed equally spaced in rechecks. Above
+  `TrustLedger.MaxExactLooks` (100) looks the union bound is still used.
+
 ## [0.15.0] - 2026-10-30
 
 ### Changed
