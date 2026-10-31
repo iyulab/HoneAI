@@ -138,6 +138,7 @@ public sealed class HttpMLoopClient : IMLoopClient
         return new MLoopEmbedding(encoder, vectors, grid, patches);
     }
 
+    /// <inheritdoc/>
     public async Task<MLoopEmbedding> EmbedTextsAsync(MLoopTextEmbeddingRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -731,6 +732,7 @@ public sealed class HttpMLoopClient : IMLoopClient
 /// <summary>Raised when an MLoop HTTP request returns a non-success status.</summary>
 public sealed class MLoopClientException : Exception
 {
+    /// <summary>Creates the exception for a response with <paramref name="statusCode"/>.</summary>
     public MLoopClientException(string message, HttpStatusCode statusCode) : base(message)
         => StatusCode = statusCode;
 

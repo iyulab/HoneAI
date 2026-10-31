@@ -107,9 +107,13 @@ public interface IRecheckStore
 /// </summary>
 public sealed record LedgerCell
 {
+    /// <summary>The tier whose rechecks the cell counts: the one that settled the decisions.</summary>
     public required string TierId { get; init; }
+    /// <summary>The slice the cell is about.</summary>
     public required string SliceKey { get; init; }
+    /// <summary>Start of the window of decision time.</summary>
     public required DateTimeOffset WindowStart { get; init; }
+    /// <summary>End of the window of decision time.</summary>
     public required DateTimeOffset WindowEnd { get; init; }
 
     /// <summary>Rechecks in the window, failed ones included.</summary>

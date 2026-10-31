@@ -16,6 +16,7 @@ public sealed class McpMloopToolProvider(string mcpEntryPath, string? mloopPath 
     private readonly ILogger _logger = logger ?? NullLogger.Instance;
     private bool _connected;
 
+    /// <summary>The stdio configuration that starts the mloop-mcp entry point under node, with <c>MLOOP_PATH</c> set when <paramref name="mloopPath"/> is given.</summary>
     public static McpPluginConfig BuildConfig(string mcpEntryPath, string? mloopPath) => new()
     {
         Transport = McpTransportType.Stdio,
@@ -26,6 +27,7 @@ public sealed class McpMloopToolProvider(string mcpEntryPath, string? mloopPath 
             : new Dictionary<string, string> { ["MLOOP_PATH"] = mloopPath },
     };
 
+    /// <inheritdoc/>
     public async Task<IReadOnlyList<AITool>> GetToolsAsync(CancellationToken cancellationToken = default)
     {
         if (!_connected)
@@ -52,5 +54,6 @@ public sealed class McpMloopToolProvider(string mcpEntryPath, string? mloopPath 
                 $"mloop-mcp ({mcpEntryPath}) 에 연결됐으나 도구를 0개 노출했습니다. " +
                 "mcp 진입점/빌드와 MLOOP_PATH 를 확인하세요.");
 
+    /// <inheritdoc/>
     public async ValueTask DisposeAsync() => await _manager.DisposeAsync();
 }

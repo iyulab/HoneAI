@@ -51,7 +51,7 @@ public sealed record TrainingSetManifest
     public string? SplitSalt { get; init; }
 
     /// <summary>
-    /// What the split's keys were (<see cref="LabelSplit.KeyKind"/>), when the split dealt by a unit bigger than the
+    /// What the split's keys were (<c>LabelSplit.KeyKind</c>), when the split dealt by a unit bigger than the
     /// decision; null when decisions were dealt individually or nothing was held out. Two sets dealt by different
     /// kinds of unit were not drawn alike.
     /// </summary>

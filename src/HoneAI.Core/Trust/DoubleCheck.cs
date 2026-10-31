@@ -15,16 +15,22 @@ namespace HoneAI.Trust;
 /// </remarks>
 public sealed record DoubleCheckRecord
 {
+    /// <summary>The decision both judges answered.</summary>
     public required string DecisionId { get; init; }
 
+    /// <summary>The judge that sorts first.</summary>
     public required JudgeIdentity First { get; init; }
 
+    /// <summary>The judge that sorts second.</summary>
     public required JudgeIdentity Second { get; init; }
 
+    /// <summary>The kind of the first judge.</summary>
     public required JudgeKind FirstKind { get; init; }
 
+    /// <summary>The kind of the second judge.</summary>
     public required JudgeKind SecondKind { get; init; }
 
+    /// <summary>The decision's slice.</summary>
     public required string SliceKey { get; init; }
 
     /// <summary>When the later of the two judgments was made.</summary>
@@ -52,8 +58,10 @@ public sealed record DoubleCheckRecord
 /// <summary>What two judges' blind answers to the same decisions show about them, over a set of double checks.</summary>
 public sealed record DoubleCheckCell
 {
+    /// <summary>The judge that sorts first.</summary>
     public required JudgeIdentity First { get; init; }
 
+    /// <summary>The judge that sorts second.</summary>
     public required JudgeIdentity Second { get; init; }
 
     /// <summary>

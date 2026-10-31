@@ -54,7 +54,9 @@ public enum LabelOrigin
     /// A person corrected a decision nothing drew: there is no π. People correct what they see wrong, so these labels
     /// are a sample of the errors, not of the decisions — they teach (their weight is capped, never divided by a
     /// probability they do not have) and never measure (<see cref="LabelShare.Evaluation"/> refuses them), and they are
-    /// counted apart from the person's measured trust.
+    /// counted apart from the person's measured trust. What makes a label voluntary is the missing π, not who chose to
+    /// ask: a decision the system picked for a person by a rule that recorded no probability (the most uncertain first,
+    /// say) is the same case, and is handled the same way.
     /// </summary>
     Voluntary = 1,
 

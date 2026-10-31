@@ -65,7 +65,13 @@ public static class TrustLedger
 
     /// <summary>Computes the cell for <paramref name="tierId"/> × <paramref name="sliceKey"/> over [<paramref name="from"/>, <paramref name="to"/>).</summary>
     /// <param name="records">Recheck records; those outside the tier, slice or window are ignored.</param>
+    /// <param name="tierId">The tier whose rechecks the cell counts.</param>
+    /// <param name="sliceKey">The slice the cell is about.</param>
+    /// <param name="from">Start of the window of decision time (inclusive).</param>
+    /// <param name="to">End of the window of decision time (exclusive).</param>
     /// <param name="caught">Must-catch decisions the tier sent up and the tier above confirmed in the window.</param>
+    /// <param name="confidence">The confidence of the cell's bounds, strictly between 0 and 1.</param>
+    /// <param name="knob">Counts only the records this knob alone would have drawn, re-weighted at its rate (<see cref="KnobSubsample"/>); null counts every record.</param>
     public static LedgerCell Compute(
         IEnumerable<RecheckRecord> records,
         string tierId,

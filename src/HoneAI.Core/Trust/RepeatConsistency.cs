@@ -15,10 +15,13 @@ public sealed record RepeatRecord
     /// <summary>The decision of the first judgment.</summary>
     public required string DecisionId { get; init; }
 
+    /// <summary>The judge that answered both times.</summary>
     public required JudgeIdentity Judge { get; init; }
 
+    /// <summary>The kind of the judge.</summary>
     public required JudgeKind Kind { get; init; }
 
+    /// <summary>The decision's slice.</summary>
     public required string SliceKey { get; init; }
 
     /// <summary>When the later of the two judgments was made.</summary>
@@ -40,6 +43,7 @@ public sealed record RepeatRecord
 /// <summary>How steady one judge is on repeats, and what its errors are made of.</summary>
 public sealed record RepeatCell
 {
+    /// <summary>The judge.</summary>
     public required JudgeIdentity Judge { get; init; }
 
     /// <summary>Repeats where both judgments were answers.</summary>

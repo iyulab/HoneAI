@@ -33,6 +33,7 @@ public sealed record LatentTruthOptions
 [Experimental(LatentTruth.DiagnosticId)]
 public sealed record LatentItem<TValue> where TValue : notnull
 {
+    /// <summary>The item.</summary>
     public required string ItemId { get; init; }
 
     /// <summary>The probability of each class being the truth.</summary>
@@ -49,6 +50,7 @@ public sealed record LatentItem<TValue> where TValue : notnull
 [Experimental(LatentTruth.DiagnosticId)]
 public sealed record LatentJudge<TValue> where TValue : notnull
 {
+    /// <summary>The judge.</summary>
     public required JudgeIdentity Judge { get; init; }
 
     /// <summary>Items the judge answered.</summary>
@@ -71,8 +73,10 @@ public sealed record LatentTruthEstimate<TValue> where TValue : notnull
     /// <summary>The estimated share of each class among the items.</summary>
     public required IReadOnlyDictionary<TValue, double> Prior { get; init; }
 
+    /// <summary>The estimated truth of every item.</summary>
     public required IReadOnlyList<LatentItem<TValue>> Items { get; init; }
 
+    /// <summary>The estimated behaviour of every judge.</summary>
     public required IReadOnlyList<LatentJudge<TValue>> Judges { get; init; }
 
     /// <summary>EM rounds run.</summary>

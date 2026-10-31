@@ -39,7 +39,7 @@ public sealed record SliceIssue(string TierId, string SliceKey, SliceStanding St
     /// <summary>The share of least confident answers to abstain on — only where the ledger showed confidence ranks mistakes.</summary>
     public double? AbstainQuantile { get; init; }
 
-    /// <summary>The expected loss at or above which the tier hands a decision up (<see cref="ExpectedLoss.Line"/>); null leaves it off.</summary>
+    /// <summary>The expected loss at or above which the tier hands a decision up (<see cref="Routing.ExpectedLoss.Line"/>); null leaves it off.</summary>
     public double? AbstainExpectedLossAbove { get; init; }
 }
 

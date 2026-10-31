@@ -7,8 +7,10 @@ namespace HoneAI.Trust;
 /// <summary>A slice's agreement estimate after borrowing strength from its group and from every slice.</summary>
 public sealed record ShrunkAgreement
 {
+    /// <summary>The tier.</summary>
     public required string TierId { get; init; }
 
+    /// <summary>The slice.</summary>
     public required string SliceKey { get; init; }
 
     /// <summary>The slice's group (<c>groupOf</c>); null for a slice that sits directly under the whole.</summary>

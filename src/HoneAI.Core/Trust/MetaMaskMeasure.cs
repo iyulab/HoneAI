@@ -13,11 +13,13 @@ namespace HoneAI.Trust;
 /// </summary>
 public sealed record MaskedPairRecord
 {
+    /// <summary>The decision.</summary>
     public required string DecisionId { get; init; }
 
     /// <summary>The teacher.</summary>
     public required string TierId { get; init; }
 
+    /// <summary>The decision's slice.</summary>
     public required string SliceKey { get; init; }
 
     /// <summary>Which metadata was masked (<c>source</c>, <c>machine</c>).</summary>

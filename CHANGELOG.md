@@ -37,6 +37,11 @@ All notable changes to HoneAI are documented here. The format follows
   confidence it returns for two or more looks is lower than before (so the cell's interval is narrower and `TrustLifecycle.Tighten` acts
   sooner on the same rechecks), and for one look it is the family confidence. The looks are assumed equally spaced in rechecks. Above
   `TrustLedger.MaxExactLooks` (100) looks the union bound is still used.
+- **The packages ship their XML documentation.** `HoneAI.Abstractions`, `HoneAI.Core` and `HoneAI.Agents` carried thorough doc comments in the
+  source but never generated the `.xml` file, so IntelliSense and any reader of the package saw none of them - the meaning of
+  `PoolResponseKind.Skipped` versus `Unsure`, or of `LabelOrigin.Voluntary`, was only in the source. The file is generated now and the
+  build fails on a public member without a summary (the 37 that had none are documented, the parameter tags one method lacked are added and two `cref`s that pointed at nothing are fixed), so
+  the documentation cannot fall behind the surface again.
 
 ## [0.15.0] - 2026-10-30
 

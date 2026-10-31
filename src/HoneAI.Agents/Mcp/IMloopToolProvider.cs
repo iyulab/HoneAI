@@ -5,5 +5,6 @@ namespace HoneAI.Agents.Mcp;
 /// <summary>Supplies the AI tools the agent can call to drive MLoop.</summary>
 public interface IMloopToolProvider
 {
+    /// <summary>The tools the agent can call.</summary>
     Task<IReadOnlyList<AITool>> GetToolsAsync(CancellationToken cancellationToken = default);
 }

@@ -18,6 +18,7 @@ public sealed class MloopAgent
 
     private MloopAgent(IAgentLoop loop) => _loop = loop;
 
+    /// <summary>Creates the agent: fetches the tools from <paramref name="toolProvider"/> and builds the loop from <paramref name="options"/>.</summary>
     public static async Task<MloopAgent> CreateAsync(
         MloopAgentOptions options,
         IMloopToolProvider toolProvider,

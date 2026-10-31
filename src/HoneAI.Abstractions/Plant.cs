@@ -79,6 +79,7 @@ public interface IPlantStore
 /// </summary>
 public sealed record TeacherCell
 {
+    /// <summary>The teacher: the tier whose planted items the cell counts.</summary>
     public required string TierId { get; init; }
 
     /// <summary>The judge within the tier the cell is restricted to; null for every judge of the tier pooled.</summary>
@@ -87,7 +88,9 @@ public sealed record TeacherCell
     /// <summary>The slice the cell is restricted to; null for all of them.</summary>
     public string? SliceKey { get; init; }
 
+    /// <summary>Start of the window the cell covers.</summary>
     public required DateTimeOffset WindowStart { get; init; }
+    /// <summary>End of the window the cell covers.</summary>
     public required DateTimeOffset WindowEnd { get; init; }
 
     /// <summary>Planted items judged, failed ones included.</summary>

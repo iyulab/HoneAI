@@ -12,11 +12,13 @@ namespace HoneAI.Trust;
 /// </summary>
 public sealed record PairRecord
 {
+    /// <summary>The decision both judgments were made on.</summary>
     public required string DecisionId { get; init; }
 
     /// <summary>The teacher.</summary>
     public required string TierId { get; init; }
 
+    /// <summary>The decision's slice.</summary>
     public required string SliceKey { get; init; }
 
     /// <summary>When the later of the two judgments was made.</summary>
@@ -38,6 +40,7 @@ public sealed record PairRecord
 /// <summary>What showing the lower answer did to the teacher, over a set of pairs.</summary>
 public sealed record AnchoringCell
 {
+    /// <summary>The teacher.</summary>
     public required string TierId { get; init; }
 
     /// <summary>Pairs where the teacher answered both times.</summary>
