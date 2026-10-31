@@ -152,6 +152,17 @@ public sealed record LedgerCell
     /// Upper bound on the conditional miss rate at the ledger's confidence, counting every failed
     /// recheck as a miss (the worst it could hide). Null when there is no caught decision and no
     /// miss to bound against.
+    /// <para>
+    /// It is <c>U ÷ (U + Caught)</c>, never under <see cref="MissRate"/>, where <c>U</c> is <see cref="MissesUpper"/>: the
+    /// largest number of must-catch decisions the tier settled in this window that is still consistent, at the stated
+    /// confidence, with seeing so few of them through the rechecks (an exact binomial bound at the window's smallest
+    /// π; the misses seen plus the failed rechecks are what was seen). It bounds what happened in the window — a count
+    /// that exists whether or not it was looked at — not the chance that the next decision is missed. So a window in
+    /// which every settled decision was rechecked (π = 1) leaves nothing unobserved: <c>U</c> is the number of misses
+    /// and failed rechecks seen, and it is 0 when there were none, however small <see cref="Caught"/> is. The bound
+    /// only widens where decisions were not rechecked (π &lt; 1). To claim a miss rate for decisions not yet made,
+    /// apply an exact binomial bound to the rechecks themselves.
+    /// </para>
     /// </summary>
     public double? MissRateUpper { get; init; }
 

@@ -98,6 +98,23 @@ public sealed class TrustLedgerTests : IDisposable
         Assert.True(cell.MissRateUpper > 0.7, "100 caught is far too few to claim a low miss rate at π = 0.01");
     }
 
+    [Theory]
+    [InlineData(1.0, 0, 0.0, 0.0)]                 // every settled decision rechecked and none missed: a census, nothing unobserved
+    [InlineData(1.0, 2, 2.0, 2.0 / 151)]           // two failed rechecks could each hide a miss
+    [InlineData(0.1, 0, 28.0, 28.0 / 177)]         // ln(20) / 0.1, the zero-misses rule
+    [InlineData(0.1, 2, 60.0, 60.0 / 209)]
+    public void MissRateUpper_BoundsTheWindowsCount_SoACensusLeavesNothingToBound(double pi, int failed, double missesUpper, double rateUpper)
+    {
+        var records = Enumerable.Range(0, 100 - failed).Select(i => Record($"a{i}", pi, RecheckOutcome.Agreed))
+            .Concat(Enumerable.Range(0, failed).Select(i => Record($"f{i}", pi, RecheckOutcome.UpperFailed)))
+            .ToList();
+
+        var cell = TrustLedger.Compute(records, "ml", "s", T0, T0.AddDays(1), caught: 149);
+
+        Assert.Equal(missesUpper, cell.MissesUpper!.Value, 9);
+        Assert.Equal(rateUpper, cell.MissRateUpper!.Value, 9);
+    }
+
     [Fact]
     public void SeenMisses_AreCountedAtOneOverPi_AndFailuresBoundAsMisses()
     {
