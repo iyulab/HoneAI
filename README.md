@@ -167,6 +167,49 @@ the judge cannot tell them apart; `PoolPresentation.Purpose` is for your backend
 then goes everywhere through `PoolAnswers`: the response to record, the blind `RecheckResult` the measurements take,
 and — once its window is accounted — the draw (π × r) to confirm a label with.
 
+One person answering one pooled item, start to finish:
+
+```csharp
+var store = new JsonlRecheckPoolStore(directory);           // or InMemoryRecheckPoolStore
+await store.AddAsync(new PoolItem
+{
+    DecisionId = "d-1", TierId = "ml", SliceKey = "line-3",   // TierId: the tier that settled it — the one being measured
+    DecidedAt = decidedAt, Probability = 0.1,
+    InputRef = "images/1.png",                                // the input only; nothing a tier answered
+    ExpiresAt = expiresAt,
+});
+
+var shown = await RecheckPool.PresentAsync(
+    store, reviewerKey: "r-1", sessionKey: "s-1", count: 1, now, hold, tierId: "ml");
+
+// The person looks at shown[0].InputRef and answers; settled is the answer the tier gave, which only your backend knows.
+var response = PoolAnswers.Response(
+    shown[0], checkedBy: "people", reviewerKey: "r-1",
+    JudgeVerdict<string>.Answer("defect", judgedBy: "r-1"), settled: "ok", policy, now);
+await store.RespondAsync(response);                           // the first recheck response to an item stands
+
+var account = await RecheckPool.AccountAsync(store, from, to, now);   // account.Records only once account.Closed
+```
+
+Three different names stand for "who", and only some are keys the ledger keeps:
+
+- `TierId` — on the item, the hold and the response — is the tier that **settled** the decision: the one being measured,
+  and the key trust is kept under with the slice. It must be the id the router gave that decision.
+- `CheckedBy` is the tier that **judged** (a rung of people, say). It is copied onto the recheck record; nothing reads it as a key.
+- A person is `ReviewerKey` in the pool (the hold and the response are keyed on it) and `JudgeVerdict.JudgedBy` in the
+  ledger: a `JudgeIdentity` is the tier id plus that, and trust is measured per identity. The planted, repeated and
+  second-opinion answers reach the ledger through `PoolAnswers.Result(shown, checker, verdict, at)`, where `checker` is
+  the rung of people as a `Tier` (`Kind = JudgeKind.Human`, a `CostRank` above the machines', a `Version` of the
+  instructions that you raise when they change). That `Tier.Id` and the verdict's `judgedBy` are what the teacher ledger
+  keeps, so choose both once, pseudonymous and stable — and pass the same key as `reviewerKey` and as `judgedBy` so one
+  person is one name in the pool and in the ledger.
+
+`PoolEntry.Response` is the **recheck** response only; read the others with `ResponsesOf(PoolPurpose.Plant)` (and
+`Repeat`, `SecondOpinion`) — the response's purpose decides where it is kept, not the item's kind. `PoolAccount.Closed`
+is a property of the **window**: every recheck item decided in it has been answered, passed, marked unsure or has expired.
+Until then there are no records, because an item still waiting could yet be reached. `PoolReach.Pooled` counts every
+item of the window, expired ones included — that is what makes the unreached count against `Rate` and not as failures.
+
 ### Learning from what was confirmed (`HoneAI.Learning`)
 
 A cheap tier gets better by learning from answers the tiers above it confirmed — never its own.
