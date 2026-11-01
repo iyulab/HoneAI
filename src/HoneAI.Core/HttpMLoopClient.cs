@@ -69,7 +69,9 @@ public sealed class HttpMLoopClient : IMLoopClient
             return [];
 
         var experiment = ExperimentOf(request.Experiment);
-        using var response = await _http.PostAsJsonAsync("predict" + PredictQuery(request.Model, experiment), ImagesBody(request.Images), JsonOptions, cancellationToken)
+        if (request.ScoreThreshold is { } threshold && !(threshold > 0 && threshold <= 1))
+            throw new ArgumentOutOfRangeException(nameof(request), threshold, "ScoreThreshold must be above 0 and at most 1.");
+        using var response = await _http.PostAsJsonAsync("predict" + PredictQuery(request.Model, experiment, request.ScoreThreshold), ImagesBody(request.Images), JsonOptions, cancellationToken)
             .ConfigureAwait(false);
         await EnsureSuccess(response, "predict", cancellationToken).ConfigureAwait(false);
 
@@ -563,13 +565,15 @@ public sealed class HttpMLoopClient : IMLoopClient
         => string.IsNullOrWhiteSpace(model) ? string.Empty : "?name=" + Uri.EscapeDataString(model);
 
     // /predict's query: the model by name, and the experiment that answers instead of production (a shadow prediction).
-    private static string PredictQuery(string? model, string? experiment)
+    private static string PredictQuery(string? model, string? experiment, double? scoreThreshold = null)
     {
         var query = new List<string>();
         if (!string.IsNullOrWhiteSpace(model))
             query.Add("name=" + Uri.EscapeDataString(model));
         if (experiment is not null)
             query.Add("experiment=" + Uri.EscapeDataString(experiment));
+        if (scoreThreshold is { } threshold)
+            query.Add("scoreThreshold=" + threshold.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
         return query.Count == 0 ? string.Empty : "?" + string.Join('&', query);
     }
 

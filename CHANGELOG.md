@@ -6,6 +6,10 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`MLoopImagePredictionRequest.ScoreThreshold`** - ask an object-detection model for the boxes scoring at least a given value (MLoop 0.49+ `?scoreThreshold=`; above 0 and at most 1, validated before the request). `null` is the server's own operating point (0.5), as before. A detector trained by MLoop 0.49 keeps every box down to 0.05, so a judge that ranks or filters boxes itself can now see the lower-scoring ones; another task ignores the value and a server before 0.49 answers at 0.5.
+
 ## [0.16.0] - 2026-11-02
 
 ### Added

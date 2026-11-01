@@ -111,6 +111,38 @@ public class HttpMLoopClientTests
     }
 
     [Fact]
+    public async Task PredictImages_CanAskAnObjectDetectorForItsLowerScoringBoxes()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """
+            { "experimentId": "exp-005", "task": "object-detection",
+              "predictions": [ { "detections": [ { "label": "scratch", "score": 0.31, "x0": 1, "y0": 2, "x1": 30, "y1": 40 } ] } ] }
+            """));
+
+        var answered = await Client(handler).PredictImagesAsync(
+            new MLoopImagePredictionRequest([new byte[] { 1 }], Model: "parts", ScoreThreshold: 0.3));
+
+        Assert.Contains("predict?name=parts&scoreThreshold=0.3", handler.LastUri);
+        Assert.True(answered[0].Value.Outputs.ContainsKey("detections"));   // the answer passes through as the server wrote it
+
+        var plain = new StubHandler(_ => Json(HttpStatusCode.OK, """{ "task": "object-detection", "predictions": [ { "detections": [] } ] }"""));
+        await Client(plain).PredictImagesAsync(new MLoopImagePredictionRequest([new byte[] { 1 }]));
+        Assert.DoesNotContain("scoreThreshold", plain.LastUri);   // no value, the server's own operating point
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-0.1)]
+    [InlineData(1.5)]
+    [InlineData(double.NaN)]
+    public async Task PredictImages_RefusesAScoreThresholdTheServerWouldRefuse(double threshold)
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.OK, "{}"));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => Client(handler).PredictImagesAsync(
+            new MLoopImagePredictionRequest([new byte[] { 1 }], ScoreThreshold: threshold)));
+    }
+
+    [Fact]
     public async Task Predict_NamesTheAnsweringModel_ByExperimentAndContent()
     {
         var handler = new StubHandler(_ => Json(HttpStatusCode.OK, """

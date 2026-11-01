@@ -21,10 +21,17 @@ public sealed record MLoopPredictionRequest(
 /// <param name="Images">The images, at most 64 in one request; answered in the order given.</param>
 /// <param name="Model">Target model name; <see langword="null"/> uses MLoop's default model.</param>
 /// <param name="Experiment">The experiment to answer with, as in <see cref="MLoopPredictionRequest.Experiment"/>; <see langword="null"/> is production.</param>
+/// <param name="ScoreThreshold">
+/// An object-detection model only (MLoop 0.49+ <c>?scoreThreshold=</c>): report the boxes scoring at least this, above 0 and at
+/// most 1. <see langword="null"/> is the server's operating point (0.5). A detector trained by 0.49 keeps every box down to 0.05,
+/// so a lower value shows the boxes a not-yet-confident detector finds - a judge that ranks or filters boxes itself needs them.
+/// Another task ignores it; a server before 0.49 answers at 0.5 whatever is asked.
+/// </param>
 public sealed record MLoopImagePredictionRequest(
     IReadOnlyList<ReadOnlyMemory<byte>> Images,
     string? Model = null,
-    string? Experiment = null);
+    string? Experiment = null,
+    double? ScoreThreshold = null);
 
 /// <summary>Request to turn images into vectors with an encoder installed on the MLoop server (MLoop 0.44+ <c>POST /embed</c>).</summary>
 /// <param name="Images">The images' encoded bytes, at most 64 in one request (8 with <paramref name="Patches"/>); answered in the order given.</param>
