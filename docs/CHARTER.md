@@ -12,10 +12,10 @@ honest when the world (or one of its judges) changes.
 
 | Item | Content |
 |---|---|
-| **Responsibility** | Between tiers: which tier answers, how much of each tier's work is re-checked, when a tier earns or loses the right to confirm answers on its own, where confirmed answers go to be learned from, and the provenance stamp on every answer. |
+| **Responsibility** | Between tiers: which tier answers, how much of each tier's work is re-checked, when a tier earns or loses the right to confirm answers on its own, where confirmed answers go to be learned from, and the provenance stamp on every answer. Where an LLM stands in for an expert role (problem definition, orchestration, operation), the same discipline covers that seat: its decisions are recorded and measured against outcomes and human review, and its authority is raised only as far as the evidence allows. |
 | **Essence** | **Coordination of judges and provenance** — whether the answer is a value or a category. The answer itself is produced by the engine inside a tier. |
 | **Premise** | Nobody is ground truth, people included. Every tier, the top one too, is measured. |
-| **Not** | General-purpose AI, an agent runtime, an LLM provider abstraction, a model trainer, or a structure/ontology deriver. |
+| **Not** | General-purpose AI, an agent runtime or prompt manager (the reference `HoneAI.Agents` adapter only occupies a seat so that seats can be measured), an LLM provider abstraction, a model trainer, or a structure/ontology deriver. |
 
 ## 2. Boundary
 
@@ -26,13 +26,14 @@ honest when the world (or one of its judges) changes.
 | keep a trust ledger per tier × slice and adjust sampling rates and tier eligibility from it | store the ledger in a particular database — storage is a port the consumer implements |
 | route confirmed answers, with source, weight and sampling probability, to the engines that learn | transport or sign policy snapshots between sites — the consumer does |
 | stamp provenance on every answer | re-abstract LLM providers (`IChatClient` is used as is) |
+| record the decisions of an LLM seat, measure them against outcomes and human review, and widen or withdraw its authority accordingly | host the agent loop that holds the seat, or manage its prompts and knowledge — the seat's occupant does |
 
 Engines never reference HoneAI. A tier is formed by wrapping an engine in the judge contract, in
 an adapter on the consumer's side or HoneAI's — never by the engine depending on HoneAI.
 
 ### Out of scope
 
-- RAG and document pipelines · PII masking and LLM security · provider wiring and agent loops ·
+- RAG and document pipelines · PII masking and LLM security · provider wiring · agent loops as a product (the reference adapter that occupies a seat is the exception) ·
   prompt management · structure and ontology derivation.
 
 ## 3. Design constraints
@@ -53,6 +54,7 @@ an adapter on the consumer's side or HoneAI's — never by the engine depending 
    anonymous key, for a stated retention period and with the reviewer's agreement, and it weights and qualifies
    judgments. It is not an input to evaluating, ranking or deciding about the person; a consumer that wants that
    builds it outside this library and on its own responsibility.
+8. **A seat's authority is earned and structural** — an LLM standing in for an expert role is given authority only as measured evidence allows (suggest, then act and report, then sampled review). Tightening is automatic and loosening is earned, as for tiers, and decisions that cannot be undone are withheld from it by what it is allowed to call, not by how a prompt is worded.
 
 ## 4. Direction (nearer = more concrete)
 
@@ -66,6 +68,7 @@ an adapter on the consumer's side or HoneAI's — never by the engine depending 
 - **H4** — confirmed-label routing to engines with source, weight and probability.
 - **H5** — per-judge-kind trust models, double checks, repeat consistency, gold seeding for people,
   latent-truth estimation (experimental).
+- **Seats** (planned) — decision records for expert-role seats, an authority ladder, and tool allow-lists, accepted by the same measurement discipline as the tiers.
 
 Each stage is accepted by measurement: agreement with the qualified teacher ≥ target, must-catch
 misses ≤ limit, teacher recall on must-catch values ≥ criterion — while upper-tier calls decrease.
