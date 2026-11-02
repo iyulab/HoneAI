@@ -50,7 +50,8 @@ public static class RolePersona
     /// Orchestrator persona — the autonomous feature-engineering loop policy in HoneAI's
     /// role seam: domain-neutral, with the consumer's <see cref="RoleContext.Domain"/>
     /// injected and a runtime projectPath appended by the harness.
-    /// The HITL boundary (stop before train) is prompt-enforced.
+    /// The HITL boundary (stop before train) is prompt-enforced here; where it has to hold whatever the conversation does, give the agent
+    /// a tool set without the tools that train or promote (<c>MloopToolPolicy.WithoutTrainingOrPromotion</c> in HoneAI.Agents).
     /// </summary>
     private static string BuildOrchestrator(RoleContext c)
     {
