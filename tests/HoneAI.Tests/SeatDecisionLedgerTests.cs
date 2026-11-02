@@ -58,7 +58,10 @@ public class SeatDecisionLedgerTests
     {
         Targets = new TrustTargets
         {
-            Agreement = 0.85, DetectableDrop = 0.05, MissLimit = 0.05, Deadline = TimeSpan.FromDays(7),
+            Agreement = 0.85,
+            DetectableDrop = 0.05,
+            MissLimit = 0.05,
+            Deadline = TimeSpan.FromDays(7),
             // Decisions that cannot be undone are proposals, never carried out alone, so none is seen to slip through; the
             // allowance states how many a window may hide.
             HiddenMustCatchLimit = 8,

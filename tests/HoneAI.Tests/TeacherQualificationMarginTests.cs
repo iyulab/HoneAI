@@ -17,7 +17,10 @@ public class TeacherQualificationMarginTests
     private static readonly LifecyclePolicy Policy = new()
     {
         Targets = new TrustTargets { Agreement = 0.95, DetectableDrop = 0.03, MissLimit = 0.02, Deadline = TimeSpan.FromDays(7) },
-        Margin = 0.01, MinimumEffectiveSample = 300, MinimumDwell = TimeSpan.FromDays(7), StableWindows = 2,
+        Margin = 0.01,
+        MinimumEffectiveSample = 300,
+        MinimumDwell = TimeSpan.FromDays(7),
+        StableWindows = 2,
     };
 
     private static TeacherCell Teacher(int caught, int missed, int failed = 0)
@@ -31,8 +34,13 @@ public class TeacherQualificationMarginTests
 
     private static PlantRecord Plant(string id, PlantOutcome outcome, bool answeredMustCatch) => new()
     {
-        PlantId = id, TierId = "teacher", SliceKey = "s", JudgedAt = Now.AddMinutes(-10),
-        TruthMustCatch = true, Outcome = outcome, AnsweredMustCatch = answeredMustCatch,
+        PlantId = id,
+        TierId = "teacher",
+        SliceKey = "s",
+        JudgedAt = Now.AddMinutes(-10),
+        TruthMustCatch = true,
+        Outcome = outcome,
+        AnsweredMustCatch = answeredMustCatch,
     };
 
     [Fact]
@@ -86,9 +94,25 @@ public class TeacherQualificationMarginTests
     public void AStableTier_FallsBackToActive_WhenItsTeacherIsShownUnqualified()
     {
         var stable = new SliceStanding(TrustState.Stable, Start, "v1");
-        var cell = new LedgerCell { TierId = "ml", SliceKey = "s", WindowStart = Start, WindowEnd = Now, Rechecks = 500, UpperFailures = 0,
-            EffectiveSampleSize = 500, Agreement = 0.98, AgreementLower = 0.97, AgreementUpper = 0.99, MissesEstimated = 0, Caught = 400,
-            MissRate = 0, MissRateUpper = 0.01, MissRateLower = 0, Confidence = 0.95 };
+        var cell = new LedgerCell
+        {
+            TierId = "ml",
+            SliceKey = "s",
+            WindowStart = Start,
+            WindowEnd = Now,
+            Rechecks = 500,
+            UpperFailures = 0,
+            EffectiveSampleSize = 500,
+            Agreement = 0.98,
+            AgreementLower = 0.97,
+            AgreementUpper = 0.99,
+            MissesEstimated = 0,
+            Caught = 400,
+            MissRate = 0,
+            MissRateUpper = 0.01,
+            MissRateLower = 0,
+            Confidence = 0.95
+        };
 
         var held = TrustLifecycle.Tighten(stable, cell, new LiveSignals("v1"), Policy, Now);
         var lost = TrustLifecycle.Tighten(stable, cell, new LiveSignals("v1", TeacherDisqualified: true), Policy, Now);
@@ -103,9 +127,25 @@ public class TeacherQualificationMarginTests
     public void AnActiveTiersRunTowardStable_StartsOver_AndAShadowTierIsUntouched()
     {
         var active = new SliceStanding(TrustState.Active, Start, "v1", PassingWindows: 1);
-        var cell = new LedgerCell { TierId = "ml", SliceKey = "s", WindowStart = Start, WindowEnd = Now, Rechecks = 500, UpperFailures = 0,
-            EffectiveSampleSize = 500, Agreement = 0.98, AgreementLower = 0.97, AgreementUpper = 0.99, MissesEstimated = 0, Caught = 400,
-            MissRate = 0, MissRateUpper = 0.01, MissRateLower = 0, Confidence = 0.95 };
+        var cell = new LedgerCell
+        {
+            TierId = "ml",
+            SliceKey = "s",
+            WindowStart = Start,
+            WindowEnd = Now,
+            Rechecks = 500,
+            UpperFailures = 0,
+            EffectiveSampleSize = 500,
+            Agreement = 0.98,
+            AgreementLower = 0.97,
+            AgreementUpper = 0.99,
+            MissesEstimated = 0,
+            Caught = 400,
+            MissRate = 0,
+            MissRateUpper = 0.01,
+            MissRateLower = 0,
+            Confidence = 0.95
+        };
         var signals = new LiveSignals("v1", TeacherDisqualified: true);
 
         var run = TrustLifecycle.Tighten(active, cell, signals, Policy, Now);
