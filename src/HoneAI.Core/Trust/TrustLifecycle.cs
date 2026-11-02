@@ -85,7 +85,12 @@ public sealed record StandingChange(TrustState From, TrustState To, string Reaso
 /// (for an ML tier, MLoop's paired comparison <c>evaluate --against</c>). It then starts active
 /// instead of in shadow — never stable, and never above where the old version stood.
 /// </param>
-public sealed record LiveSignals(string TierVersion, bool Drifted = false, bool VersionProvenNoWorse = false);
+/// <param name="TeacherDisqualified">
+/// The tier above is shown unqualified to teach it (<c>TeacherLedger.Disqualifies</c>). A stable tier was released on rechecks
+/// the teacher no longer shows it can make, so it falls back to active, where it is rechecked at the active rate; an active
+/// tier's run toward stable starts over.
+/// </param>
+public sealed record LiveSignals(string TierVersion, bool Drifted = false, bool VersionProvenNoWorse = false, bool TeacherDisqualified = false);
 
 /// <summary>
 /// The lifecycle of a tier in a slice — shadow, active, stable — judged on the trust ledger.
@@ -161,6 +166,15 @@ public static class TrustLifecycle
         }
         if (standing.State == TrustState.Shadow)
             return Stay(standing, "shadow");
+
+        if (signals.TeacherDisqualified)
+        {
+            const string lost = "the tier above is shown unqualified to teach";
+            if (standing.State == TrustState.Stable)
+                return Tightening(standing, new SliceStanding(TrustState.Active, now, standing.TierVersion), lost);
+            if (standing.PassingWindows > 0)
+                return Stay(standing with { PassingWindows = 0 }, lost + "; the run toward stable starts over");
+        }
 
         if (running.MissRateLower > m)
             return Tightening(standing, new SliceStanding(TrustState.Shadow, now, standing.TierVersion), $"must-catch miss rate shown above {m:P1} (lower bound {running.MissRateLower:P1})");

@@ -61,6 +61,8 @@ public static class TeacherLedger
             MustCatchFailures = mustCatchFailures,
             Recall = mustCatchAnswered > 0 ? (double)caught / mustCatchAnswered : null,
             RecallLower = mustCatch.Count > 0 ? ClopperPearsonLower(caught, mustCatch.Count, alpha) : null,
+            // Failed plants counted as caught: the misses left are the answered ones that were not caught.
+            RecallUpper = mustCatch.Count > 0 ? 1 - ClopperPearsonLower(mustCatchAnswered - caught, mustCatch.Count, alpha) : null,
             Accuracy = answered > 0 ? (double)correct / answered : null,
             AccuracyLower = window.Count > 0 ? ClopperPearsonLower(correct, window.Count, alpha) : null,
             Confidence = confidence,
@@ -79,8 +81,38 @@ public static class TeacherLedger
     }
 
     /// <summary>
+    /// Whether the teacher qualifies, with a margin so a teacher on the line does not flip with every window: one that was not qualified
+    /// must clear <paramref name="minimumRecall"/> (as <see cref="Qualifies(TeacherCell, double)"/>), one that was keeps its
+    /// qualification until its lower bound is under <paramref name="minimumRecall"/> − <paramref name="margin"/>. A teacher with no
+    /// must-catch plant this window keeps what it had — the window showed nothing — but is never qualified by it.
+    /// </summary>
+    public static bool Qualifies(TeacherCell cell, double minimumRecall, double margin, bool wasQualified)
+    {
+        ArgumentNullException.ThrowIfNull(cell);
+        if (margin < 0)
+            throw new ArgumentOutOfRangeException(nameof(margin), margin, "The margin is not negative.");
+        if (cell.RecallLower is not { } lower)
+            return wasQualified;
+        return lower >= (wasQualified ? minimumRecall - margin : minimumRecall);
+    }
+
+    /// <summary>
+    /// Whether the teacher is shown unqualified: even the most its plants allow it (<see cref="TeacherCell.RecallUpper"/>) is under
+    /// <paramref name="minimumRecall"/> − <paramref name="margin"/>. Not the opposite of <see cref="Qualifies(TeacherCell, double)"/>:
+    /// a teacher with few plants neither qualifies nor is shown unqualified, and a tier released on its rechecks is tightened only on
+    /// the second (<see cref="LiveSignals.TeacherDisqualified"/>).
+    /// </summary>
+    public static bool Disqualifies(TeacherCell cell, double minimumRecall, double margin)
+    {
+        ArgumentNullException.ThrowIfNull(cell);
+        if (margin < 0)
+            throw new ArgumentOutOfRangeException(nameof(margin), margin, "The margin is not negative.");
+        return cell.RecallUpper is { } upper && upper < minimumRecall - margin;
+    }
+
+    /// <summary>
     /// The fewest must-catch plants from which a teacher that really catches <paramref name="expectedRecall"/> of them qualifies
-    /// against <paramref name="minimumRecall"/> (<see cref="Qualifies"/>, bound stated at <paramref name="confidence"/>) with at least
+    /// against <paramref name="minimumRecall"/> (<see cref="Qualifies(TeacherCell, double)"/>, bound stated at <paramref name="confidence"/>) with at least
     /// <paramref name="power"/> probability — and keeps doing so for every larger count up to <paramref name="maxPlants"/>, because the
     /// exact bound moves in steps and a single lucky count is not a plan. Null when no count up to the cap reaches it, which is always
     /// so for a teacher whose recall is no higher than the floor.

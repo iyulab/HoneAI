@@ -117,6 +117,13 @@ public sealed record TeacherCell
     /// </summary>
     public double? RecallLower { get; init; }
 
+    /// <summary>
+    /// Exact (Clopper–Pearson) upper bound on must-catch recall at <see cref="Confidence"/>, with every failed must-catch plant
+    /// counted as caught — the most the teacher can be taken to catch. What disqualification is judged on: a teacher is shown
+    /// unqualified only when even this is under the floor. Null without a must-catch plant.
+    /// </summary>
+    public double? RecallUpper { get; init; }
+
     /// <summary>Share of answered plants answered correctly. Null with none answered.</summary>
     public double? Accuracy { get; init; }
 
