@@ -64,7 +64,7 @@ public static class TrustLedger
     public const int MaxExactLooks = PocockBoundary.MaxLooks;
 
     /// <summary>Computes the cell for <paramref name="tierId"/> × <paramref name="sliceKey"/> over [<paramref name="from"/>, <paramref name="to"/>).</summary>
-    /// <param name="records">Recheck records; those outside the tier, slice or window are ignored.</param>
+    /// <param name="records">Recheck records; those outside the tier, slice or window are ignored, and so is one whose checker was shown the answer it checks (<see cref="RecheckRecord.Blind"/>) — a check that saw the answer agrees with it more often, and the ledger counts only agreement the checker reached alone.</param>
     /// <param name="tierId">The tier whose rechecks the cell counts.</param>
     /// <param name="sliceKey">The slice the cell is about.</param>
     /// <param name="from">Start of the window of decision time (inclusive).</param>
@@ -89,7 +89,7 @@ public static class TrustLedger
             throw new ArgumentOutOfRangeException(nameof(confidence), confidence, "Confidence lies strictly between 0 and 1.");
 
         var window = records
-            .Where(r => r.TierId == tierId && r.SliceKey == sliceKey && r.DecidedAt >= from && r.DecidedAt < to)
+            .Where(r => r.TierId == tierId && r.SliceKey == sliceKey && r.DecidedAt >= from && r.DecidedAt < to && r.Blind)
             .ToList();
         if (knob is not null)
             window = KnobSubsample(window, knob);

@@ -10,6 +10,10 @@ All notable changes to HoneAI are documented here. The format follows
 
 - **`MLoopImagePredictionRequest.ScoreThreshold`** - ask an object-detection model for the boxes scoring at least a given value (MLoop 0.49+ `?scoreThreshold=`; above 0 and at most 1, validated before the request). `null` is the server's own operating point (0.5), as before. A detector trained by MLoop 0.49 keeps every box down to 0.05, so a judge that ranks or filters boxes itself can now see the lower-scoring ones; another task ignores the value and a server before 0.49 answers at 0.5.
 
+### Changed
+
+- **The trust ledger counts only the rechecks whose checker did not see the answer it checks.** `RecheckRecord.Blind` was set (a recheck is blind by default, and `RecheckRecords.From` refuses a shown one) but `TrustLedger.Compute` never read it, so a record stored with `Blind = false` — a person approving a proposal in front of them, say — counted as agreement. A checker who saw the answer agrees with it more often than one who decided alone, and release is judged on the agreement the checker reached alone. Every record HoneAI itself makes is blind, so nothing it produces changes; a consumer that stores shown reviews in the same store now sees them left out of the cell, not counted as evidence.
+
 ## [0.16.0] - 2026-11-02
 
 ### Added
