@@ -90,7 +90,14 @@ public sealed record StandingChange(TrustState From, TrustState To, string Reaso
 /// the teacher no longer shows it can make, so it falls back to active, where it is rechecked at the active rate; an active
 /// tier's run toward stable starts over.
 /// </param>
-public sealed record LiveSignals(string TierVersion, bool Drifted = false, bool VersionProvenNoWorse = false, bool TeacherDisqualified = false);
+/// <param name="TeacherVersionChanged">
+/// The tier above is a new version (<c>TeacherVersions.Changed</c>). The tier's standing was earned on rechecks by the old one,
+/// and nothing yet says the new one would have judged the same: a stable tier falls back to active, where it is rechecked at the
+/// active rate, and an active tier's run toward stable starts over. Not a judgment against the new teacher — only that the evidence
+/// is no longer taken from the teacher that is there.
+/// </param>
+public sealed record LiveSignals(
+    string TierVersion, bool Drifted = false, bool VersionProvenNoWorse = false, bool TeacherDisqualified = false, bool TeacherVersionChanged = false);
 
 /// <summary>
 /// The lifecycle of a tier in a slice — shadow, active, stable — judged on the trust ledger.
@@ -167,9 +174,11 @@ public static class TrustLifecycle
         if (standing.State == TrustState.Shadow)
             return Stay(standing, "shadow");
 
-        if (signals.TeacherDisqualified)
+        if (signals.TeacherDisqualified || signals.TeacherVersionChanged)
         {
-            const string lost = "the tier above is shown unqualified to teach";
+            var lost = signals.TeacherDisqualified
+                ? "the tier above is shown unqualified to teach"
+                : "the tier above is a new version; the evidence was taken from the one before it";
             if (standing.State == TrustState.Stable)
                 return Tightening(standing, new SliceStanding(TrustState.Active, now, standing.TierVersion), lost);
             if (standing.PassingWindows > 0)

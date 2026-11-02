@@ -235,6 +235,7 @@ public static class RecheckPool
         Risk = item.Risk,
         Weight = item.Weight,
         CheckedBy = response.CheckedBy,
+        CheckedByVersion = response.CheckedByVersion,
         Blind = true,
     };
 

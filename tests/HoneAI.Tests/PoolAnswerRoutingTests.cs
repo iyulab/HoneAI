@@ -190,8 +190,8 @@ public class PoolAnswerRoutingTests
 
         var routed = Route(PoolPurpose.Recheck, PoolJudgment<string>.Answer("danger"), PoolAnswerBasis<string>.ForRecheck("ok"));
 
-        Assert.Equal(PoolAnswers.Response(shown, People.Id, "r-1", verdict, "ok", Policy, Now), routed.Response);
-        Assert.Equal(PoolAnswers.Unsure(shown, People.Id, "r-1", Now),
+        Assert.Equal(PoolAnswers.Response(shown, People.Id, "r-1", verdict, "ok", Policy, Now, People.Version), routed.Response);
+        Assert.Equal(PoolAnswers.Unsure(shown, People.Id, "r-1", Now, People.Version),
             Route(PoolPurpose.Recheck, PoolJudgment<string>.CouldNotTell(), PoolAnswerBasis<string>.ForRecheck("ok")).Response);
     }
 

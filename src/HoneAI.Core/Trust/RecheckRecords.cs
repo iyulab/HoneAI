@@ -56,6 +56,7 @@ public static class RecheckRecords
             Weight = sample.Signal?.Weight,
             UpperMustCatch = verdict.Answered && policy.MustCatch(verdict.Value!),
             CheckedBy = recheck.Tier.Id,
+            CheckedByVersion = recheck.Tier.Version,
         };
     }
 
@@ -100,6 +101,7 @@ public static class RecheckRecords
                 Confidence = step.Verdict.Confidence,
                 UpperMustCatch = policy.MustCatch(settled.Verdict.Value!),
                 CheckedBy = settled.Tier.Id,
+                CheckedByVersion = settled.Tier.Version,
             });
         }
         return records;

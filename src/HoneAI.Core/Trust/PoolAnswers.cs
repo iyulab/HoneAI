@@ -21,9 +21,10 @@ public static class PoolAnswers
     /// <param name="settled">The settled answer, for a recheck — the consumer's, never shown to the judge.</param>
     /// <param name="policy">Which answers agree, and which are must-catch.</param>
     /// <param name="at">When.</param>
+    /// <param name="checkedByVersion">The version of the tier that judged, when known.</param>
     public static PoolResponse Response<TValue>(
         PoolPresentation shown, string checkedBy, string reviewerKey, JudgeVerdict<TValue> verdict, TValue settled,
-        ISettlementPolicy<TValue> policy, DateTimeOffset at)
+        ISettlementPolicy<TValue> policy, DateTimeOffset at, string? checkedByVersion = null)
     {
         ArgumentNullException.ThrowIfNull(shown);
         ArgumentException.ThrowIfNullOrWhiteSpace(checkedBy);
@@ -36,6 +37,7 @@ public static class PoolAnswers
             DecisionId = shown.DecisionId,
             TierId = shown.TierId,
             CheckedBy = checkedBy,
+            CheckedByVersion = checkedByVersion,
             ReviewerKey = reviewerKey,
             RespondedAt = at,
             Kind = verdict.Answered ? PoolResponseKind.Answered : PoolResponseKind.Skipped,
@@ -53,7 +55,7 @@ public static class PoolAnswers
     /// The response to record when the judge saw <paramref name="shown"/> and could not tell
     /// (<see cref="PoolResponseKind.Unsure"/>) — not a pass, which is the upper tier's failure, and no label.
     /// </summary>
-    public static PoolResponse Unsure(PoolPresentation shown, string checkedBy, string reviewerKey, DateTimeOffset at)
+    public static PoolResponse Unsure(PoolPresentation shown, string checkedBy, string reviewerKey, DateTimeOffset at, string? checkedByVersion = null)
     {
         ArgumentNullException.ThrowIfNull(shown);
         ArgumentException.ThrowIfNullOrWhiteSpace(checkedBy);
@@ -64,6 +66,7 @@ public static class PoolAnswers
             DecisionId = shown.DecisionId,
             TierId = shown.TierId,
             CheckedBy = checkedBy,
+            CheckedByVersion = checkedByVersion,
             ReviewerKey = reviewerKey,
             RespondedAt = at,
             Kind = PoolResponseKind.Unsure,

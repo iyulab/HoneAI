@@ -77,6 +77,9 @@ public sealed record RecheckRecord
     /// <summary>The tier that rechecked (the teacher).</summary>
     public string? CheckedBy { get; init; }
 
+    /// <summary>The version of the tier that rechecked, when known — what lets a ledger tell evidence taken from one teacher from evidence taken from its successor. Null on records written before it was kept.</summary>
+    public string? CheckedByVersion { get; init; }
+
     /// <summary>The checker did not see the settled answer. A recheck is blind by default.</summary>
     public bool Blind { get; init; } = true;
 }

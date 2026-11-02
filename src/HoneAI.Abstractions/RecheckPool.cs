@@ -139,6 +139,9 @@ public sealed record PoolResponse
     /// <summary>The tier that judged — the rung of people, say.</summary>
     public required string CheckedBy { get; init; }
 
+    /// <summary>The version of the tier that judged, when known (<see cref="RecheckRecord.CheckedByVersion"/>).</summary>
+    public string? CheckedByVersion { get; init; }
+
     /// <summary>Who judged within it — a pseudonymous key. Required for every purpose but a recheck.</summary>
     public string? ReviewerKey { get; init; }
 

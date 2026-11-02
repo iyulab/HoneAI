@@ -171,14 +171,14 @@ public static class PoolAnswerRouting
         // A judge who could not tell gave no judgment: nothing to pair, nothing to score — only the response, which the
         // pool counts as a reach.
         if (judgment.Kind == PoolResponseKind.Unsure)
-            return new() { Response = PoolAnswers.Unsure(shown, checker.Id, reviewerKey, at) };
+            return new() { Response = PoolAnswers.Unsure(shown, checker.Id, reviewerKey, at, checker.Version) };
 
         var verdict = judgment.Kind == PoolResponseKind.Answered
             ? JudgeVerdict<TValue>.Answer(judgment.Value!, judgedBy: reviewerKey)
             : JudgeVerdict<TValue>.Abstain(judgment.Reason ?? "passed", judgedBy: reviewerKey);
 
         // The settled answer is read for a recheck only; the other purposes have none.
-        var response = PoolAnswers.Response(shown, checker.Id, reviewerKey, verdict, basis.Settled!, policy, at);
+        var response = PoolAnswers.Response(shown, checker.Id, reviewerKey, verdict, basis.Settled!, policy, at, checker.Version);
         var result = PoolAnswers.Result(shown, checker, verdict, at);
         var routed = new RoutedAnswer<TValue> { Response = response, Result = result };
 
