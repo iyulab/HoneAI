@@ -45,6 +45,47 @@ public class RetrainPolicyTests
         Assert.False(Policy.Decide(some with { Stale = true, LastTrainedAt = Now.AddHours(-1) }, Now).Start);
     }
 
+
+    [Fact]
+    public void ARunTheGateWouldRefuseForWantOfHeldOutRows_IsNotStarted()
+    {
+        var gated = Policy with { MinimumEvaluationRows = 30 };
+        var plenty = new RetrainSignals { LastTrainedAt = Now.AddDays(-3), NewLabels = 500, NewEvaluationRows = 12 };
+
+        var refused = gated.Decide(plenty, Now);
+
+        Assert.False(refused.Start);
+        Assert.Contains("12 held-out rows", refused.Reason);
+        Assert.Contains("30", refused.Reason);
+        Assert.True(gated.Decide(plenty with { NewEvaluationRows = 30 }, Now).Start);
+        // Stale or demoted models are held to it too: the gate refuses them as it refuses any.
+        Assert.False(gated.Decide(plenty with { NewLabels = 12, Stale = true }, Now).Start);
+    }
+
+    [Fact]
+    public void WithoutAHeldOutMeasure_OrWithoutTheThreshold_NothingChanges()
+    {
+        var signals = new RetrainSignals { LastTrainedAt = Now.AddDays(-3), NewLabels = 500 };
+
+        Assert.True((Policy with { MinimumEvaluationRows = 30 }).Decide(signals, Now).Start);                      // not measured
+        Assert.True(Policy.Decide(signals with { NewEvaluationRows = 0 }, Now).Start);                              // no threshold
+        Assert.Equal(Policy.Decide(signals, Now), Policy.Decide(signals with { ConsecutiveRefusals = 3 }, Now));   // refusals are read only when asked
+    }
+
+    [Fact]
+    public void AfterTheGateRefusedTheLastRun_AStaleModelCanWaitForTheFullAmount()
+    {
+        var careful = Policy with { ShortcutsAfterRefusal = false };
+        var some = new RetrainSignals { LastTrainedAt = Now.AddDays(-3), NewLabels = 12, Stale = true, Demoted = true };
+
+        Assert.True(careful.Decide(some, Now).Start);                                          // never refused: the shortcut stands
+        var waiting = careful.Decide(some with { ConsecutiveRefusals = 2 }, Now);
+        Assert.False(waiting.Start);
+        Assert.Contains("refused the last 2 runs", waiting.Reason);
+        Assert.True(careful.Decide(some with { ConsecutiveRefusals = 2, NewLabels = 250 }, Now).Start);   // the full amount still starts one
+        Assert.True(Policy.Decide(some with { ConsecutiveRefusals = 2 }, Now).Start);          // default: as before
+    }
+
     [Fact]
     public void TheEffectiveSample_CountsEvenlyWeightedLabelsByTheirNumber_AndSkewedOnesForLess()
     {

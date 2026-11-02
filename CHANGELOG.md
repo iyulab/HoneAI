@@ -8,6 +8,7 @@ All notable changes to HoneAI are documented here. The format follows
 
 ### Added
 
+- **`RetrainPolicy` can read two more things, both off until asked.** `MinimumEvaluationRows` with `RetrainSignals.NewEvaluationRows`: a run the promotion gate would refuse for want of held-out rows (`EvidenceCriteria.MinimumRows`) is not started, however many labels there are to train on. `ShortcutsAfterRefusal = false` with `RetrainSignals.ConsecutiveRefusals`: once the gate has refused the last run, a stale or demoted model no longer retrains on any new label — the amount that just lost is not tried again — and waits for `MinimumNewLabels`. A signal that leaves the new fields unset, or a policy that leaves the new options at their defaults, decides exactly as before.
 - **`MLoopImagePredictionRequest.ScoreThreshold`** - ask an object-detection model for the boxes scoring at least a given value (MLoop 0.49+ `?scoreThreshold=`; above 0 and at most 1, validated before the request). `null` is the server's own operating point (0.5), as before. A detector trained by MLoop 0.49 keeps every box down to 0.05, so a judge that ranks or filters boxes itself can now see the lower-scoring ones; another task ignores the value and a server before 0.49 answers at 0.5.
 
 ### Changed

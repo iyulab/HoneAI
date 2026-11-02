@@ -19,6 +19,19 @@ public sealed record RetrainSignals
     /// </summary>
     public double NewLabels { get; init; }
 
+    /// <summary>
+    /// The held-out labels confirmed since the last run, as a count of rows — what the promotion gate will compare the new model
+    /// with the old one on (<c>EvidenceCriteria.MinimumRows</c>). <c>null</c> when the caller does not measure it, which skips the
+    /// policy's <see cref="RetrainPolicy.MinimumEvaluationRows"/> check.
+    /// </summary>
+    public double? NewEvaluationRows { get; init; }
+
+    /// <summary>
+    /// How many runs in a row the promotion gate has refused since the model last promoted (0 = the last run was promoted, or
+    /// there has been none). A refusal is evidence the data volume that was enough to start a run was not enough to win one.
+    /// </summary>
+    public int ConsecutiveRefusals { get; init; }
+
     /// <summary>The model's inputs or answers have moved (<c>StalenessWatch.Drifted</c>).</summary>
     public bool Stale { get; init; }
 
@@ -63,6 +76,20 @@ public sealed record RetrainPolicy
     /// <summary>Whether a demoted model retrains as soon as it has any new label. On by default.</summary>
     public bool OnDemotion { get; init; } = true;
 
+    /// <summary>
+    /// The held-out rows a run needs before it can win: set it to the promotion gate's minimum, and a run the gate would refuse
+    /// for want of rows is not started. 0 (the default) asks nothing, as does a signal that does not measure
+    /// <see cref="RetrainSignals.NewEvaluationRows"/>.
+    /// </summary>
+    public double MinimumEvaluationRows { get; init; }
+
+    /// <summary>
+    /// Whether the staleness and demotion shortcuts (retrain on any new label) still apply once the gate has refused the last run.
+    /// On by default, which leaves the policy as it was; off, a model whose last run was refused waits for
+    /// <see cref="MinimumNewLabels"/> like any other, rather than retraining on a handful of labels the gate has just shown to be too few.
+    /// </summary>
+    public bool ShortcutsAfterRefusal { get; init; } = true;
+
     /// <summary>Whether to start a run at <paramref name="now"/>.</summary>
     public RetrainDecision Decide(RetrainSignals signals, DateTimeOffset now)
     {
@@ -77,9 +104,14 @@ public sealed record RetrainPolicy
         if (signals.LastTrainedAt is { } last && now - last < MinimumInterval)
             return new(false, $"last trained {now - last:d\\.hh\\:mm} ago, under the minimum interval {MinimumInterval:d\\.hh\\:mm}");
 
+        if (MinimumEvaluationRows > 0 && signals.NewEvaluationRows is { } heldOut && heldOut < MinimumEvaluationRows)
+            return new(false, $"{heldOut:0.#} held-out rows, under the {MinimumEvaluationRows:0.#} a run needs to be compared with the model it would replace");
+
         var labels = $"{signals.NewLabels:0.#} new labels (effective)";
         if (signals.NewLabels >= MinimumNewLabels)
             return new(true, $"{labels}, at least {MinimumNewLabels:0.#}");
+        if (signals.ConsecutiveRefusals > 0 && !ShortcutsAfterRefusal)
+            return new(false, $"{labels}, under {MinimumNewLabels:0.#}; the gate refused the last {signals.ConsecutiveRefusals} run{(signals.ConsecutiveRefusals == 1 ? "" : "s")}, so a stale or demoted model waits for the full amount");
         if (signals.NewLabels > 0 && OnDemotion && signals.Demoted)
             return new(true, $"the model was demoted, and there are {labels}");
         if (signals.NewLabels > 0 && OnStaleness && signals.Stale)
