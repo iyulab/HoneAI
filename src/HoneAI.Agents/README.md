@@ -37,6 +37,7 @@ await foreach (var chunk in agent.RunStreamingAsync("이 프로젝트의 데이�
 ## Types
 
 - **`MloopAgent`** — wraps IronHive.Agent's `AgentLoop`; multi-turn history across `RunAsync`/`RunStreamingAsync`.
+- **`MloopToolPolicy`** + **`PolicedMloopToolProvider`** — opt-in limits on which mloop-mcp tools an agent is given and which arguments of those it may use. `MloopToolPolicy.WithoutTrainingOrPromotion` leaves out the tools that train a model or move production; `AllowOnly(...)` offers nothing else, also a tool added later; `ForbidArguments("mloop_promote", "force")` offers a tool without an argument in its schema and refuses a call that sets it anyway. Wrap the tool provider: `new PolicedMloopToolProvider(tools, MloopToolPolicy.WithoutTrainingOrPromotion)`. Without a policy every tool is offered, as before.
 - **`MloopAgentOptions`** — `ChatClient` + required `SystemPrompt` (persona), optional `ModelId`/`Temperature`/`MaxTokens`.
 - **`IMloopToolProvider`** / **`McpMloopToolProvider`** — connects mloop-mcp as an MCP stdio plugin and exposes its tools (fail-fast if zero tools).
 
