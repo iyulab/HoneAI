@@ -19,6 +19,19 @@ public static class TeacherLedger
     /// in <paramref name="sliceKey"/> or across all slices when it is null, for one judge within the tier
     /// (<paramref name="judgedBy"/> — a person on a rung of people) or every judge of it pooled when that is null.
     /// </summary>
+    /// <param name="records">The plant records to count.</param>
+    /// <param name="tierId">The teacher.</param>
+    /// <param name="from">Start of the window, inclusive.</param>
+    /// <param name="to">End of the window, exclusive.</param>
+    /// <param name="sliceKey">The slice, or null for all of them.</param>
+    /// <param name="confidence">Confidence of the recall bounds.</param>
+    /// <param name="judgedBy">One judge within the tier, or null for every judge pooled.</param>
+    /// <param name="tierVersion">
+    /// The teacher's version, or null for every version pooled. A window that spans a version change counts the old version's
+    /// plants as the new one's when pooled (<see cref="TeacherVersions.Changed"/> says when it does): the new version would
+    /// qualify, or be shown unqualified, on evidence it did not produce. Give the version that teaches now to measure that one;
+    /// a record that never kept its version (written before it was kept) belongs to no named version.
+    /// </param>
     public static TeacherCell Compute(
         IEnumerable<PlantRecord> records,
         string tierId,
@@ -26,7 +39,8 @@ public static class TeacherLedger
         DateTimeOffset to,
         string? sliceKey = null,
         double confidence = TrustLedger.DefaultConfidence,
-        string? judgedBy = null)
+        string? judgedBy = null,
+        string? tierVersion = null)
     {
         ArgumentNullException.ThrowIfNull(records);
         if (confidence is <= 0 or >= 1)
@@ -34,7 +48,8 @@ public static class TeacherLedger
 
         var window = records
             .Where(r => r.TierId == tierId && r.JudgedAt >= from && r.JudgedAt < to
-                && (sliceKey is null || r.SliceKey == sliceKey) && (judgedBy is null || r.JudgedBy == judgedBy))
+                && (sliceKey is null || r.SliceKey == sliceKey) && (judgedBy is null || r.JudgedBy == judgedBy)
+                && (tierVersion is null || string.Equals(r.TierVersion, tierVersion, StringComparison.Ordinal)))
             .ToList();
         var alpha = 1 - confidence;
 
@@ -52,6 +67,7 @@ public static class TeacherLedger
             TierId = tierId,
             JudgedBy = judgedBy,
             SliceKey = sliceKey,
+            TierVersion = tierVersion,
             WindowStart = from,
             WindowEnd = to,
             Plants = window.Count,

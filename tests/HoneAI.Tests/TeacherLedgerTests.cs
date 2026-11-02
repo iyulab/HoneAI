@@ -28,6 +28,42 @@ public class TeacherLedgerTests
             AnsweredMustCatch = answeredMustCatch,
         };
 
+    private static PlantRecord Versioned(string id, string? version, bool caught)
+        => Plant(id, true, caught ? PlantOutcome.Correct : PlantOutcome.Wrong, caught) with { TierVersion = version };
+
+    // After a version change the teacher that teaches is the new one. Pooled, the cell counts the old version's plants as its own.
+    [Fact]
+    public void TheCell_OfOneVersion_DoesNotCarryTheOtherVersionsRecall()
+    {
+        var records = new List<PlantRecord>();
+        for (var i = 0; i < 200; i++) records.Add(Versioned($"old{i}", "v1", caught: true));          // the old version caught every one
+        for (var i = 0; i < 20; i++) records.Add(Versioned($"new{i}", "v2", caught: i < 8));         // the new one catches 8 of 20
+
+        var pooled = TeacherLedger.Compute(records, "teacher", Now.AddDays(-1), Now);
+        var current = TeacherLedger.Compute(records, "teacher", Now.AddDays(-1), Now, tierVersion: "v2");
+        var previous = TeacherLedger.Compute(records, "teacher", Now.AddDays(-1), Now, tierVersion: "v1");
+
+        Assert.Null(pooled.TierVersion);
+        Assert.Equal(220, pooled.MustCatchPlants);
+        Assert.Equal("v2", current.TierVersion);
+        Assert.Equal(20, current.MustCatchPlants);
+        Assert.Equal(8, current.MustCatchCaught);
+        Assert.Equal(200, previous.MustCatchPlants);
+        // The pooled cell qualifies the new version on the old version's evidence; its own cell does not.
+        Assert.True(TeacherLedger.Qualifies(pooled, 0.8));
+        Assert.False(TeacherLedger.Qualifies(current, 0.8));
+        Assert.True(TeacherLedger.Disqualifies(current, 0.8, 0.05));
+    }
+
+    [Fact]
+    public void ARecordThatNeverKeptItsVersion_BelongsToNoNamedVersion()
+    {
+        var records = new List<PlantRecord> { Versioned("a", null, true), Versioned("b", "v2", true) };
+
+        Assert.Equal(1, TeacherLedger.Compute(records, "teacher", Now.AddDays(-1), Now, tierVersion: "v2").Plants);
+        Assert.Equal(2, TeacherLedger.Compute(records, "teacher", Now.AddDays(-1), Now).Plants);   // pooled: every record counts
+    }
+
     [Theory]
     [InlineData(0, 10, 0.0)]
     [InlineData(10, 10, 0.7411344)]   // α^(1/n)

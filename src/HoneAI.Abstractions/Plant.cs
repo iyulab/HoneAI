@@ -88,6 +88,12 @@ public sealed record TeacherCell
     /// <summary>The slice the cell is restricted to; null for all of them.</summary>
     public string? SliceKey { get; init; }
 
+    /// <summary>
+    /// The version of the teacher the cell is restricted to; null for every version pooled — which, across a version change,
+    /// counts the old version's plants as the new one's.
+    /// </summary>
+    public string? TierVersion { get; init; }
+
     /// <summary>Start of the window the cell covers.</summary>
     public required DateTimeOffset WindowStart { get; init; }
     /// <summary>End of the window the cell covers.</summary>
