@@ -18,41 +18,19 @@ public class SeatDecisionLedgerTests
     private static readonly DateTimeOffset Start = new(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset End = Start.AddDays(7);
 
-    private enum Review { Approved, Corrected, Rejected, Unanswered }
-
-    /// <summary>What a consumer records of one seat decision.</summary>
-    private sealed record SeatDecision(
-        AgentRole Role, string Task, string SeatVersion, string Id, DateTimeOffset At,
-        Review Result, double ReviewProbability, bool ReviewedBlind = true, bool HardToReverse = false);
-
-    private static string TierOf(AgentRole role) => $"seat:{role}";
-
-    /// <summary>The mapping under test: seat → tier, task → slice, approval → agreement.</summary>
-    private static RecheckRecord ToRecord(SeatDecision d) => new()
-    {
-        DecisionId = d.Id,
-        TierId = TierOf(d.Role),
-        SliceKey = d.Task,
-        DecidedAt = d.At,
-        Probability = d.ReviewProbability,
-        SnapshotVersion = d.SeatVersion,
-        Outcome = d.Result switch
-        {
-            Review.Approved => RecheckOutcome.Agreed,
-            Review.Unanswered => RecheckOutcome.UpperFailed,
-            _ => RecheckOutcome.Disagreed,
-        },
-        // A decision that cannot be undone, which the person says the seat should have proposed instead of carrying out.
-        UpperMustCatch = d.HardToReverse && d.Result == Review.Rejected,
-        CheckedBy = "person",
-        Blind = d.ReviewedBlind,
-    };
-
     private static IEnumerable<SeatDecision> Decisions(
         AgentRole role, string task, int count, int notApproved, string version = "v1", double probability = 0.5, bool blind = true)
-        => Enumerable.Range(0, count).Select(i => new SeatDecision(
-            role, task, version, $"{role}-{task}-{version}-{i}", Start.AddMinutes(i * 20), i < notApproved ? Review.Corrected : Review.Approved,
-            probability, blind));
+        => Enumerable.Range(0, count).Select(i => new SeatDecision
+        {
+            Role = role,
+            Task = task,
+            SeatVersion = version,
+            DecisionId = $"{role}-{task}-{version}-{i}",
+            DecidedAt = Start.AddMinutes(i * 20),
+            Review = i < notApproved ? SeatReview.Corrected : SeatReview.Approved,
+            ReviewProbability = probability,
+            ReviewedBlind = blind,
+        });
 
     private static readonly LifecyclePolicy Policy = new()
     {
@@ -73,7 +51,7 @@ public class SeatDecisionLedgerTests
     };
 
     private static LedgerCell CellOf(IEnumerable<SeatDecision> decisions, AgentRole role, string task, int caught = 20, double confidence = 0.95)
-        => TrustLedger.Compute(decisions.Select(ToRecord), TierOf(role), task, Start, End, caught, confidence);
+        => TrustLedger.Compute(decisions.Select(SeatDecisionRecords.From), SeatDecisionRecords.TierOf(role), task, Start, End, caught, confidence);
 
     [Fact]
     public void ReviewsOfASeat_FillACellPerSeatAndPerTask_NotOneForAll()
@@ -97,7 +75,7 @@ public class SeatDecisionLedgerTests
     public void AnUnansweredReview_IsNotDropped_ItCountsAgainstTheSeat()
     {
         var records = Decisions(AgentRole.Translator, "tabular", 200, 0)
-            .Select(d => d.Id.EndsWith("-0") || d.Id.EndsWith("-1") || d.Id.EndsWith("-2") ? d with { Result = Review.Unanswered } : d)
+            .Select(d => d.DecisionId.EndsWith("-0") || d.DecisionId.EndsWith("-1") || d.DecisionId.EndsWith("-2") ? d with { Review = SeatReview.Unanswered } : d)
             .ToList();
 
         var cell = CellOf(records, AgentRole.Translator, "tabular");
@@ -141,7 +119,7 @@ public class SeatDecisionLedgerTests
         Assert.False(step.Moved);
 
         // The same seat with a share of its reviews decided before the person saw the proposal is measured on those.
-        var mixed = shown.Take(300).Concat(Decisions(AgentRole.Translator, "tabular", 120, 6, version: "v1", blind: true).Select(d => d with { Id = "b-" + d.Id }));
+        var mixed = shown.Take(300).Concat(Decisions(AgentRole.Translator, "tabular", 120, 6, version: "v1", blind: true).Select(d => d with { DecisionId = "b-" + d.DecisionId }));
         var measured = CellOf(mixed, AgentRole.Translator, "tabular");
         Assert.Equal(120, measured.Rechecks);
     }
@@ -174,7 +152,7 @@ public class SeatDecisionLedgerTests
     public void ARejectedDecisionThatCouldNotBeUndone_IsAMissInTheCell()
     {
         var records = Decisions(AgentRole.Orchestrator, "tabular", 200, 0).ToList();
-        records[10] = records[10] with { Result = Review.Rejected, HardToReverse = true };
+        records[10] = records[10] with { Review = SeatReview.Rejected, HardToReverse = true };
 
         var cell = CellOf(records, AgentRole.Orchestrator, "tabular", caught: 5);
 
