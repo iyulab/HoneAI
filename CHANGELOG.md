@@ -20,6 +20,7 @@ All notable changes to HoneAI are documented here. The format follows
 
 ### Changed
 
+- `HoneAI.Agents` depends on `IronHive.Agent` 0.81.0 (was 0.77.0).
 - **The trust ledger counts only the rechecks whose checker did not see the answer it checks.** `RecheckRecord.Blind` was set (a recheck is blind by default, and `RecheckRecords.From` refuses a shown one) but `TrustLedger.Compute` never read it, so a record stored with `Blind = false` — a person approving a proposal in front of them, say — counted as agreement. A checker who saw the answer agrees with it more often than one who decided alone, and release is judged on the agreement the checker reached alone. Every record HoneAI itself makes is blind, so nothing it produces changes; a consumer that stores shown reviews in the same store now sees them left out of the cell, not counted as evidence.
 
 ## [0.16.0] - 2026-11-02
