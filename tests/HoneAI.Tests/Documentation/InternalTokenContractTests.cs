@@ -63,7 +63,7 @@ public class InternalTokenContractTests
         new(@"\b[A-Za-z0-9]+-umbrella\b|\bumbrella (?:policy|repo(?:sitory)?|CLAUDE)\b", RegexOptions.Compiled);
 
     /// <summary>
-    /// A sequence number of a private data collection ("SEQ020"): it names a dataset only the team holds, so a
+    /// A sequence number of a private data collection ("SEQ000"): it names a dataset only the team holds, so a
     /// reader cannot look it up, and which collection it came from is itself the thing not to publish.
     /// </summary>
     private static readonly Regex DatasetSequenceId =
@@ -141,9 +141,9 @@ public class InternalTokenContractTests
     [InlineData("found during sprint-35", true, "sprint id")]
     [InlineData(@"open D:\data\project", true, "absolute path on one machine")]
     [InlineData("tracked in claudedocs/plans", true, "private working tree")]
-    [InlineData("kept in the mloop-umbrella repo", true, "private workspace repository name")]
+    [InlineData("kept in the acme-umbrella repo", true, "private workspace repository name")]
     [InlineData("see the umbrella policy for the cadence", true, "pointer at the private workspace's policy")]
-    [InlineData("seen on SEQ020 at 50K rows", true, "private data collection id")]
+    [InlineData("seen on SEQ000 at 50K rows", true, "private data collection id")]
     [InlineData("an umbrella package that pulls the others in", false, "the ordinary word")]
     [InlineData("a SEQUENCE of 12 steps", false, "an ordinary word that starts with the letters")]
     [InlineData("the design is in dev-docs/HoneAI", true, "private design tree")]
@@ -178,7 +178,7 @@ public class InternalTokenContractTests
 
     [Theory]
     [InlineData(".gitignore", "claudedocs/", false, "an ignore pattern that keeps a private tree out of a clone")]
-    [InlineData(".gitignore", "# the notes live in the mloop-umbrella repo", true, "an ignore file's comment is prose")]
+    [InlineData(".gitignore", "# the notes live in the acme-umbrella repo", true, "an ignore file's comment is prose")]
     [InlineData("docs/guide.md", "claudedocs/", true, "the same text in a document")]
     public void IgnoreFilePatternsAreExemptAndItsCommentsAreNot(string path, string line, bool isInternal, string what)
     {
