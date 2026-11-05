@@ -114,12 +114,13 @@ public sealed record LatentTruthEstimate<TValue> where TValue : notnull
 /// estimate would report whichever the starting point chose. <see cref="Estimate{TValue}"/> refuses that case.
 /// <para>
 /// Identified is not the same as reliable. When some judges answer nearly every item and share a lean, and the judge
-/// being measured answers only a small share of the items, the dense block decides the solution: a judge's estimated
-/// accuracy then tracks its agreement with the shared answer, so a judge that leans the other way can come out best
-/// (measured on simulated grades: with no known items and a tenth of the items answered, the leaning judge ranked
-/// first). Known items anchor the estimate, but how many it takes depends on how strongly the dense judges agree —
-/// compare the estimate with the plain share of known items each judge gets right before relying on it, and measure
-/// both on a simulation shaped like the real data.
+/// being measured answers only a small share of the items, the dense block decides the solution if nothing is known:
+/// a judge's estimated accuracy then tracks its agreement with the shared answer, so a judge that leans the other way
+/// can come out best (on simulated grades, with no known items and one item in thirty answered, the leaning judge
+/// ranked first in every run tried). Known items prevent that — the estimate starts from judges fitted on them — and
+/// ranked the leaning judge worst in 19 to 20 of 20 runs in every setting tried, with as few as 5 known items 17 to 19.
+/// The accuracies themselves were less exact than the plain share of known items each judge answers right, so compare
+/// the two before relying on a figure, and measure both on a simulation shaped like the real data.
 /// </para>
 /// </remarks>
 [Experimental(DiagnosticId)]
@@ -201,24 +202,25 @@ public static class LatentTruth
 
         var prior = new double[k];
         var confusion = new double[judges.Count, k, k];
-        var iterations = 0;
-        var converged = false;
-        double moved = 0;
-        while (iterations < options.MaxIterations)
-        {
-            iterations++;
 
-            // M-step: class prior and each judge's confusion from the current posteriors.
+        // M-step: the class prior and each judge's confusion from the posteriors of the items in use.
+        void Fit(Func<int, bool> use)
+        {
+            var count = 0;
+            for (var i = 0; i < n; i++)
+                if (use(i)) count++;
             for (var c = 0; c < k; c++)
             {
                 double mass = 0;
-                for (var i = 0; i < n; i++) mass += t[i, c];
-                prior[c] = (mass + options.Smoothing) / (n + options.Smoothing * k);
+                for (var i = 0; i < n; i++)
+                    if (use(i)) mass += t[i, c];
+                prior[c] = (mass + options.Smoothing) / (count + options.Smoothing * k);
             }
             Array.Clear(confusion);
             foreach (var (item, judge, answer) in answers)
-                for (var c = 0; c < k; c++)
-                    confusion[judge, c, answer] += t[item, c];
+                if (use(item))
+                    for (var c = 0; c < k; c++)
+                        confusion[judge, c, answer] += t[item, c];
             for (var j = 0; j < judges.Count; j++)
                 for (var c = 0; c < k; c++)
                 {
@@ -226,18 +228,25 @@ public static class LatentTruth
                     for (var a = 0; a < k; a++) row += confusion[j, c, a] += options.Smoothing;
                     for (var a = 0; a < k; a++) confusion[j, c, a] /= row;
                 }
+        }
 
-            // E-step: each unknown item's posterior from the prior and what its judges answered.
-            moved = 0;
+        // E-step: each unknown item's posterior from the prior and what its judges answered; returns the largest change
+        // of any posterior. With `readable`, only those judges are read and an item none of them answered keeps what it has.
+        double Infer(bool[]? readable)
+        {
+            double change = 0;
             var log = new double[k];
             for (var i = 0; i < n; i++)
             {
                 if (clamped.ContainsKey(i))
                     continue;
+                var mine = (byItem.GetValueOrDefault(i) ?? []).Where(a => readable is null || readable[a.Judge]).ToList();
+                if (readable is not null && mine.Count == 0)
+                    continue;
                 for (var c = 0; c < k; c++)
                 {
                     log[c] = Math.Log(prior[c]);
-                    foreach (var (_, judge, answer) in byItem.GetValueOrDefault(i) ?? [])
+                    foreach (var (_, judge, answer) in mine)
                         log[c] += Math.Log(confusion[judge, c, answer]);
                 }
                 var max = log.Max();
@@ -246,10 +255,40 @@ public static class LatentTruth
                 for (var c = 0; c < k; c++)
                 {
                     var next = Math.Exp(log[c] - max) / sum;
-                    moved = Math.Max(moved, Math.Abs(next - t[i, c]));
+                    change = Math.Max(change, Math.Abs(next - t[i, c]));
                     t[i, c] = next;
                 }
             }
+            return change;
+        }
+
+        // With items of known truth, the others are first read through the judges that answered some of them, fitted on
+        // those items alone. Started from the vote share, judges that answer nearly everything and share a lean begin
+        // as the truth, and a handful of known items cannot pull the estimate out of that. On simulated grades (three
+        // dense judges sharing a lean, four sparse judges, one of them leaning), the leaning judge came out worst in
+        // 6 to 11 of 20 runs from the vote share (18 in one setting) and in 19 to 20 from the known items, in all nine
+        // settings; with only 5 known items, 17 to 19 of 20 against 0. Without known items nothing changes.
+        if (clamped.Count > 0)
+        {
+            var anchored = new bool[judges.Count];
+            foreach (var (item, judge, _) in answers)
+                if (clamped.ContainsKey(item))
+                    anchored[judge] = true;
+            if (anchored.Any(a => a))
+            {
+                Fit(clamped.ContainsKey);
+                Infer(anchored);
+            }
+        }
+
+        var iterations = 0;
+        var converged = false;
+        double moved = 0;
+        while (iterations < options.MaxIterations)
+        {
+            iterations++;
+            Fit(_ => true);
+            moved = Infer(null);
             if (moved <= options.Tolerance)
             {
                 converged = true;

@@ -130,10 +130,11 @@ public class LatentTruthTests
     // 3,000 items graded 0–4. Three dense judges that answer every item, lean one grade down and copy the first one's
     // answer half the time; four sparse judges (300 items each, 15 of them from a pool of 200 items of known grade).
     // Fixed seed: the estimate needs 287 rounds here — more than the 200 that used to be the default.
-    private static (List<JudgeLabel<int>> Labels, Dictionary<string, int> Known) SlowTailWorld()
+    private static (List<JudgeLabel<int>> Labels, Dictionary<string, int> Known) SlowTailWorld(
+        int seed = 4, int sparse = 300, int planted = 15)
     {
-        const int items = 3000, grades = 5, sparse = 300, planted = 15;
-        var random = new Random(4);
+        const int items = 3000, grades = 5;
+        var random = new Random(seed);
         int Clamp(int g) => Math.Max(0, Math.Min(grades - 1, g));
         var truth = Enumerable.Range(0, items).Select(_ => random.Next(grades)).ToArray();
         var labels = new List<JudgeLabel<int>>();
@@ -182,6 +183,39 @@ public class LatentTruthTests
             var early = cutOff.Judges.Single(j => j.Judge == judge.Judge);
             Assert.InRange(Math.Abs(early.Accuracy - judge.Accuracy), 0, 0.01);
         }
+    }
+
+    [Fact]
+    public void KnownItems_PullTheEstimateOutOfADenseBlockThatSharesALean()
+    {
+        // Three judges answer every item and lean one grade down together; four others answer 100 items each, 10 of them
+        // from a pool of 200 known ones, and one of the four leans the same way. Read from the vote share the dense
+        // block begins as the truth and the leaning judge, which agrees with the block, mostly does not come out worst;
+        // read through the known items first it does, which it is.
+        var classes = Enumerable.Range(0, 5).ToList();
+        var worst = 0;
+        for (var seed = 1; seed <= 10; seed++)
+        {
+            var (labels, known) = SlowTailWorld(seed, sparse: 100, planted: 10);
+            var estimate = LatentTruth.Estimate(labels, classes, known);
+            var humans = estimate.Judges.Where(j => j.Judge.TierId == "human").OrderBy(j => j.Accuracy).ToList();
+            if (humans[0].Judge.JudgedBy == "leaning")
+                worst++;
+        }
+        Assert.True(worst >= 9, $"the leaning judge came out worst in {worst} of 10 runs");
+    }
+
+    [Fact]
+    public void AKnownItemNobodyAnswered_LeavesTheStartAsItWas()
+    {
+        var (labels, truth) = World();
+
+        var estimate = LatentTruth.Estimate(labels, Classes, new Dictionary<string, string> { ["unseen"] = "ok" });
+
+        Assert.True(estimate.Converged);
+        var right = estimate.Items.Where(i => i.ItemId != "unseen").Count(item => item.MostLikely == truth[item.ItemId]);
+        Assert.True(right >= 285, $"{right} of 300 recovered");
+        Assert.True(estimate.Items.Single(i => i.ItemId == "unseen").Known);
     }
 
     [Fact]

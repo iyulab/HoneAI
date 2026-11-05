@@ -123,7 +123,8 @@ A tier earns the right to settle a slice from rechecks, not from its own confide
    holding planted or consensus items at their known truth. It runs only where it is identified — three or
    more judges, or some known items — and refuses otherwise. Being identified is not being reliable: when some
    judges answer nearly everything and agree among themselves, a judge that answers few items is measured
-   against that block, so compare with the plain share of known items it gets right (see the remarks on
+   against that block unless items of known truth anchor the estimate (it starts from them), and even then the
+   plain share of known items each judge gets right is the closer figure to compare with (see the remarks on
    `LatentTruth`). `LatentTruthEstimate.FinalMovement` says how far from still a run that hit its round limit was.
    `LedgerShrinkage.Agreement` lets a slice with few rechecks borrow strength from the slices like it (slice →
    your group → every slice, empirical Bayes), as far as they are alike. It orders and reports — which small
