@@ -16,8 +16,13 @@ public sealed record JudgeLabel<TValue>(string ItemId, JudgeIdentity Judge, TVal
 [Experimental(LatentTruth.DiagnosticId)]
 public sealed record LatentTruthOptions
 {
-    /// <summary>The most EM rounds. 200 by default.</summary>
-    public int MaxIterations { get; init; } = 200;
+    /// <summary>
+    /// The most EM rounds. 2000 by default. Expectation–maximisation can creep for a long while after the estimate
+    /// has stopped changing in any way that matters; a few hundred rounds were needed on inputs of ~10,000 labels
+    /// where a judge's answers were sparse and the others' were correlated. A run stops as soon as it has converged,
+    /// so the limit costs time only when it is reached.
+    /// </summary>
+    public int MaxIterations { get; init; } = 2000;
 
     /// <summary>Stop once no item's posterior moves by more than this in a round. 1e-6 by default.</summary>
     public double Tolerance { get; init; } = 1e-6;
@@ -84,6 +89,17 @@ public sealed record LatentTruthEstimate<TValue> where TValue : notnull
 
     /// <summary>The posteriors stopped moving within <see cref="LatentTruthOptions.Tolerance"/> before the round limit.</summary>
     public required bool Converged { get; init; }
+
+    /// <summary>
+    /// The largest change of any unknown item's posterior in the last round. At most
+    /// <see cref="LatentTruthOptions.Tolerance"/> exactly when <see cref="Converged"/>. When not converged it says how
+    /// far from still the item posteriors were when the round limit cut the run off. It is a measure of the
+    /// posteriors, not of the judges: on a slow tail a single item can still move by a few percent while every
+    /// judge's accuracy has long stopped changing in the third decimal. Rerun with a larger
+    /// <see cref="LatentTruthOptions.MaxIterations"/> to see whether the figure you rely on moves. 0 when every item's
+    /// truth is known.
+    /// </summary>
+    public required double FinalMovement { get; init; }
 }
 
 /// <summary>
@@ -96,6 +112,15 @@ public sealed record LatentTruthEstimate<TValue> where TValue : notnull
 /// It is identified only with three or more judges, or with items whose truth is known (planted items, consensus):
 /// with two judges and nothing known, «both right» and «both wrong the same way» fit the answers equally, and the
 /// estimate would report whichever the starting point chose. <see cref="Estimate{TValue}"/> refuses that case.
+/// <para>
+/// Identified is not the same as reliable. When some judges answer nearly every item and share a lean, and the judge
+/// being measured answers only a small share of the items, the dense block decides the solution: a judge's estimated
+/// accuracy then tracks its agreement with the shared answer, so a judge that leans the other way can come out best
+/// (measured on simulated grades: with no known items and a tenth of the items answered, the leaning judge ranked
+/// first). Known items anchor the estimate, but how many it takes depends on how strongly the dense judges agree —
+/// compare the estimate with the plain share of known items each judge gets right before relying on it, and measure
+/// both on a simulation shaped like the real data.
+/// </para>
 /// </remarks>
 [Experimental(DiagnosticId)]
 public static class LatentTruth
@@ -178,6 +203,7 @@ public static class LatentTruth
         var confusion = new double[judges.Count, k, k];
         var iterations = 0;
         var converged = false;
+        double moved = 0;
         while (iterations < options.MaxIterations)
         {
             iterations++;
@@ -202,7 +228,7 @@ public static class LatentTruth
                 }
 
             // E-step: each unknown item's posterior from the prior and what its judges answered.
-            double moved = 0;
+            moved = 0;
             var log = new double[k];
             for (var i = 0; i < n; i++)
             {
@@ -259,6 +285,7 @@ public static class LatentTruth
             }).ToList(),
             Iterations = iterations,
             Converged = converged,
+            FinalMovement = moved,
         };
     }
 }

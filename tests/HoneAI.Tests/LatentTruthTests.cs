@@ -127,6 +127,76 @@ public class LatentTruthTests
             new Dictionary<string, string> { ["d1"] = "ok" }));
     }
 
+    // 3,000 items graded 0–4. Three dense judges that answer every item, lean one grade down and copy the first one's
+    // answer half the time; four sparse judges (300 items each, 15 of them from a pool of 200 items of known grade).
+    // Fixed seed: the estimate needs 287 rounds here — more than the 200 that used to be the default.
+    private static (List<JudgeLabel<int>> Labels, Dictionary<string, int> Known) SlowTailWorld()
+    {
+        const int items = 3000, grades = 5, sparse = 300, planted = 15;
+        var random = new Random(4);
+        int Clamp(int g) => Math.Max(0, Math.Min(grades - 1, g));
+        var truth = Enumerable.Range(0, items).Select(_ => random.Next(grades)).ToArray();
+        var labels = new List<JudgeLabel<int>>();
+        var dense = Enumerable.Range(0, 3).Select(i => new JudgeIdentity("teacher", $"t{i}")).ToArray();
+        var first = new int[items];
+        for (var i = 0; i < items; i++)
+            for (var t = 0; t < 3; t++)
+            {
+                var answer = t > 0 && random.NextDouble() < 0.5
+                    ? first[i]
+                    : random.NextDouble() < 0.15 ? random.Next(grades) : Clamp(truth[i] - 1);
+                if (t == 0) first[i] = answer;
+                labels.Add(new($"i{i}", dense[t], answer));
+            }
+        foreach (var (name, accuracy, lean) in new[] { ("good", 0.95, 0), ("avg", 0.85, 0), ("erratic", 0.70, 0), ("leaning", 0.95, -1) })
+        {
+            var judge = new JudgeIdentity("human", name);
+            var mine = Enumerable.Range(0, 200).OrderBy(_ => random.Next()).Take(planted)
+                .Concat(Enumerable.Range(200, items - 200).OrderBy(_ => random.Next()).Take(sparse - planted))
+                .ToList();   // drawn now, so the order of random numbers does not depend on when it is enumerated
+            foreach (var i in mine)
+                labels.Add(new($"i{i}", judge, random.NextDouble() < accuracy ? Clamp(truth[i] + lean) : random.Next(grades)));
+        }
+        return (labels, Enumerable.Range(0, 200).ToDictionary(i => $"i{i}", i => truth[i]));
+    }
+
+    [Fact]
+    public void ASlowTail_IsNamedForWhatItIs_NotJustFlaggedUnconverged()
+    {
+        var (labels, known) = SlowTailWorld();
+        var classes = Enumerable.Range(0, 5).ToList();
+        var options = new LatentTruthOptions();
+
+        var cutOff = LatentTruth.Estimate(labels, classes, known, options with { MaxIterations = 200 });
+        var complete = LatentTruth.Estimate(labels, classes, known);
+
+        Assert.False(cutOff.Converged);
+        Assert.True(cutOff.FinalMovement > options.Tolerance, $"{cutOff.FinalMovement}");
+        Assert.True(complete.Converged);
+        Assert.True(complete.FinalMovement <= options.Tolerance, $"{complete.FinalMovement}");
+        Assert.InRange(complete.Iterations, 201, options.MaxIterations);
+
+        // The judges' figures had already settled when the short run stopped.
+        foreach (var judge in complete.Judges)
+        {
+            var early = cutOff.Judges.Single(j => j.Judge == judge.Judge);
+            Assert.InRange(Math.Abs(early.Accuracy - judge.Accuracy), 0, 0.01);
+        }
+    }
+
+    [Fact]
+    public void WhenEveryItemIsKnown_NothingMoves()
+    {
+        var a = new JudgeIdentity("a");
+        var known = new Dictionary<string, string> { ["d1"] = "ok", ["d2"] = "danger" };
+
+        var estimate = LatentTruth.Estimate(
+            [new("d1", a, "ok"), new("d2", a, "danger")], Classes, known);
+
+        Assert.True(estimate.Converged);
+        Assert.Equal(0, estimate.FinalMovement);
+    }
+
     [Fact]
     public void TheSurface_IsMarkedExperimental()
     {
