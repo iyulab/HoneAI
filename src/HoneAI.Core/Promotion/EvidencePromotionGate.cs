@@ -38,7 +38,13 @@ public sealed record EvidenceCriteria
     /// </summary>
     public IReadOnlyCollection<string>? MustCatch { get; init; }
 
-    /// <summary>How far under production's must-catch recall the candidate's may be.</summary>
+    /// <summary>
+    /// How far under production's must-catch recall the candidate's may be. The two recalls are compared as numbers against
+    /// this fixed margin - unlike <see cref="Margin"/>, no interval stands behind the comparison. A recall over n must-catch
+    /// rows carries a standard error of about sqrt(r(1 - r) / n) (0.02 at recall 0.8 and 430 rows), so a margin under that
+    /// is under the noise: two models of equal quality are then refused or promoted by chance. Choose it from the number of
+    /// must-catch rows the held-out labels hold, not from the size of loss that would matter.
+    /// </summary>
     public double MustCatchRecallMargin { get; init; }
 }
 
