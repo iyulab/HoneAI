@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-09
+
 ### Added
 
 - **A teacher's standing can be measured for one version of it.** `TeacherLedger.Compute` takes an optional `tierVersion` and the cell it returns names it (`TeacherCell.TierVersion`). Without it a cell pools every version the tier's plants were judged under, so a window that spans a version change counted the old version's plants as the new one's: with 200 plants the old version caught and 20 of which the new one caught 8, the pooled cell qualified the new version at a floor of 0.8 while its own cell did not (and showed it unqualified). A record written before versions were kept belongs to no named version. Nothing changes for a caller that does not pass it.
