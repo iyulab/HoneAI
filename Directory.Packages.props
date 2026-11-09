@@ -9,10 +9,10 @@
     <!-- HoneAI.Agents only: the IronHive.Agent engine, M.E.AI function invocation and logging.
          HoneAI.Abstractions stays dependency-free and HoneAI.Core takes none of these
          (ImportBoundaryTests). -->
-    <PackageVersion Include="IronHive.Agent" Version="0.81.0" />
+    <PackageVersion Include="IronHive.Agent" Version="0.82.0" />
     <PackageVersion Include="Microsoft.Extensions.AI" Version="10.11.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
     <!-- Test stack -->
-    <PackageVersion Include="xunit.v3.mtp-v2" Version="4.0.2" />
+    <PackageVersion Include="xunit.v3.mtp-v2" Version="4.0.3" />
   </ItemGroup>
 </Project>
