@@ -416,6 +416,25 @@ public class HttpMLoopClientTests
         Assert.Contains("\"promote\":false", handler.LastBody);
     }
 
+    // An image task has no label column to name (the label is the folder): a null label was sent as "" and read by the server as a
+    // column named «», which failed every image-task run. Unset is absent, like the other optional fields.
+    [Fact]
+    public async Task Train_LeavesTheLabelAndTheTaskOut_WhenTheyAreNotSet()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.Accepted, """{ "jobId": "job-1" }"""));
+        var client = Client(handler);
+
+        await client.TrainAsync(new MLoopTrainRequest("datasets/images", Label: null, Task: null, Model: "vision"));
+
+        Assert.DoesNotContain("labelColumn", handler.LastBody);
+        Assert.DoesNotContain("\"task\"", handler.LastBody);
+        Assert.Contains("\"dataFile\":\"datasets/images\"", handler.LastBody);
+
+        await client.TrainAsync(new MLoopTrainRequest("datasets/images", Label: "  ", Task: "image-classification"));
+        Assert.DoesNotContain("labelColumn", handler.LastBody);
+        Assert.Contains("\"task\":\"image-classification\"", handler.LastBody);
+    }
+
     [Fact]
     public async Task Train_ForwardsBalanceBudgetMetricSplitAndRows_OnlyWhenSet()
     {

@@ -10,6 +10,11 @@ All notable changes to HoneAI are documented here. The format follows
 
 - **`HoneAI.Agents` builds on `IronHive.Agent` 0.82.0** (was 0.81.0). No API of this package changed; a consumer that pins `IronHive.Agent` itself moves to the same version.
 
+### Fixed
+
+- **`IMLoopClient.TrainAsync` leaves `labelColumn` and `task` out of the request when `MLoopTrainRequest.Label` / `Task` are not set.** They were sent as empty strings, which `mloop serve` read as a column named «» — every image-task run failed with `Could not find input column ''`. An unset field is absent, like the request's other optional fields, and the project's `mloop.yaml` (then the task) decides.
+- **A training that is still queued or running when `ModelLifecycle`'s polls run out leaves the run `running` instead of `failed`.** `ResumeAsync` polls the recorded job again, as its documentation says; a training behind a worker that takes longer than `maxPolls` × the poll delay could not be resumed. A job that failed, or that MLoop no longer knows, still ends the run as `failed`.
+
 ## [0.17.0] - 2026-11-09
 
 ### Added

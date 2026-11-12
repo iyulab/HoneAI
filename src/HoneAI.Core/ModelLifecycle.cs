@@ -182,6 +182,12 @@ public sealed class ModelLifecycle : IModelLifecycle
                 var job = await _mloop.GetJobAsync(jobId, cancellationToken).ConfigureAwait(false)
                           ?? new MLoopJob(jobId, "unknown");
                 job = await PollToCompletionAsync(job, cancellationToken).ConfigureAwait(false);
+                // The polls ran out while MLoop still has the job queued or running: the run is not over, only this stretch of
+                // waiting. It stays `running`, saved, and ResumeAsync polls the recorded job again — a training that outlasts
+                // maxPolls × the poll delay (a queue behind a worker, hours) is the ordinary case of a service, not a failure.
+                // Only a job that failed, or that MLoop does not know, ends the run.
+                if (!IsTerminal(job.Status) && !IsUnknown(job.Status))
+                    return await SaveAsync(run, cancellationToken).ConfigureAwait(false);
                 if (!IsCompleted(job.Status))
                 {
                     return await FailAsync(run, LifecycleStage.Train,
@@ -322,12 +328,17 @@ public sealed class ModelLifecycle : IModelLifecycle
             await _pollDelay(ct).ConfigureAwait(false);
             var latest = await _mloop.GetJobAsync(job.Id, ct).ConfigureAwait(false);
             if (latest is null)
+            {
+                job = job with { Status = UnknownStatus };
                 break;
+            }
             job = latest;
         }
         return job;
     }
 
+    private const string UnknownStatus = "unknown";
+    private static bool IsUnknown(string status) => string.Equals(status, UnknownStatus, StringComparison.OrdinalIgnoreCase);
     private static bool IsCompleted(string status) => string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase);
     private static bool IsTerminal(string status)
         => IsCompleted(status) || string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase);

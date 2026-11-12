@@ -264,14 +264,18 @@ public sealed class HttpMLoopClient : IMLoopClient
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        // MLoop /train requires labelColumn + task as non-null strings; forward what we have.
+        // The label and the task are forwarded only when set: an absent field leaves the choice to the project's mloop.yaml (then to
+        // the task — an image task has no label column to name), as an absent CLI option does. A null written as "" was read as a
+        // column named «» and failed every image-task run.
         var body = new Dictionary<string, object?>
         {
             ["dataFile"] = request.DataPath,
-            ["labelColumn"] = request.Label ?? string.Empty,
-            ["task"] = request.Task ?? string.Empty,
             ["name"] = request.Model,
         };
+        if (!string.IsNullOrWhiteSpace(request.Label))
+            body["labelColumn"] = request.Label;
+        if (!string.IsNullOrWhiteSpace(request.Task))
+            body["task"] = request.Task;
         if (request.AdditionalDataPaths is { Count: > 0 } more)
             body["additionalDataFiles"] = more;
         if (!string.IsNullOrWhiteSpace(request.Weight))

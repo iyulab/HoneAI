@@ -142,6 +142,54 @@ public class ModelLifecycleTests : IDisposable
         Assert.Contains(run.Steps, s => s.Stage == LifecycleStage.Evaluate);
     }
 
+    // A training that outlasts the run's polls (a queue behind a worker) is still going, not failed: the run stays `running` and a
+    // later ResumeAsync — here by another process over the same store — picks the recorded job up where the polls stopped.
+    [Fact]
+    public async Task ATrainingStillRunningWhenThePollsRunOut_LeavesTheRunRunning_AndResumeFinishesIt()
+    {
+        var runs = new InMemoryLifecycleStore();
+        var slow = new FakeMLoop { FinalStatus = "running" };
+
+        var started = await new ModelLifecycle(slow, new InMemoryReviewStore(), runs, pollDelay: NoDelay, maxPolls: 3, runIdFactory: () => "run-1")
+            .StartAsync(new LifecycleRequest(Train));
+
+        Assert.Equal("running", started.Status);
+        Assert.False(started.IsSettled);
+        Assert.Equal("job-1", started.JobId);
+        Assert.DoesNotContain(started.Steps, s => s.Status == "failed");
+
+        // Another process, later: the job has finished.
+        var done = new FakeMLoop { CompletedExperimentId = "exp-9" };
+        var resumed = await Lifecycle(done, new InMemoryReviewStore(), runs).ResumeAsync("run-1");
+
+        Assert.Equal("waiting_review", resumed!.Status);
+        Assert.Equal("exp-9", resumed.ExperimentId);
+        Assert.Equal(0, done.TrainCalls);                                    // the recorded job, not a new one
+    }
+
+    [Fact]
+    public async Task ATrainingStillRunning_IsPolledAgainOnEveryResume_NotSettled()
+    {
+        var runs = new InMemoryLifecycleStore();
+        var slow = new FakeMLoop { FinalStatus = "queued" };
+        var lifecycle = new ModelLifecycle(slow, new InMemoryReviewStore(), runs, pollDelay: NoDelay, maxPolls: 2, runIdFactory: () => "run-1");
+
+        await lifecycle.StartAsync(new LifecycleRequest(Train));
+        var again = await lifecycle.ResumeAsync("run-1");
+
+        Assert.Equal("running", again!.Status);
+        Assert.Equal(1, slow.TrainCalls);
+    }
+
+    [Fact]
+    public async Task AJobMLoopDoesNotKnow_FailsTheRun()
+    {
+        var run = await Lifecycle(new FakeMLoop { JobUnknown = true }, new InMemoryReviewStore()).StartAsync(new LifecycleRequest(Train));
+
+        Assert.Equal("failed", run.Status);
+        Assert.Contains("status=unknown", run.Steps[^1].Detail);
+    }
+
     [Fact]
     public async Task WithFeedback_TrainsOnTheDataAndTheRetrainingSetFromFeedback()
     {
@@ -415,8 +463,10 @@ public class ModelLifecycleTests : IDisposable
         public bool? ReportsPromoted { get; init; }
         public IReadOnlyList<string>? Warnings { get; init; }
 
+        public bool JobUnknown { get; init; }
+
         public Task<MLoopJob?> GetJobAsync(string jobId, CancellationToken ct = default)
-            => Task.FromResult<MLoopJob?>(new MLoopJob(jobId, FinalStatus, CompletedExperimentId,
+            => JobUnknown ? Task.FromResult<MLoopJob?>(null) : Task.FromResult<MLoopJob?>(new MLoopJob(jobId, FinalStatus, CompletedExperimentId,
                 new Dictionary<string, double> { ["auc"] = 0.9 }, ReportsPromoted, StatusMessage: StatusMessage, Warnings: Warnings));
 
         public Task PromoteAsync(string model, string experimentId, CancellationToken ct = default)

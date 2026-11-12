@@ -139,7 +139,9 @@ public interface IModelLifecycle
     /// <summary>
     /// Starts a run and drives it as far as it can go without a person: through training and
     /// evaluation to an open review (<c>waiting_review</c>), or to <c>failed</c>. It does not wait for
-    /// the review — decide it in <see cref="IReviewStore"/> and call <see cref="ResumeAsync"/>.
+    /// the review — decide it in <see cref="IReviewStore"/> and call <see cref="ResumeAsync"/>. A training that is
+    /// still queued or running when the run's polls are used up leaves the run <c>running</c>, not <c>failed</c>:
+    /// <see cref="ResumeAsync"/> polls the job again.
     /// </summary>
     Task<LifecycleRun> StartAsync(LifecycleRequest request, CancellationToken cancellationToken = default);
 
