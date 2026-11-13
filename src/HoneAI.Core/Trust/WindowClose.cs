@@ -131,6 +131,27 @@ public sealed record WindowCloseState
 
     /// <summary>The key of a tier in a slice in <see cref="Standings"/>.</summary>
     public static string Key(string tierId, string sliceKey) => tierId + "\u001f" + sliceKey;
+
+    /// <summary>
+    /// The state after a person approved <paramref name="waiting"/>: the slice keeps the standing the release would become
+    /// (<see cref="StandingChange.Standing"/>). Refused when the outcome is not a release awaiting approval, or when the kept standing
+    /// is no longer the one the release was judged from — a later close or another approval moved the slice on, and committing the
+    /// old judgement would release a tier on evidence that is out of date.
+    /// </summary>
+    /// <param name="waiting">An outcome of <see cref="ControllerStep.AwaitingApproval"/> from the close this state came out of (or a later one that left it waiting).</param>
+    public WindowCloseState Approve(SliceOutcome waiting)
+    {
+        ArgumentNullException.ThrowIfNull(waiting);
+        if (!waiting.Step.AwaitsApproval)
+            throw new ArgumentException($"Tier '{waiting.TierId}' in slice '{waiting.SliceKey}' has no release waiting for an approval.", nameof(waiting));
+        var key = Key(waiting.TierId, waiting.SliceKey);
+        if (!Standings.TryGetValue(key, out var kept) || kept != waiting.Committed)
+            throw new InvalidOperationException(
+                $"Tier '{waiting.TierId}' in slice '{waiting.SliceKey}' is no longer where the release was judged from; close the window again.");
+        var standings = Standings.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+        standings[key] = waiting.Step.Standing;
+        return this with { Standings = standings };
+    }
 }
 
 /// <summary>A teacher's standing at the close.</summary>

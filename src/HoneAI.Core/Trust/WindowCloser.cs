@@ -39,9 +39,8 @@ public sealed class InMemoryWindowCloseState : IWindowCloseState
 /// awaiting releases and the retrain decisions, is the consumer's — a schedule, an HTTP host, a person at a prompt.
 /// </summary>
 /// <remarks>
-/// One close at a time per state: two calls at once read the same state and the later save wins. A release that waits for approval is
-/// committed by the caller once approved, by saving a state whose standing for it is <see cref="StandingChange.Standing"/>
-/// (<see cref="ControllerStep.AwaitingApproval"/> lists them).
+/// One close at a time per state: two calls at once read the same state and the later save wins. A release that waits for approval
+/// (<see cref="ControllerStep.AwaitingApproval"/>) is committed once a person approved it, by <see cref="ApproveAsync"/>.
 /// </remarks>
 public sealed class WindowCloser
 {
@@ -55,6 +54,18 @@ public sealed class WindowCloser
         _rechecks = rechecks ?? throw new ArgumentNullException(nameof(rechecks));
         _plants = plants ?? throw new ArgumentNullException(nameof(plants));
         _state = state ?? throw new ArgumentNullException(nameof(state));
+    }
+
+    /// <summary>
+    /// Keeps the standing a release would become, after a person approved it (<see cref="WindowCloseState.Approve"/> — refused when the
+    /// release is no longer waiting or the slice has moved on). Returns the state kept.
+    /// </summary>
+    public async ValueTask<WindowCloseState> ApproveAsync(SliceOutcome waiting, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(waiting);
+        var approved = (await _state.LoadAsync(cancellationToken).ConfigureAwait(false)).Approve(waiting);
+        await _state.SaveAsync(approved, cancellationToken).ConfigureAwait(false);
+        return approved;
     }
 
     /// <summary>Closes the window of <paramref name="input"/> and keeps the state.</summary>

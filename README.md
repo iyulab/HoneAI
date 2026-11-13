@@ -144,6 +144,16 @@ A tier earns the right to settle a slice from rechecks, not from its own confide
 (`StandingChange.AwaitsApproval`) unless `LifecyclePolicy.AutoRelease` is on; tightening never waits.
 Every number a promise is made of — targets, margins, deadlines, budgets — is yours to set.
 
+**Closing a window in one call.** `WindowClose.Run(input, records, state)` does steps 1–5 and the retraining
+decision for a window that is ending, as a pure function of the recorded evidence, the kept state and the numbers you
+set: it computes the ledger cell of every tier in every slice from the rechecks, judges each teacher on its plants
+(`TeacherPolicy` — the recall floor and the margin that keeps a teacher on the line from flipping), reads a change of a
+teacher's version from the recheck records, runs `TrustController.Close`, and asks each learning tier's
+`RetrainPolicy.Decide` with the window's drift and demotions added to its signals. `WindowCloser` reads the stores
+(`IRecheckStore`, `IPlantStore`), calls it and keeps the state (`IWindowCloseState`). The schedule, the hosting, the
+person's approval and starting a run stay yours: after a person approves a release, `ApproveAsync(outcome)` keeps the
+standing it would become (it refuses a release that is not waiting, or one whose slice has moved on since).
+
 A person can hold a slice: pass `SliceWindow.Freeze` (`SliceFreeze` — who, when, why, and the lowest rate a stable
 slice may be rechecked at) and the controller stops releasing it — no step toward active or stable, no window counted
 toward stable, no approval queued. Tightening is not held: a frozen slice that gets worse is still demoted and

@@ -222,6 +222,25 @@ public class WindowCloseTests
     }
 
     [Fact]
+    public void AnApproval_KeepsTheStandingTheReleaseWouldBecome_AndRefusesWhatIsNotWaitingOrIsOutOfDate()
+    {
+        var result = WindowClose.Run(Input([Slice()]), Records(Agreeing()), At(TrustState.Shadow));
+        var waiting = Assert.Single(result.Step.AwaitingApproval);
+
+        var approved = result.State.Approve(waiting);
+        Assert.Equal(TrustState.Active, approved.Standings[Key].State);
+
+        // The same approval twice: the slice is no longer where the release was judged from.
+        Assert.Throws<InvalidOperationException>(() => approved.Approve(waiting));
+        // A tightening or a quiet slice has nothing waiting.
+        var quiet = WindowClose.Run(Input([Slice()]), Records(Agreeing()), At(TrustState.Stable));
+        Assert.Throws<ArgumentException>(() => quiet.State.Approve(Assert.Single(quiet.Step.Slices)));
+        // An approval of one close cannot be committed on a state another close moved.
+        var moved = result.State with { Standings = new Dictionary<string, SliceStanding> { [Key] = new(TrustState.Shadow, Now, "v2") } };
+        Assert.Throws<InvalidOperationException>(() => moved.Approve(waiting));
+    }
+
+    [Fact]
     public void ATeacherAtTwoVersionsInOneClose_IsRefused()
     {
         var slices = new[] { Slice(slice: "a", teacher: "llm") with { TeacherVersion = "t1" }, Slice(slice: "b", teacher: "llm") with { TeacherVersion = "t2" } };
