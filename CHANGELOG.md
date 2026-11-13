@@ -6,6 +6,10 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`WindowClose.Run` closes a window in one call.** The ledger cell of every tier in every slice is computed from the recorded rechecks, each teacher is judged on its plants (`TeacherPolicy` — the recall floor and the margin that keeps a teacher on the line from flipping), a change of a teacher's version is read from the recheck records themselves, the lifecycle moves and the snapshot is issued (`TrustController.Close`, unchanged), and each learning tier's retraining is decided (`RetrainPolicy.Decide`, with the window's drift and demotions added to the signals). It is a pure function of the evidence, the kept state and what people set: no model is called, no clock is read, no threshold is invented, a release still waits for a person unless `AutoRelease` is on, and the same inputs give the same result. A learning tier counts as demoted only when a slice of it moved down within the same version of the tier — a restart on a new version is not a demotion. `WindowCloser` reads the stores, calls it and keeps the state (`IWindowCloseState`, `InMemoryWindowCloseState`); hosting and scheduling stay with the consumer, as does starting a run (`IModelLifecycle.StartAsync`).
+
 ### Changed
 
 - **`HoneAI.Agents` builds on `IronHive.Agent` 0.82.0** (was 0.81.0). No API of this package changed; a consumer that pins `IronHive.Agent` itself moves to the same version.
