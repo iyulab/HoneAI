@@ -102,6 +102,67 @@ public class WindowCloseTests
     }
 
     [Fact]
+    public void AReleaseAlreadyPutForward_IsNotAskedTwice_ButStaysJudged()
+    {
+        var first = WindowClose.Run(Input([Slice()]), Records(Agreeing()), At(TrustState.Shadow));
+        Assert.Equal(["s"], first.ToAsk.Select(o => o.SliceKey));
+
+        // The next close judges the same release from the same standing: still awaiting, no longer a new question.
+        var second = WindowClose.Run(Input([Slice()]), Records(Agreeing()), first.State);
+        Assert.Equal(["s"], second.Step.AwaitingApproval.Select(o => o.SliceKey));
+        Assert.Empty(second.ToAsk);
+        Assert.Equal(first.State.Calls, second.State.Calls);
+    }
+
+    [Fact]
+    public void ADeclinedRelease_StaysDeclinedWhileTheEvidenceProposesIt_AndIsAskedAgainOnceTheEvidenceLetsItGo()
+    {
+        var first = WindowClose.Run(Input([Slice()]), Records(Agreeing()), At(TrustState.Shadow));
+        var declined = first.State.Reject(Assert.Single(first.Step.AwaitingApproval));
+        Assert.True(declined.Calls[Key].Declined);
+        Assert.Equal(TrustState.Shadow, declined.Standings[Key].State);
+
+        var again = WindowClose.Run(Input([Slice()]), Records(Agreeing()), declined);
+        Assert.Empty(again.ToAsk);
+        Assert.True(again.State.Calls[Key].Declined);
+
+        // A window with too little to judge by proposes nothing; the declined release is forgotten, so its return is a new question.
+        var quiet = WindowClose.Run(Input([Slice()]), Records([]), again.State);
+        Assert.Empty(quiet.Step.AwaitingApproval);
+        Assert.Empty(quiet.State.Calls);
+        var back = WindowClose.Run(Input([Slice()]), Records(Agreeing()), quiet.State);
+        Assert.Equal(["s"], back.ToAsk.Select(o => o.SliceKey));
+        Assert.False(back.State.Calls[Key].Declined);
+    }
+
+    [Fact]
+    public void ARejection_IsRefusedOnTheTermsOfAnApproval_AndAnApprovalClearsTheCall()
+    {
+        var result = WindowClose.Run(Input([Slice()]), Records(Agreeing()), At(TrustState.Shadow));
+        var waiting = Assert.Single(result.Step.AwaitingApproval);
+
+        var quiet = WindowClose.Run(Input([Slice()]), Records(Agreeing()), At(TrustState.Stable));
+        Assert.Throws<ArgumentException>(() => quiet.State.Reject(Assert.Single(quiet.Step.Slices)));
+        var moved = result.State with { Standings = new Dictionary<string, SliceStanding> { [Key] = new(TrustState.Shadow, Now, "v2") } };
+        Assert.Throws<InvalidOperationException>(() => moved.Reject(waiting));
+
+        Assert.Empty(result.State.Approve(waiting).Calls);
+    }
+
+    [Fact]
+    public void AFrozenSlice_HoldsItsStanding_AndDroppingTheFreezeLetsTheReleaseBeAsked()
+    {
+        var frozen = Slice() with { Freeze = new SliceFreeze("person", Now.AddDays(-1), "held while the tier is rebuilt") };
+        var held = WindowClose.Run(Input([frozen]), Records(Agreeing()), At(TrustState.Shadow));
+        Assert.Empty(held.Step.AwaitingApproval);
+        Assert.Empty(held.ToAsk);
+        Assert.Equal(TrustState.Shadow, held.State.Standings[Key].State);
+
+        var freed = WindowClose.Run(Input([Slice()]), Records(Agreeing()), held.State);
+        Assert.Equal(["s"], freed.ToAsk.Select(o => o.SliceKey));
+    }
+
+    [Fact]
     public void ANewSliceStartsInShadow_AndTheStateRemembersIt()
     {
         var result = WindowClose.Run(Input([Slice()]), Records(Agreeing()), WindowCloseState.Empty);

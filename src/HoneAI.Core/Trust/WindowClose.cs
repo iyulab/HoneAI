@@ -117,6 +117,12 @@ public sealed record WindowCloseInput
 public sealed record WindowRecords(
     IReadOnlyList<RecheckRecord> Rechecks, IReadOnlyList<RecheckRecord> PreviousRechecks, IReadOnlyList<PlantRecord> Plants);
 
+/// <summary>A release a person has been put in front of: the standing it was judged from, where it would go, and whether the person declined it.</summary>
+/// <param name="From">The committed standing the release was judged from.</param>
+/// <param name="To">The state the release would move the slice to.</param>
+/// <param name="Declined">A person said no — the same release is not put forward again until the evidence proposes a different one.</param>
+public sealed record ReleaseCall(SliceStanding From, TrustState To, bool Declined = false);
+
 /// <summary>What the driver keeps between windows — nothing else. Standings are the committed ones; a release awaiting approval is not in it until a person approves and the caller commits it.</summary>
 public sealed record WindowCloseState
 {
@@ -128,6 +134,13 @@ public sealed record WindowCloseState
 
     /// <summary>Whether each teacher tier was qualified at the last close (what the qualification margin is held against).</summary>
     public IReadOnlyDictionary<string, bool> QualifiedTeachers { get; init; } = new Dictionary<string, bool>();
+
+    /// <summary>
+    /// The releases already put in front of a person, by <see cref="Key"/>: a close that judges the same release again does not ask again
+    /// (<see cref="WindowCloseResult.ToAsk"/>), and a declined one stays declined while the evidence keeps proposing exactly it. An entry goes when
+    /// the slice no longer awaits a release or awaits a different one, so a release that comes back later is a new question.
+    /// </summary>
+    public IReadOnlyDictionary<string, ReleaseCall> Calls { get; init; } = new Dictionary<string, ReleaseCall>();
 
     /// <summary>The key of a tier in a slice in <see cref="Standings"/>.</summary>
     public static string Key(string tierId, string sliceKey) => tierId + "\u001f" + sliceKey;
@@ -150,7 +163,26 @@ public sealed record WindowCloseState
                 $"Tier '{waiting.TierId}' in slice '{waiting.SliceKey}' is no longer where the release was judged from; close the window again.");
         var standings = Standings.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
         standings[key] = waiting.Step.Standing;
-        return this with { Standings = standings };
+        var calls = Calls.Where(kv => kv.Key != key).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+        return this with { Standings = standings, Calls = calls };
+    }
+
+    /// <summary>
+    /// The state after a person declined <paramref name="waiting"/>: the standing stays as it is and the same release is not put forward
+    /// again (<see cref="WindowCloseResult.ToAsk"/>) while the evidence keeps proposing it. Refused on the same terms as <see cref="Approve"/>.
+    /// </summary>
+    public WindowCloseState Reject(SliceOutcome waiting)
+    {
+        ArgumentNullException.ThrowIfNull(waiting);
+        if (!waiting.Step.AwaitsApproval)
+            throw new ArgumentException($"Tier '{waiting.TierId}' in slice '{waiting.SliceKey}' has no release waiting for an approval.", nameof(waiting));
+        var key = Key(waiting.TierId, waiting.SliceKey);
+        if (!Standings.TryGetValue(key, out var kept) || kept != waiting.Committed)
+            throw new InvalidOperationException(
+                $"Tier '{waiting.TierId}' in slice '{waiting.SliceKey}' is no longer where the release was judged from; close the window again.");
+        var calls = Calls.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+        calls[key] = new ReleaseCall(kept, waiting.Step.Standing.State, Declined: true);
+        return this with { Calls = calls };
     }
 }
 
@@ -169,9 +201,16 @@ public sealed record RetrainOutcome(string TierId, RetrainDecision Decision);
 /// <param name="Step">The snapshot to send to sites, what each slice got and why, each pool's sharing.</param>
 /// <param name="Teachers">Each teacher the slices name.</param>
 /// <param name="Retrains">Each learner's decision.</param>
-/// <param name="State">The state to keep — committed standings and teacher qualification.</param>
+/// <param name="State">The state to keep — committed standings, teacher qualification and the releases already put in front of a person.</param>
 public sealed record WindowCloseResult(
-    ControllerStep Step, IReadOnlyList<TeacherOutcome> Teachers, IReadOnlyList<RetrainOutcome> Retrains, WindowCloseState State);
+    ControllerStep Step, IReadOnlyList<TeacherOutcome> Teachers, IReadOnlyList<RetrainOutcome> Retrains, WindowCloseState State)
+{
+    /// <summary>
+    /// The releases awaiting a person that this close is the first to judge: a release an earlier close already put forward, or one a person
+    /// declined, is in <see cref="ControllerStep.AwaitingApproval"/> (the judgement still stands) but not here, so a person is not asked twice.
+    /// </summary>
+    public IReadOnlyList<SliceOutcome> ToAsk { get; init; } = [];
+}
 
 /// <summary>
 /// «A window closes, once»: the ledger is computed, each teacher is judged, the lifecycle moves and the snapshot is issued
@@ -266,7 +305,23 @@ public static class WindowClose
             retrains.Add(new RetrainOutcome(learner.TierId, learner.Policy.Decide(signals, input.Now)));
         }
 
+        var calls = new Dictionary<string, ReleaseCall>(StringComparer.Ordinal);
+        var toAsk = new List<SliceOutcome>();
+        foreach (var outcome in step.AwaitingApproval)
+        {
+            var key = WindowCloseState.Key(outcome.TierId, outcome.SliceKey);
+            var call = new ReleaseCall(outcome.Committed, outcome.Step.Standing.State);
+            if (state.Calls.TryGetValue(key, out var asked) && asked.From == call.From && asked.To == call.To)
+                calls[key] = asked;
+            else
+            {
+                calls[key] = call;
+                toAsk.Add(outcome);
+            }
+        }
+
         return new WindowCloseResult(step, [.. teachers.Values], retrains,
-            new WindowCloseState { Standings = standings, QualifiedTeachers = qualified });
+            new WindowCloseState { Standings = standings, QualifiedTeachers = qualified, Calls = calls })
+        { ToAsk = toAsk };
     }
 }

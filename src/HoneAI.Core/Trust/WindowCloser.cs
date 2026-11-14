@@ -68,6 +68,15 @@ public sealed class WindowCloser
         return approved;
     }
 
+    /// <summary>Keeps that a person declined <paramref name="waiting"/> (<see cref="WindowCloseState.Reject"/>): the same release is not put forward again while the evidence keeps proposing it.</summary>
+    public async ValueTask<WindowCloseState> RejectAsync(SliceOutcome waiting, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(waiting);
+        var rejected = (await _state.LoadAsync(cancellationToken).ConfigureAwait(false)).Reject(waiting);
+        await _state.SaveAsync(rejected, cancellationToken).ConfigureAwait(false);
+        return rejected;
+    }
+
     /// <summary>Closes the window of <paramref name="input"/> and keeps the state.</summary>
     public async ValueTask<WindowCloseResult> CloseAsync(WindowCloseInput input, CancellationToken cancellationToken = default)
     {
