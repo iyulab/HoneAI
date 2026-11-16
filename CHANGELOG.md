@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-11-16
+
 ### Changed
 
 - **`HoneAI.Agents` builds on `IronHive.Agent` 0.82.0** (was 0.81.0). No API of this package changed; a consumer that pins `IronHive.Agent` itself moves to the same version.
