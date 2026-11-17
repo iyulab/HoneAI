@@ -260,6 +260,46 @@ public sealed class HttpMLoopClient : IMLoopClient
     }
 
     /// <inheritdoc />
+    public async Task<MLoopDataset> UploadDatasetAsync(MLoopDatasetUpload upload, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(upload);
+        ArgumentException.ThrowIfNullOrWhiteSpace(upload.FileName, nameof(upload));
+        ArgumentNullException.ThrowIfNull(upload.Content, nameof(upload));
+
+        // The body is the file; its name (and nothing in the content type) decides table or zip on the server.
+        var uri = "datasets?fileName=" + Uri.EscapeDataString(upload.FileName)
+            + (string.IsNullOrWhiteSpace(upload.Task) ? "" : "&task=" + Uri.EscapeDataString(upload.Task));
+        using var content = new StreamContent(upload.Content);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        using var response = await _http.PostAsync(uri, content, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccess(response, "datasets", cancellationToken).ConfigureAwait(false);
+
+        using var doc = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        var root = doc.RootElement;
+        return new MLoopDataset(
+            String(root, "id") ?? throw new MLoopClientException("MLoop /datasets answered without an id.", response.StatusCode),
+            String(root, "kind") ?? "table",
+            String(root, "dataFile") ?? throw new MLoopClientException("MLoop /datasets answered without a dataFile.", response.StatusCode),
+            root.TryGetProperty("files", out var files) && files.ValueKind == JsonValueKind.Number ? files.GetInt32() : 1,
+            root.TryGetProperty("bytes", out var bytes) && bytes.ValueKind == JsonValueKind.Number ? bytes.GetInt64() : 0,
+            root.TryGetProperty("createdAt", out var created) && created.ValueKind == JsonValueKind.String && created.TryGetDateTimeOffset(out var at)
+                ? at
+                : DateTimeOffset.UtcNow);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> DeleteDatasetAsync(string datasetId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(datasetId);
+
+        using var response = await _http.DeleteAsync("datasets/" + Uri.EscapeDataString(datasetId), cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return false;
+        await EnsureSuccess(response, "datasets", cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <inheritdoc />
     public async Task<MLoopJob> TrainAsync(MLoopTrainRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

@@ -208,6 +208,27 @@ public sealed record MLoopSampleRequest(string? Model = null, int? Rows = null, 
 /// <param name="WeightColumn">The column the rows are weighted under; <see langword="null"/> when none was written.</param>
 public sealed record MLoopSample(string Path, int Rows, int LabeledRows, string? LabelColumn = null, string? WeightColumn = null);
 
+/// <summary>A training file to put on the MLoop server (MLoop 0.52+ <c>POST /datasets</c>).</summary>
+/// <param name="FileName">
+/// The file's name with its extension: it decides how the server reads the bytes — a table (<c>.csv</c>, <c>.tsv</c>, a workbook, …) or a
+/// <c>.zip</c> of a directory dataset (images).
+/// </param>
+/// <param name="Content">The bytes. Read to the end; the caller disposes it.</param>
+/// <param name="Task">
+/// The task the data is for; <see langword="null"/> leaves its shape unchecked. With one, the server refuses a table that is not one
+/// for a table task or a directory not in the task's layout now, with the reason <c>POST /train</c> would give.
+/// </param>
+public sealed record MLoopDatasetUpload(string FileName, Stream Content, string? Task = null);
+
+/// <summary>A dataset MLoop stored (<see cref="IMLoopClient.UploadDatasetAsync"/>).</summary>
+/// <param name="Id">The upload's identifier — what <see cref="IMLoopClient.DeleteDatasetAsync"/> takes.</param>
+/// <param name="Kind"><c>table</c> (one file) or <c>directory</c> (a zip's content).</param>
+/// <param name="DataPath">Its path in the MLoop project — what <see cref="MLoopTrainRequest.DataPath"/> takes.</param>
+/// <param name="Files">Files stored.</param>
+/// <param name="Bytes">Bytes stored.</param>
+/// <param name="CreatedAt">When the server stored it.</param>
+public sealed record MLoopDataset(string Id, string Kind, string DataPath, int Files, long Bytes, DateTimeOffset CreatedAt);
+
 /// <summary>Handle to an MLoop training job, including its result once completed.</summary>
 /// <param name="Id">Job identifier (poll with <see cref="IMLoopClient.GetJobAsync"/>).</param>
 /// <param name="Status">Coarse status (e.g. "queued", "running", "completed", "failed").</param>

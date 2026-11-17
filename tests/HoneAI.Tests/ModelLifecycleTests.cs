@@ -458,6 +458,8 @@ public class ModelLifecycleTests : IDisposable
         public Task<IReadOnlyList<ITracedPrediction<MLoopPredictionResult>>> PredictImagesAsync(MLoopImagePredictionRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<MLoopEmbedding> EmbedAsync(MLoopEmbeddingRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<MLoopEmbedding> EmbedTextsAsync(MLoopTextEmbeddingRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<MLoopDataset> UploadDatasetAsync(MLoopDatasetUpload upload, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<bool> DeleteDatasetAsync(string datasetId, CancellationToken ct = default) => throw new NotSupportedException();
 
         public string? StatusMessage { get; init; }
         public bool? ReportsPromoted { get; init; }

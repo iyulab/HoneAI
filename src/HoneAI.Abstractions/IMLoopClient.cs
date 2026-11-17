@@ -45,6 +45,20 @@ public interface IMLoopClient
     /// </summary>
     Task<ITracedPrediction<MLoopForecastResult>> ForecastAsync(MLoopForecastRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Put a training file on the MLoop server (MLoop 0.52+ <c>POST /datasets</c>) and get the path to train on — for a client on
+    /// another machine, which cannot write into the server's project folder. The result's <see cref="MLoopDataset.DataPath"/> is
+    /// what <see cref="MLoopTrainRequest.DataPath"/> takes. The upload stays until <see cref="DeleteDatasetAsync"/> removes it (or the
+    /// server's retention does).
+    /// </summary>
+    Task<MLoopDataset> UploadDatasetAsync(MLoopDatasetUpload upload, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Remove an upload. <see langword="false"/> when the server has none by that id; refused (the call
+    /// fails with the server's reason) while a queued or running job trains on it — remove it when the job has finished.
+    /// </summary>
+    Task<bool> DeleteDatasetAsync(string datasetId, CancellationToken cancellationToken = default);
+
     /// <summary>Start a training run; returns the job handle (poll it with <see cref="GetJobAsync"/>).</summary>
     Task<MLoopJob> TrainAsync(MLoopTrainRequest request, CancellationToken cancellationToken = default);
 

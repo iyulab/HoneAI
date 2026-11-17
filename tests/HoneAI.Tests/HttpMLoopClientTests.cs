@@ -418,6 +418,66 @@ public class HttpMLoopClientTests
 
     // An image task has no label column to name (the label is the folder): a null label was sent as "" and read by the server as a
     // column named «», which failed every image-task run. Unset is absent, like the other optional fields.
+    // A client on another machine cannot write into the server's project folder: the file travels as the body of POST datasets, its
+    // name in the query (the name decides table or zip), and the answer's path is what Train takes.
+    [Fact]
+    public async Task UploadDataset_SendsTheFileAsTheBody_AndReturnsThePathTrainTakes()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.Created, """
+            { "id": "ds-20261118-010203-abcd1234", "kind": "table", "dataFile": "datasets/uploads/ds-20261118-010203-abcd1234/weld data.csv",
+              "files": 1, "bytes": 24, "createdAt": "2026-11-18T01:02:03.5Z" }
+            """));
+        var client = Client(handler);
+        using var content = new System.IO.MemoryStream("a,b,y\n1,2,x\n3,4,z\n"u8.ToArray());
+
+        var dataset = await client.UploadDatasetAsync(new MLoopDatasetUpload("weld data.csv", content, "binary-classification"));
+
+        Assert.Equal(HttpMethod.Post, handler.LastRequest!.Method);
+        Assert.Contains("datasets?fileName=weld%20data.csv&task=binary-classification", handler.LastRequest!.RequestUri!.AbsoluteUri);
+        Assert.Equal("a,b,y\n1,2,x\n3,4,z\n", handler.LastBody);
+        Assert.Equal("ds-20261118-010203-abcd1234", dataset.Id);
+        Assert.Equal("table", dataset.Kind);
+        Assert.Equal("datasets/uploads/ds-20261118-010203-abcd1234/weld data.csv", dataset.DataPath);
+        Assert.Equal((1, 24L), (dataset.Files, dataset.Bytes));
+        Assert.Equal(new DateTimeOffset(2026, 11, 18, 1, 2, 3, 500, TimeSpan.Zero), dataset.CreatedAt);
+
+        // No task named: no task asked for — the server leaves the shape unchecked, as an absent field does elsewhere.
+        using var again = new System.IO.MemoryStream("x"u8.ToArray());
+        await client.UploadDatasetAsync(new MLoopDatasetUpload("d.csv", again));
+        Assert.DoesNotContain("task=", handler.LastRequest!.RequestUri!.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task UploadDataset_CarriesTheServersRefusal_NotAnEmptyResult()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.BadRequest, """{ "error": "The upload is not a table for binary-classification." }"""));
+        using var content = new System.IO.MemoryStream("x"u8.ToArray());
+
+        var ex = await Assert.ThrowsAsync<MLoopClientException>(
+            () => Client(handler).UploadDatasetAsync(new MLoopDatasetUpload("d.zip", content, "binary-classification")));
+
+        Assert.Equal(HttpStatusCode.BadRequest, ex.StatusCode);
+        Assert.Contains("not a table", ex.Message);
+    }
+
+    [Fact]
+    public async Task DeleteDataset_SaysWhetherThereWasOne_AndRefusesWhileAJobTrainsOnIt()
+    {
+        var handler = new StubHandler(request => request.RequestUri!.AbsolutePath.EndsWith("/gone")
+            ? Json(HttpStatusCode.NotFound, """{ "error": "No dataset 'gone'." }""")
+            : request.RequestUri.AbsolutePath.EndsWith("/busy")
+                ? Json(HttpStatusCode.Conflict, """{ "error": "Job 'job-1' is training on dataset 'busy'; remove it when the job has finished." }""")
+                : new HttpResponseMessage(HttpStatusCode.NoContent));
+        var client = Client(handler);
+
+        Assert.True(await client.DeleteDatasetAsync("ds-1"));
+        Assert.Equal(HttpMethod.Delete, handler.LastRequest!.Method);
+        Assert.False(await client.DeleteDatasetAsync("gone"));
+        var ex = await Assert.ThrowsAsync<MLoopClientException>(() => client.DeleteDatasetAsync("busy"));
+        Assert.Equal(HttpStatusCode.Conflict, ex.StatusCode);
+        Assert.Contains("training on dataset", ex.Message);
+    }
+
     [Fact]
     public async Task Train_LeavesTheLabelAndTheTaskOut_WhenTheyAreNotSet()
     {
