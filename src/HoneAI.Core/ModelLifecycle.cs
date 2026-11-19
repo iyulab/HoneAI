@@ -18,7 +18,9 @@ namespace HoneAI;
 /// <remarks>
 /// The gate decides promotion: a person's review (<see cref="ReviewPromotionGate"/>, what the
 /// <see cref="IReviewStore"/> constructor wires), evidence on held-out labels (<see cref="EvidencePromotionGate"/>),
-/// or the consumer's own. A refusal settles the run before promote. One instance serializes the runs it resumes by
+/// or the consumer's own. A refusal settles the run before promote. A call to MLoop that gets no answer (a dropped connection,
+/// a timeout, a 5xx / 408 / 429) does not settle it: the run stays where it was with a <c>retrying</c> step and the next
+/// <see cref="ResumeAsync"/> repeats the stage — only an answer (a job reported failed, a 4xx) is a verdict. One instance serializes the runs it resumes by
 /// id; two processes resuming the same run at once is the consumer's to prevent (a queue delivers a run to one worker).
 /// </remarks>
 public sealed class ModelLifecycle : IModelLifecycle
@@ -209,42 +211,70 @@ public sealed class ModelLifecycle : IModelLifecycle
                     detail, JudgeKind.Ml, cancellationToken).ConfigureAwait(false);
             }
 
-            // Review: the gate decides — asked again on every resume until it does.
+            // Review: the gate decides — asked again on every resume until it does. A verdict to promote, once on the trail, stands:
+            // a promotion that has to be retried does not ask the gate (or the person) again.
             stage = LifecycleStage.Review;
             if (run.ExperimentId is not { Length: > 0 } experimentId)
                 return await FailAsync(run, LifecycleStage.Promote, "no experimentId on completed job", cancellationToken)
                     .ConfigureAwait(false);
             var model = run.Request?.Training.Model ?? "default";
-            var verdict = await _gate.JudgeAsync(new PromotionCandidate(run.RunId, model, experimentId)
+            if (!run.Steps.Any(s => s is { Stage: LifecycleStage.Review, Status: "completed" }))
             {
-                ReviewId = run.ReviewId ?? run.RunId,
-                Metrics = run.Metrics,
-                Warnings = run.Warnings,
-                TrainedAt = run.TrainedAt,
-                TrainingSet = run.Request?.TrainingSet,
-            }, cancellationToken).ConfigureAwait(false);
-            if (verdict.Decision == PromotionDecision.Wait)
-            {
-                return run.Status == "waiting_review"
-                    ? run
-                    : await SaveAsync(run with { Status = "waiting_review" }, cancellationToken).ConfigureAwait(false);
+                var verdict = await _gate.JudgeAsync(new PromotionCandidate(run.RunId, model, experimentId)
+                {
+                    ReviewId = run.ReviewId ?? run.RunId,
+                    Metrics = run.Metrics,
+                    Warnings = run.Warnings,
+                    TrainedAt = run.TrainedAt,
+                    TrainingSet = run.Request?.TrainingSet,
+                }, cancellationToken).ConfigureAwait(false);
+                if (verdict.Decision == PromotionDecision.Wait)
+                {
+                    return run.Status == "waiting_review"
+                        ? run
+                        : await SaveAsync(run with { Status = "waiting_review" }, cancellationToken).ConfigureAwait(false);
+                }
+
+                var promote = verdict.Decision == PromotionDecision.Promote;
+                run = await RecordAsync(run with { ProvenNoWorse = promote && verdict.ProvenNoWorse }, LifecycleStage.Review,
+                    promote ? "completed" : "rejected", verdict.Reason, verdict.DecidedBy, cancellationToken, verdict.By).ConfigureAwait(false);
+                if (!promote)
+                    return await SaveAsync(run with { Status = "completed" }, cancellationToken).ConfigureAwait(false); // completed without promotion
             }
 
-            var promote = verdict.Decision == PromotionDecision.Promote;
-            run = await RecordAsync(run with { ProvenNoWorse = promote && verdict.ProvenNoWorse }, LifecycleStage.Review,
-                promote ? "completed" : "rejected", verdict.Reason, verdict.DecidedBy, cancellationToken, verdict.By).ConfigureAwait(false);
-            if (!promote)
-                return await SaveAsync(run with { Status = "completed" }, cancellationToken).ConfigureAwait(false); // completed without promotion
-
-            // Promote.
+            // Promote — the step that changes production, so a retry must not repeat it blindly. What production was is taken
+            // and saved *before* the call (a rollback puts back exactly that and never undoes a later promotion), and a promotion
+            // begun earlier whose answer never came is checked against production before it is made again: the server may have
+            // done it, and asking for it twice would record the experiment as replacing itself.
             stage = LifecycleStage.Promote;
-            // What production was, so a rollback puts back exactly that and never undoes a later promotion.
-            var replaced = (await _mloop.GetInfoAsync(model, cancellationToken).ConfigureAwait(false))?.ExperimentId;
-            await _mloop.PromoteAsync(model, experimentId, cancellationToken).ConfigureAwait(false);
-            run = await RecordAsync(run with { ReplacedExperimentId = replaced }, LifecycleStage.Promote, "completed",
-                replaced is null ? experimentId : $"{experimentId}, replacing {replaced}", JudgeKind.Ml, cancellationToken)
+            var begun = run.Steps.LastOrDefault(s => s.Stage == LifecycleStage.Promote) is { Status: "running" or "retrying" };
+            if (!begun)
+            {
+                var before = (await _mloop.GetInfoAsync(model, cancellationToken).ConfigureAwait(false))?.ExperimentId;
+                run = await SaveAsync(run with
+                {
+                    Status = "running",
+                    ReplacedExperimentId = before,
+                    Steps = [.. run.Steps, new LifecycleStep(LifecycleStage.Promote, "running", before is null ? experimentId : $"{experimentId}, replacing {before}")],
+                }, cancellationToken).ConfigureAwait(false);
+            }
+            var inProduction = begun
+                ? (await _mloop.GetInfoAsync(model, cancellationToken).ConfigureAwait(false))?.ExperimentId
+                : null;
+            if (!string.Equals(inProduction, experimentId, StringComparison.OrdinalIgnoreCase))
+                await _mloop.PromoteAsync(model, experimentId, cancellationToken).ConfigureAwait(false);
+            // The outcome takes the place of the marks that led to it, so a promotion that went through is one line on the trail.
+            run = await RecordAsync(run with { Steps = [.. run.Steps.Where(s => s is not { Stage: LifecycleStage.Promote, Status: "running" or "retrying" })] },
+                LifecycleStage.Promote, "completed",
+                run.ReplacedExperimentId is null ? experimentId : $"{experimentId}, replacing {run.ReplacedExperimentId}", JudgeKind.Ml, cancellationToken)
                 .ConfigureAwait(false);
             return await SaveAsync(run with { Status = "completed" }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (TransientFailure.Is(ex) && !cancellationToken.IsCancellationRequested)
+        {
+            // The call ended in an exception that says nothing about the job or the experiment — the server was unreachable or
+            // asked to be tried again. The run is not over: it keeps its place and the next ResumeAsync repeats this stage.
+            return await RetryLaterAsync(run, stage, ex.Message, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -314,6 +344,17 @@ public sealed class ModelLifecycle : IModelLifecycle
     private Task<LifecycleRun> FailAsync(LifecycleRun run, LifecycleStage stage, string detail, CancellationToken cancellationToken)
         => SaveAsync(run with { Status = "failed", Steps = [.. run.Steps, new LifecycleStep(stage, "failed", detail)] }, cancellationToken);
 
+    // A stage that could not be reached, on the trail as `retrying` — told apart from `failed`, which is a job or a refusal MLoop
+    // answered. A tick that fails again replaces its own line, so an outage of many ticks is one entry carrying the latest reason.
+    private Task<LifecycleRun> RetryLaterAsync(LifecycleRun run, LifecycleStage stage, string detail, CancellationToken cancellationToken)
+    {
+        var step = new LifecycleStep(stage, "retrying", detail);
+        IReadOnlyList<LifecycleStep> steps = run.Steps is [.., { Status: "retrying" } last] && last.Stage == stage
+            ? [.. run.Steps.Take(run.Steps.Count - 1), step]
+            : [.. run.Steps, step];
+        return SaveAsync(run with { Status = run.Status == "waiting_review" ? run.Status : "running", Steps = steps }, cancellationToken);
+    }
+
     private async Task<LifecycleRun> SaveAsync(LifecycleRun run, CancellationToken cancellationToken)
     {
         run = run with { UpdatedAt = _clock() };
@@ -335,6 +376,24 @@ public sealed class ModelLifecycle : IModelLifecycle
             job = latest;
         }
         return job;
+    }
+
+    // Whether a call to MLoop that ended in an exception says nothing about what it was asked — no answer came
+    // (HttpRequestException, a timeout) or the server asked to be tried again (5xx, 408, 429). Any other answer
+    // — a refusal (4xx), a job reported failed — is a verdict, and a bug in a client is not an outage.
+    private static class TransientFailure
+    {
+        public static bool Is(Exception ex) => ex switch
+        {
+            MLoopClientException c => (int)c.StatusCode >= 500
+                || c.StatusCode is System.Net.HttpStatusCode.RequestTimeout or System.Net.HttpStatusCode.TooManyRequests,
+            System.Net.Http.HttpRequestException => true,
+            TimeoutException => true,
+            // The client's own timeout surfaces as a cancellation carrying a TimeoutException; whether the caller cancelled is
+            // the caller's token, checked where this is used.
+            OperationCanceledException { InnerException: TimeoutException } => true,
+            _ => false,
+        };
     }
 
     private const string UnknownStatus = "unknown";

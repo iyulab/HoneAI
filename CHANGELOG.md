@@ -6,6 +6,11 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **A call to MLoop that ends in an exception no longer settles a `ModelLifecycle` run as `failed`.** The run was driven by one rule — any exception from the client is the run's failure — so a connection that dropped for a moment while `GetJobAsync` polled a job that kept training (or `PromoteAsync` / the gate's own evidence call) turned a successful training into a run `ResumeAsync` could not revive, though the class is documented to continue «after a restart, days later». Now an error that says nothing about what was asked — no answer (`HttpRequestException`, a timeout) or the server asking to be tried again (5xx, 408, 429 as `MLoopClientException`) — leaves the run where it was (`running`, or `waiting_review`), and the next `ResumeAsync` repeats the stage. The trail tells it from a failure: a `retrying` step carrying the latest reason (consecutive failures of one stage are one line, not one per tick). An answer is still a verdict: a job MLoop reports as `failed` or no longer knows, a refusal (4xx, e.g. the quality gate's 422), and an exception that is a bug rather than an outage still end the run as `failed`; cancellation still propagates. A run that retries keeps going for as long as the caller resumes it — a consumer that wants to give up reads `LifecycleRun.UpdatedAt` and the `retrying` step.
+- **A promotion that has to be repeated is not made twice.** What production held is now taken and saved before `PromoteAsync` is called (a `running` step on the trail until the outcome replaces it), a verdict to promote that is already on the trail is not asked of the gate or the reviewer again, and a promotion begun earlier whose answer never came is checked against production first: if the server did promote, the run records it instead of promoting again — repeating it would have recorded the experiment as replacing itself and a rollback would have put back the same model.
+
 ## [0.18.0] - 2026-11-19
 
 ### Added

@@ -181,6 +181,222 @@ public class ModelLifecycleTests : IDisposable
         Assert.Equal(1, slow.TrainCalls);
     }
 
+    // A call that ends in an exception says nothing about the job: the server may be unreachable while the training goes on. Only a
+    // job MLoop reports as failed (or does not know) settles the run — the run stays `running` and the next ResumeAsync asks again.
+    [Fact]
+    public async Task ATransientErrorWhilePolling_LeavesTheRunRunning_AndTheNextResumeContinuesIt()
+    {
+        var runs = new InMemoryLifecycleStore();
+        var mloop = new FakeMLoop { FinalStatus = "running" };
+        var lifecycle = new ModelLifecycle(mloop, new InMemoryReviewStore(), runs, pollDelay: NoDelay, maxPolls: 1, runIdFactory: () => "run-1");
+        await lifecycle.StartAsync(new LifecycleRequest(Train));
+
+        mloop.PollFailures.Enqueue(new HttpRequestException("connection reset"));
+        var hit = await lifecycle.ResumeAsync("run-1");
+
+        Assert.Equal("running", hit!.Status);
+        Assert.False(hit.IsSettled);
+        Assert.DoesNotContain(hit.Steps, s => s.Status == "failed");
+        var retry = Assert.Single(hit.Steps, s => s.Status == "retrying");   // told apart from a job that failed
+        Assert.Equal(LifecycleStage.Train, retry.Stage);
+        Assert.Contains("connection reset", retry.Detail);
+
+        mloop.FinalStatus = "completed";
+        mloop.CompletedExperimentId = "exp-9";
+        var done = await lifecycle.ResumeAsync("run-1");
+
+        Assert.Equal("waiting_review", done!.Status);
+        Assert.Equal("exp-9", done.ExperimentId);
+        Assert.Equal(1, mloop.TrainCalls);                                   // the recorded job, not a new one
+    }
+
+    [Fact]
+    public async Task ATransientErrorDuringStart_LeavesTheRunRunning_NotFailed()
+    {
+        var mloop = new FakeMLoop { CompletedExperimentId = "exp-9" };
+        mloop.PollFailures.Enqueue(new HttpRequestException("no route to host"));
+
+        var run = await Lifecycle(mloop, new InMemoryReviewStore()).StartAsync(new LifecycleRequest(Train));
+
+        Assert.Equal("running", run.Status);
+        Assert.Equal("job-1", run.JobId);                                    // the submitted job is kept to resume on
+    }
+
+    [Fact]
+    public async Task RepeatedTransientErrors_AreOneLineOnTheTrail_NotOnePerTick()
+    {
+        var runs = new InMemoryLifecycleStore();
+        var mloop = new FakeMLoop { FinalStatus = "running" };
+        var lifecycle = new ModelLifecycle(mloop, new InMemoryReviewStore(), runs, pollDelay: NoDelay, maxPolls: 1, runIdFactory: () => "run-1");
+        await lifecycle.StartAsync(new LifecycleRequest(Train));
+
+        for (var i = 1; i <= 4; i++)
+        {
+            mloop.PollFailures.Enqueue(new HttpRequestException("down " + i));
+            await lifecycle.ResumeAsync("run-1");
+        }
+
+        var run = await lifecycle.GetAsync("run-1");
+        var retry = Assert.Single(run!.Steps, s => s.Status == "retrying");
+        Assert.Contains("down 4", retry.Detail);                             // the latest reason stands
+    }
+
+    [Theory]
+    [InlineData(500, true)]
+    [InlineData(503, true)]
+    [InlineData(408, true)]
+    [InlineData(429, true)]
+    [InlineData(400, false)]
+    [InlineData(401, false)]
+    [InlineData(404, false)]
+    [InlineData(422, false)]
+    public async Task AnAnswerFromMLoop_IsTransientOnlyWhenTheServerSaysTryAgain(int status, bool transient)
+    {
+        var runs = new InMemoryLifecycleStore();
+        var mloop = new FakeMLoop { FinalStatus = "running" };
+        var lifecycle = new ModelLifecycle(mloop, new InMemoryReviewStore(), runs, pollDelay: NoDelay, maxPolls: 1, runIdFactory: () => "run-1");
+        await lifecycle.StartAsync(new LifecycleRequest(Train));
+
+        mloop.PollFailures.Enqueue(new MLoopClientException($"MLoop /jobs failed ({status})", (System.Net.HttpStatusCode)status));
+        var run = await lifecycle.ResumeAsync("run-1");
+
+        Assert.Equal(transient ? "running" : "failed", run!.Status);
+    }
+
+    [Fact]
+    public async Task ABugInTheClient_StillFailsTheRun()
+    {
+        var runs = new InMemoryLifecycleStore();
+        var mloop = new FakeMLoop { FinalStatus = "running" };
+        var lifecycle = new ModelLifecycle(mloop, new InMemoryReviewStore(), runs, pollDelay: NoDelay, maxPolls: 1, runIdFactory: () => "run-1");
+        await lifecycle.StartAsync(new LifecycleRequest(Train));
+
+        mloop.PollFailures.Enqueue(new InvalidOperationException("unexpected payload"));
+        var run = await lifecycle.ResumeAsync("run-1");
+
+        Assert.Equal("failed", run!.Status);
+        Assert.Contains("unexpected payload", run.Steps[^1].Detail);
+    }
+
+    [Fact]
+    public async Task ACancelledPoll_StillPropagates_AndLeavesTheRunAsItWas()
+    {
+        var runs = new InMemoryLifecycleStore();
+        var mloop = new FakeMLoop { FinalStatus = "running" };
+        var lifecycle = new ModelLifecycle(mloop, new InMemoryReviewStore(), runs, pollDelay: NoDelay, maxPolls: 1, runIdFactory: () => "run-1");
+        await lifecycle.StartAsync(new LifecycleRequest(Train));
+
+        mloop.PollFailures.Enqueue(new OperationCanceledException());
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => lifecycle.ResumeAsync("run-1"));
+
+        Assert.Equal("running", (await lifecycle.GetAsync("run-1"))!.Status);
+    }
+
+    // HttpClient's own timeout arrives as a cancellation carrying a TimeoutException: no answer, not the caller's cancel.
+    [Fact]
+    public async Task AClientTimeout_IsNoAnswerLikeAnyOther_ButTheCallersOwnCancelStillPropagates()
+    {
+        var runs = new InMemoryLifecycleStore();
+        var mloop = new FakeMLoop { FinalStatus = "running" };
+        var lifecycle = new ModelLifecycle(mloop, new InMemoryReviewStore(), runs, pollDelay: NoDelay, maxPolls: 1, runIdFactory: () => "run-1");
+        await lifecycle.StartAsync(new LifecycleRequest(Train));
+
+        mloop.PollFailures.Enqueue(new TaskCanceledException("the request timed out", new TimeoutException()));
+        var run = await lifecycle.ResumeAsync("run-1");
+        Assert.Equal("running", run!.Status);
+        Assert.Contains(run.Steps, s => s is { Status: "retrying" });
+
+        // The caller cancels while the poll is under way: the same exception shape, but it is the caller's, so it propagates.
+        using var cts = new CancellationTokenSource();
+        mloop.OnPoll = cts.Cancel;
+        mloop.PollFailures.Enqueue(new TaskCanceledException("cancelled", new TimeoutException()));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => lifecycle.ResumeAsync("run-1", cts.Token));
+        Assert.DoesNotContain((await lifecycle.GetAsync("run-1"))!.Steps, s => s.Status == "failed");
+    }
+
+    // The promotion is the step that changes production, so it is the one a retry must not repeat blindly: what it replaced is
+    // taken before the call, and a call whose answer was lost is checked against production before it is made again.
+    [Fact]
+    public async Task ATransientErrorAtPromotion_KeepsTheApprovedRunRunning_AndTheNextResumePromotesOnce()
+    {
+        var mloop = new FakeMLoop { CompletedExperimentId = "exp-9", ProductionExperimentId = "exp-old" };
+        var reviews = new InMemoryReviewStore();
+        var lifecycle = Lifecycle(mloop, reviews);
+        await lifecycle.StartAsync(new LifecycleRequest(Train, ReviewId: "rev-1"));
+        await reviews.DecideAsync("rev-1", new ReviewDecision("approve", ReviewerKey: "r-7"));
+
+        mloop.PromoteFailures.Enqueue((new HttpRequestException("reset"), Applied: false));
+        var hit = await lifecycle.ResumeAsync("run-1");
+
+        Assert.Equal("running", hit!.Status);
+        Assert.Contains(hit.Steps, s => s is { Stage: LifecycleStage.Promote, Status: "retrying" });
+        Assert.Null(mloop.Promoted);
+
+        var done = await lifecycle.ResumeAsync("run-1");
+
+        Assert.Equal("completed", done!.Status);
+        Assert.Equal(("weld", "exp-9"), mloop.Promoted);
+        Assert.Equal("exp-old", done.ReplacedExperimentId);
+        Assert.Equal(1, done.Steps.Count(s => s is { Stage: LifecycleStage.Review, Status: "completed" }));   // the verdict is not asked twice
+        Assert.Equal("r-7", done.Steps.Single(s => s is { Stage: LifecycleStage.Review, Status: "completed" }).By);
+    }
+
+    [Fact]
+    public async Task APromotionWhoseAnswerWasLost_IsNotRepeated_AndStillRemembersWhatItReplaced()
+    {
+        var mloop = new FakeMLoop { CompletedExperimentId = "exp-9", ProductionExperimentId = "exp-old" };
+        var reviews = new InMemoryReviewStore();
+        var lifecycle = Lifecycle(mloop, reviews);
+        await lifecycle.StartAsync(new LifecycleRequest(Train, ReviewId: "rev-1"));
+        await reviews.DecideAsync("rev-1", new ReviewDecision("approve"));
+
+        mloop.PromoteFailures.Enqueue((new HttpRequestException("timeout"), Applied: true));   // the server promoted, the answer never came
+        Assert.Equal("running", (await lifecycle.ResumeAsync("run-1"))!.Status);
+        var done = await lifecycle.ResumeAsync("run-1");
+
+        Assert.Equal("completed", done!.Status);
+        Assert.Equal(1, mloop.PromoteCalls);                                 // not promoted a second time
+        Assert.Equal("exp-old", done.ReplacedExperimentId);                  // not «replacing exp-9», which would roll back to itself
+        var rolled = await lifecycle.RollBackAsync("run-1", "vetoed");
+        Assert.Equal("rolled_back", rolled!.Status);
+        Assert.Equal("exp-old", mloop.RolledBack.Single().To);
+    }
+
+    [Fact]
+    public async Task APromotionMLoopRefuses_StillFailsTheRun()
+    {
+        var mloop = new FakeMLoop { CompletedExperimentId = "exp-9" };
+        var reviews = new InMemoryReviewStore();
+        var lifecycle = Lifecycle(mloop, reviews);
+        await lifecycle.StartAsync(new LifecycleRequest(Train, ReviewId: "rev-1"));
+        await reviews.DecideAsync("rev-1", new ReviewDecision("approve"));
+
+        mloop.PromoteFailures.Enqueue((new MLoopClientException("MLoop /promote failed (422): quality gate", (System.Net.HttpStatusCode)422), Applied: false));
+        var run = await lifecycle.ResumeAsync("run-1");
+
+        Assert.Equal("failed", run!.Status);
+        Assert.Contains("quality gate", run.Steps[^1].Detail);
+    }
+
+    [Fact]
+    public async Task AGateThatCouldNotReachItsEvidence_LeavesTheRunWhereItWas_AndIsAskedAgain()
+    {
+        var mloop = new FakeMLoop { CompletedExperimentId = "exp-9" };
+        var gate = new FlakyGate();
+        var lifecycle = new ModelLifecycle(mloop, gate, new InMemoryLifecycleStore(), pollDelay: NoDelay, runIdFactory: () => "run-1");
+
+        var first = await lifecycle.StartAsync(new LifecycleRequest(Train));
+
+        Assert.Equal("running", first.Status);
+        Assert.Contains(first.Steps, s => s is { Stage: LifecycleStage.Review, Status: "retrying" });
+        Assert.Null(mloop.Promoted);
+
+        var done = await lifecycle.ResumeAsync("run-1");
+
+        Assert.Equal("completed", done!.Status);
+        Assert.Equal(("weld", "exp-9"), mloop.Promoted);
+    }
+
     [Fact]
     public async Task AJobMLoopDoesNotKnow_FailsTheRun()
     {
@@ -439,9 +655,14 @@ public class ModelLifecycleTests : IDisposable
 
     private sealed class FakeMLoop : IMLoopClient
     {
-        public string FinalStatus { get; init; } = "completed";
-        public string? CompletedExperimentId { get; init; }
+        public string FinalStatus { get; set; } = "completed";
+        public string? CompletedExperimentId { get; set; }
         public (string Model, string ExperimentId)? Promoted { get; private set; }
+
+        // Calls that end in an exception, in order — one per call. `Applied` = the server did it and only the answer was lost.
+        public Queue<Exception> PollFailures { get; } = new();
+        public Queue<(Exception Error, bool Applied)> PromoteFailures { get; } = new();
+        public int PromoteCalls { get; private set; }
 
         public int TrainCalls { get; private set; }
 
@@ -467,12 +688,29 @@ public class ModelLifecycleTests : IDisposable
 
         public bool JobUnknown { get; init; }
 
+        public Action? OnPoll { get; set; }
+
         public Task<MLoopJob?> GetJobAsync(string jobId, CancellationToken ct = default)
-            => JobUnknown ? Task.FromResult<MLoopJob?>(null) : Task.FromResult<MLoopJob?>(new MLoopJob(jobId, FinalStatus, CompletedExperimentId,
+        {
+            OnPoll?.Invoke();
+            if (PollFailures.TryDequeue(out var failure))
+                throw failure;
+            return JobUnknown ? Task.FromResult<MLoopJob?>(null) : Task.FromResult<MLoopJob?>(new MLoopJob(jobId, FinalStatus, CompletedExperimentId,
                 new Dictionary<string, double> { ["auc"] = 0.9 }, ReportsPromoted, StatusMessage: StatusMessage, Warnings: Warnings));
+        }
 
         public Task PromoteAsync(string model, string experimentId, CancellationToken ct = default)
         {
+            PromoteCalls++;
+            if (PromoteFailures.TryDequeue(out var failure))
+            {
+                if (failure.Applied)
+                {
+                    Promoted = (model, experimentId);
+                    ProductionExperimentId = experimentId;
+                }
+                throw failure.Error;
+            }
             Promoted = (model, experimentId);
             ProductionExperimentId = experimentId;
             return Task.CompletedTask;
@@ -522,6 +760,17 @@ public class ModelLifecycleTests : IDisposable
             SampleAsked = request;
             return Task.FromResult(new MLoopSample(".mloop/samples/m.csv", 10, 4, "y", "weight"));
         }
+    }
+
+    // A gate whose evidence lives behind a call that fails the first time it is asked, then promotes.
+    private sealed class FlakyGate : IPromotionGate
+    {
+        private int _asked;
+
+        public Task<PromotionVerdict> JudgeAsync(PromotionCandidate candidate, CancellationToken ct = default)
+            => ++_asked == 1
+                ? throw new HttpRequestException("evaluation endpoint unreachable")
+                : Task.FromResult(new PromotionVerdict(PromotionDecision.Promote, "shown no worse", JudgeKind.Ml));
     }
 
     private sealed class RecordingSink : IProvenanceSink
