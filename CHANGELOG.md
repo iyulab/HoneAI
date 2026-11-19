@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-19
+
 ### Added
 
 - **`IMLoopClient.UploadDatasetAsync` and `DeleteDatasetAsync` put a training file on the MLoop server and take it off again (MLoop 0.52+ `POST /datasets`).** `MLoopTrainRequest.DataPath` is a path inside the server's project, so a client on another machine had no way to hand the server its data: the file had to be written into the server's folder by some other means first. `UploadDatasetAsync(new MLoopDatasetUpload(fileName, stream, task))` sends the bytes (the file's name decides table or zip; naming the task has the server check the shape now) and answers an `MLoopDataset` whose `DataPath` is what `TrainAsync` takes. `DeleteDatasetAsync` answers `false` when there is no such upload and fails with the server's reason while a job trains on it. **Breaking for a type that implements `IMLoopClient`** (two members added) — there is no default body to inherit: a fake that never uploads throws `NotSupportedException` from them.
