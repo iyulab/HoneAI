@@ -516,6 +516,30 @@ public class HttpMLoopClientTests
     }
 
     [Fact]
+    public async Task Train_AsksForAPortableModel_OnlyWhenSet_AndTheJobEchoesWhatTheServerRead()
+    {
+        var handler = new StubHandler(request => request.Method == HttpMethod.Post
+            ? Json(HttpStatusCode.Accepted, """{ "jobId": "job-1" }""")
+            : Json(HttpStatusCode.OK, request.RequestUri!.AbsolutePath.EndsWith("job-1")
+                ? """{ "jobId": "job-1", "status": "Completed", "experimentId": "exp-4", "portable": true }"""
+                : """{ "jobId": "job-2", "status": "Completed", "experimentId": "exp-5" }"""));
+        var client = Client(handler);
+
+        await client.TrainAsync(new MLoopTrainRequest("d.csv", "y", "binary-classification", Model: "scope-a", Portable: true));
+        Assert.Contains("\"portable\":true", handler.LastBody);
+        Assert.True((await client.GetJobAsync("job-1"))!.Portable);
+
+        // An explicit false is sent (it overrides a project definition that says portable); unset leaves the field out entirely.
+        await client.TrainAsync(new MLoopTrainRequest("d.csv", "y", "binary-classification", Portable: false));
+        Assert.Contains("\"portable\":false", handler.LastBody);
+        await client.TrainAsync(new MLoopTrainRequest("d.csv", "y", "binary-classification"));
+        Assert.DoesNotContain("portable", handler.LastBody);
+
+        // A server that does not report it (older than 0.52) leaves the answer unknown rather than false.
+        Assert.Null((await client.GetJobAsync("job-2"))!.Portable);
+    }
+
+    [Fact]
     public async Task GetJob_ReadsWhetherMLoopPromoted_WhyItKeptTheModel_AndWhyAJobFailed()
     {
         var handler = new StubHandler(request => request.RequestUri!.AbsolutePath.EndsWith("job-1")

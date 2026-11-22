@@ -333,6 +333,9 @@ public sealed class HttpMLoopClient : IMLoopClient
             body["testSplit"] = split;
         if (request.MaxRows is { } maxRows)
             body["maxRows"] = maxRows;
+        // Only when set: absent leaves it to the model's definition in mloop.yaml, and an older server (before 0.52) ignores the field.
+        if (request.Portable is { } portable)
+            body["portable"] = portable;
 
         using var response = await _http.PostAsJsonAsync("train", body, JsonOptions, cancellationToken)
             .ConfigureAwait(false);
@@ -372,8 +375,12 @@ public sealed class HttpMLoopClient : IMLoopClient
             ? [.. w.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!)]
             : null;
 
+        bool? portable = root.TryGetProperty("portable", out var pt) && pt.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? pt.GetBoolean()
+            : null;
+
         return new MLoopJob(id, status, experimentId, metrics, promoted,
-            String(root, "keptInStagingReason"), String(root, "statusMessage"), warnings);
+            String(root, "keptInStagingReason"), String(root, "statusMessage"), warnings, portable);
     }
 
     /// <inheritdoc />

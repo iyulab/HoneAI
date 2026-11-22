@@ -180,6 +180,12 @@ public sealed record MLoopForecastResult(IReadOnlyList<MLoopForecastPoint> Point
 /// <param name="Metric">The metric to optimize (MLoop's names, e.g. <c>auc</c>); <see langword="null"/> leaves it to the project, then the task.</param>
 /// <param name="TestSplit">The held-out share; <see langword="null"/> leaves it to the project.</param>
 /// <param name="MaxRows">Rows to sample the data down to; <see langword="null"/> trains on all.</param>
+/// <param name="Portable">
+/// <see langword="true"/> trains a model that exports to ONNX (MLoop 0.52+ <c>"portable": true</c>, the request-level counterpart of
+/// <c>mloop train --portable</c>) — what a free-text column needs to export; a task that has no ONNX form is refused with 400.
+/// <see langword="null"/> leaves it to the project's definition for the model, and the request is then exactly what it was without
+/// this member. <see cref="MLoopJob.Portable"/> says whether the server honoured it.
+/// </param>
 public sealed record MLoopTrainRequest(
     string DataPath,
     string? Label = null,
@@ -192,7 +198,8 @@ public sealed record MLoopTrainRequest(
     int? TimeLimitSeconds = null,
     string? Metric = null,
     double? TestSplit = null,
-    int? MaxRows = null);
+    int? MaxRows = null,
+    bool? Portable = null);
 
 /// <summary>A retraining set to build from a model's logged predictions and their feedback (MLoop <c>POST /samples</c>).</summary>
 /// <param name="Model">Target model name; <see langword="null"/> uses the default model.</param>
@@ -245,6 +252,12 @@ public sealed record MLoopDataset(string Id, string Kind, string DataPath, int F
 /// MLoop's diagnostics about the trained model — a held-out score so near-perfect it may come from a leaked column, an
 /// accuracy that hides a class. Empty when there are none; <see langword="null"/> from a server that does not report them.
 /// </param>
+/// <param name="Portable">
+/// What the server read of <see cref="MLoopTrainRequest.Portable"/>: the job echoes the request's <c>portable</c> (<see langword="false"/>
+/// when the request did not ask — the project's definition for the model may still make the experiment portable); <see langword="null"/>
+/// from a server that does not report it. A caller that asked for a portable model reads <see langword="true"/> as «the server took the
+/// field» and <see langword="null"/> as «a server older than MLoop 0.52, which ignores an unknown field».
+/// </param>
 public sealed record MLoopJob(
     string Id,
     string Status,
@@ -253,7 +266,8 @@ public sealed record MLoopJob(
     bool? Promoted = null,
     string? KeptInStagingReason = null,
     string? StatusMessage = null,
-    IReadOnlyList<string>? Warnings = null);
+    IReadOnlyList<string>? Warnings = null,
+    bool? Portable = null);
 
 /// <summary>Metadata for a production MLoop model.</summary>
 /// <param name="Model">Model name.</param>
