@@ -6,6 +6,8 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-23
+
 ### Added
 
 - **`MLoopTrainRequest.Portable` asks the server for a model that exports to ONNX, and `MLoopJob.Portable` says whether it did (MLoop 0.52+ `POST /train` `portable`).** A consumer that trains through `IMLoopClient.TrainAsync` could not request one: the field existed on the server's request but not on the client's type, so a model that featurizes a free-text column was refused at export and the only way out was to bypass the client for training. `Portable: true` is sent as `"portable": true`, an explicit `false` as `false` (it overrides a project definition that says portable), and unset leaves the field out — the request is then what it was before this member. `GetJobAsync` reads the job's `portable`, which is the server's echo of the request's field — `true` after a `Portable: true` request means the server took it, `null` means the server does not report it (before 0.52 an unknown request field is ignored), so a caller that asked for a portable model can tell an old server from a new one. `false` means the request did not ask; it does not say the experiment is not portable (the project's definition for the model may still make it so). **Recompile against this version:** both records gained a trailing positional member, which changes their constructors and `Deconstruct` (named and positional construction in source keeps working).
