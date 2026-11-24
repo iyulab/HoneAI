@@ -263,6 +263,23 @@ public class ModelLifecycleTests : IDisposable
         Assert.Equal(transient ? "running" : "failed", run!.Status);
     }
 
+    // The contract on IMLoopClient names a bare TimeoutException as no answer, which is what a client with no HTTP underneath
+    // can throw.
+    [Fact]
+    public async Task ABareTimeoutWhilePolling_IsNoAnswer()
+    {
+        var runs = new InMemoryLifecycleStore();
+        var mloop = new FakeMLoop { FinalStatus = "running" };
+        var lifecycle = new ModelLifecycle(mloop, new InMemoryReviewStore(), runs, pollDelay: NoDelay, maxPolls: 1, runIdFactory: () => "run-1");
+        await lifecycle.StartAsync(new LifecycleRequest(Train));
+
+        mloop.PollFailures.Enqueue(new TimeoutException("the store did not answer in time"));
+        var run = await lifecycle.ResumeAsync("run-1");
+
+        Assert.Equal("running", run!.Status);
+        Assert.Contains(run.Steps, s => s is { Status: "retrying" });
+    }
+
     [Fact]
     public async Task ABugInTheClient_StillFailsTheRun()
     {

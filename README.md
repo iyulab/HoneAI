@@ -380,10 +380,12 @@ promote — as a **resumable run**. `StartAsync` drives it to the open review an
 (`waiting_review`); once the review is decided, `ResumeAsync(runId)` promotes (or stops on a
 rejection). Every step is saved to an `ILifecycleStore`, so a run started by a queue worker is
 finished by whichever process resumes it — after a restart too — and a run interrupted while
-training resumes by polling its recorded job instead of training again. A call to MLoop that
-gets no answer (a dropped connection, a timeout, a 5xx / 408 / 429) does not end the run: it stays
-`running`, the trail gets a `retrying` step, and the next `ResumeAsync` repeats that stage — only an
-answer settles it (a job reported `failed`, a refusal, a 4xx).
+training resumes by polling its recorded job instead of training again. Once the job is submitted, a call
+to MLoop that gets no answer (a dropped connection, a timeout, a 5xx / 408 / 429) does not end the run: it
+stays `running`, the trail gets a `retrying` step, and the next `ResumeAsync` repeats that stage — only an
+answer settles it (a job reported `failed`, a refusal, a 4xx). The sample export and the training submission
+are not repeated (a lost answer may mean the job exists). If you implement `IMLoopClient` yourself, its XML
+documentation lists the exception types that count as «no answer»; anything else ends the run.
 
 ```csharp
 var reviews = new JsonlReviewStore("reviews.jsonl");

@@ -6,6 +6,10 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **`IMLoopClient` says which exceptions mean «no answer».** `ModelLifecycle` keeps a run going after a call that got no answer and ends it after any other failure, and it tells the two apart by exception type — which only its own source said. The interface documentation now lists them (`HttpRequestException`, `TimeoutException`, a cancellation carrying a `TimeoutException`, `MLoopClientException` 5xx / 408 / 429), for implementations that do not go over HTTP: a database provider's `DbException`, transient or not, is not one of them and has to be translated. Corrected with it: the README said any unanswered call leaves the run going, but the sample export and the training submission are never repeated and a failure there ends the run; and an outdated note that MLoop's packages are not on NuGet is gone. No behaviour change.
+
 ## [0.19.0] - 2026-11-23
 
 ### Added

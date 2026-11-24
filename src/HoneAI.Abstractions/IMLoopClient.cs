@@ -5,9 +5,27 @@ namespace HoneAI;
 /// MCP-stdio transports behind one contract.
 /// </summary>
 /// <remarks>
-/// MLoop is consumed over the wire (HTTP ∨ MCP), never duplicated as a compile-time
-/// SDK reference — MLoop's SDK packages are deliberately not published to NuGet, so
-/// transport-based consumption is the supported integration path.
+/// <para>
+/// This contract reaches MLoop over a transport (HTTP or MCP); HoneAI takes no compile-time reference to
+/// MLoop's engine.
+/// </para>
+/// <para>
+/// <b>How a failed call is read.</b> <c>ModelLifecycle</c> (HoneAI.Core) tells a call that got <i>no answer</i>
+/// from one that did, by the type of the exception. No answer — the run stays where it is, its trail gets a
+/// <c>retrying</c> step, and the next resume repeats the stage:
+/// <see cref="System.Net.Http.HttpRequestException"/> (whatever status it carries);
+/// <see cref="TimeoutException"/>; an <see cref="OperationCanceledException"/> whose inner exception is a
+/// <see cref="TimeoutException"/>, while the caller's own token is not cancelled; and
+/// <c>MLoopClientException</c> (HoneAI.Core) with a 5xx, 408 or 429 status. Any other exception is a verdict
+/// and ends the run as failed (a cancellation of the caller's own propagates instead). An implementation that
+/// reaches MLoop another way — in process, through a database — has to turn its own temporary failures into one
+/// of the types above: a provider exception such as <c>DbException</c> is not recognised, transient or not.
+/// </para>
+/// <para>
+/// The calls that create the training — the feedback sample export and <see cref="TrainAsync"/> — are never
+/// repeated, because a lost answer may mean the job exists: any failure there ends the run (a client timeout
+/// reaches the caller as it is, and the next resume ends the run for having no recorded job).
+/// </para>
 /// </remarks>
 public interface IMLoopClient
 {
