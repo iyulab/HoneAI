@@ -154,6 +154,12 @@ teacher's version from the recheck records, runs `TrustController.Close`, and as
 person's approval and starting a run stay yours: after a person approves a release, `ApproveAsync(outcome)` keeps the
 standing it would become (it refuses a release that is not waiting, or one whose slice has moved on since).
 
+`WindowSlice.Caught` is a count, and a count says the tier above judged everything the tier sent up. Where it judges
+those only by sample — one queue over settled and sent-up decisions alike (`PoolItem.SentUp`, below) — declare
+`SentUpSampled` on the slice, keep `PoolAccount.SentUp` in an `ISentUpRecheckStore` beside the rechecks, and give that
+store to the closer. The slice is then computed from the sample, an empty one included; passing the seen ones as
+`Caught` instead would weight the misses by 1/π and not the confirmations.
+
 A person can hold a slice: pass `SliceWindow.Freeze` (`SliceFreeze` — who, when, why, and the lowest rate a stable
 slice may be rechecked at) and the controller stops releasing it — no step toward active or stable, no window counted
 toward stable, no approval queued. Tightening is not held: a frozen slice that gets worse is still demoted and

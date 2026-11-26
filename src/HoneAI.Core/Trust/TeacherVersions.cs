@@ -18,13 +18,19 @@ public static class TeacherVersions
     {
         ArgumentNullException.ThrowIfNull(previous);
         ArgumentNullException.ThrowIfNull(current);
+        return AnyNewVersion(previous.Select(r => (r.CheckedBy, r.CheckedByVersion)), current.Select(r => (r.CheckedBy, r.CheckedByVersion)));
+    }
+
+    // The same rule over who judged at what version, for evidence that is not all rechecks of settled decisions.
+    internal static bool AnyNewVersion(IEnumerable<(string? By, string? Version)> previous, IEnumerable<(string? By, string? Version)> current)
+    {
         var seen = previous
-            .Where(r => r.CheckedBy is not null && r.CheckedByVersion is not null)
-            .GroupBy(r => r.CheckedBy!, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.Select(r => r.CheckedByVersion!).ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal);
-        return current.Any(r => r.CheckedBy is not null
-            && r.CheckedByVersion is not null
-            && seen.TryGetValue(r.CheckedBy, out var versions)
-            && !versions.Contains(r.CheckedByVersion));
+            .Where(j => j.By is not null && j.Version is not null)
+            .GroupBy(j => j.By!, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Select(j => j.Version!).ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal);
+        return current.Any(j => j.By is not null
+            && j.Version is not null
+            && seen.TryGetValue(j.By, out var versions)
+            && !versions.Contains(j.Version));
     }
 }

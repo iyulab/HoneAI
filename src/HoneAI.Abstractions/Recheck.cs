@@ -124,6 +124,29 @@ public sealed record SentUpRecheck
 }
 
 /// <summary>
+/// Where the sampled judgments of sent-up decisions are kept and read back — the counterpart of
+/// <see cref="IRecheckStore"/>, kept apart so that nothing reading rechecks of settled decisions can pick one up.
+/// Needed only where the tier above judges what a tier sent up by sample. Implemented by the consumer for its
+/// operational store; HoneAI.Core has in-memory and JSONL reference implementations.
+/// </summary>
+public interface ISentUpRecheckStore
+{
+    /// <summary>
+    /// Records <paramref name="record"/> unless a record for the same decision and tier exists;
+    /// returns whether it was recorded. A retried or duplicated delivery does not count twice.
+    /// </summary>
+    ValueTask<bool> AppendAsync(SentUpRecheck record, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The records of <paramref name="tierId"/> in <paramref name="sliceKey"/> whose decision time
+    /// falls in [<paramref name="from"/>, <paramref name="to"/>).
+    /// </summary>
+    IAsyncEnumerable<SentUpRecheck> ReadAsync(
+        string tierId, string sliceKey, DateTimeOffset from, DateTimeOffset to,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// Where recheck results are kept and read back. Implemented by the consumer for its operational
 /// store; HoneAI.Core has in-memory and JSONL reference implementations.
 /// </summary>

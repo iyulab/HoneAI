@@ -44,8 +44,20 @@ public sealed record WindowSlice(string TierId, string SliceKey, string Pool, Sl
     /// </summary>
     public string? TeacherVersion { get; init; }
 
-    /// <summary>Must-catch decisions the tier sent up and the tier above confirmed in the window (<see cref="TrustLedger.Compute"/>).</summary>
+    /// <summary>
+    /// Must-catch decisions the tier sent up and the tier above confirmed in the window (<see cref="TrustLedger.Compute"/>) — a
+    /// count, which says the tier above judged every decision sent up. 0 on a slice that declares <see cref="SentUpSampled"/>.
+    /// </summary>
     public int Caught { get; init; }
+
+    /// <summary>
+    /// The tier above judges what this tier sent up only by sample. The miss rate then comes from the sampled judgments of
+    /// the window (<see cref="WindowRecords.SentUp"/>), none of them included: a window that reached no sent-up decision
+    /// is a sample that saw nothing, not a count of zero. It is a property of how the slice is judged, so it is declared and
+    /// not inferred from whether records turned up — and records for a slice that does not declare it are refused rather
+    /// than left out.
+    /// </summary>
+    public bool SentUpSampled { get; init; }
 
     /// <summary>The tier's inputs or answers have moved (<see cref="StalenessWatch.Drifted"/> on the consumer's drift reading).</summary>
     public bool Drifted { get; init; }
@@ -115,7 +127,17 @@ public sealed record WindowCloseInput
 /// <param name="PreviousRechecks">Recheck records of the stretch before it.</param>
 /// <param name="Plants">Plant records of the closed window, any teacher.</param>
 public sealed record WindowRecords(
-    IReadOnlyList<RecheckRecord> Rechecks, IReadOnlyList<RecheckRecord> PreviousRechecks, IReadOnlyList<PlantRecord> Plants);
+    IReadOnlyList<RecheckRecord> Rechecks, IReadOnlyList<RecheckRecord> PreviousRechecks, IReadOnlyList<PlantRecord> Plants)
+{
+    /// <summary>
+    /// Sampled judgments of sent-up decisions of the closed window, for the slices that declare
+    /// <see cref="WindowSlice.SentUpSampled"/> (<see cref="PoolAccount.SentUp"/>).
+    /// </summary>
+    public IReadOnlyList<SentUpRecheck> SentUp { get; init; } = [];
+
+    /// <summary>The same of the stretch before it — read, with <see cref="PreviousRechecks"/>, for a teacher's change of version.</summary>
+    public IReadOnlyList<SentUpRecheck> PreviousSentUp { get; init; } = [];
+}
 
 /// <summary>A release a person has been put in front of: the standing it was judged from, where it would go, and whether the person declined it.</summary>
 /// <param name="From">The committed standing the release was judged from.</param>
@@ -226,8 +248,9 @@ public sealed record WindowCloseResult(
 /// (<see cref="WindowCloser"/> reads the stores and keeps the state).
 /// </para>
 /// <para>
-/// A teacher's change of version is read from the recheck records themselves (<see cref="TeacherVersions.Changed"/> against the
-/// stretch before), and a teacher shown unqualified or changed tightens the tiers it taught (<see cref="LiveSignals"/>).
+/// A teacher's change of version is read from the recorded judgments themselves — of settled decisions and, where they are
+/// sampled, of sent-up ones — against the stretch before (the rule of <see cref="TeacherVersions.Changed"/>), and a teacher
+/// shown unqualified or changed tightens the tiers it taught (<see cref="LiveSignals"/>).
 /// A learning tier counts as demoted when a slice of it moved down within the same version of the tier; a restart on a new version
 /// is not a demotion, or every retraining would cause the next one.
 /// </para>
@@ -262,12 +285,25 @@ public static class WindowClose
         var windows = new List<SliceWindow>(input.Slices.Count);
         foreach (var slice in input.Slices)
         {
+            bool OfThisSlice(string tierId, string sliceKey) => tierId == slice.TierId && sliceKey == slice.SliceKey;
+            if (slice.SentUpSampled && slice.Caught != 0)
+                throw new ArgumentException(
+                    $"Tier '{slice.TierId}' in slice '{slice.SliceKey}' declares {nameof(WindowSlice.SentUpSampled)} and gives a caught count of " +
+                    $"{slice.Caught}; the sent-up decisions come in as a sample or as a count, not both.", nameof(input));
+            if (!slice.SentUpSampled && records.SentUp.Any(r => OfThisSlice(r.TierId, r.SliceKey) && r.DecidedAt >= from && r.DecidedAt < input.Now))
+                throw new ArgumentException(
+                    $"Tier '{slice.TierId}' in slice '{slice.SliceKey}' has sampled judgments of sent-up decisions in the window and does not " +
+                    $"declare {nameof(WindowSlice.SentUpSampled)}; they would be left out of its miss rate.", nameof(records));
+
             var standing = state.Standings.GetValueOrDefault(WindowCloseState.Key(slice.TierId, slice.SliceKey)) ?? SliceStanding.New(slice.TierVersion, input.Now);
-            var cell = TrustLedger.Compute(records.Rechecks, slice.TierId, slice.SliceKey, from, input.Now, slice.Caught, input.Confidence);
+            var cell = TrustLedger.Compute(records.Rechecks, slice.TierId, slice.SliceKey, from, input.Now, slice.Caught, input.Confidence,
+                sentUp: slice.SentUpSampled ? records.SentUp : null);
             var teacher = slice.TeacherTierId is { } id ? teachers[id] : null;
-            var versionChanged = TeacherVersions.Changed(
-                records.PreviousRechecks.Where(r => r.TierId == slice.TierId && r.SliceKey == slice.SliceKey),
-                records.Rechecks.Where(r => r.TierId == slice.TierId && r.SliceKey == slice.SliceKey));
+            var versionChanged = TeacherVersions.AnyNewVersion(
+                records.PreviousRechecks.Where(r => OfThisSlice(r.TierId, r.SliceKey)).Select(r => (r.CheckedBy, r.CheckedByVersion))
+                    .Concat(records.PreviousSentUp.Where(r => OfThisSlice(r.TierId, r.SliceKey)).Select(r => (r.CheckedBy, r.CheckedByVersion))),
+                records.Rechecks.Where(r => OfThisSlice(r.TierId, r.SliceKey)).Select(r => (r.CheckedBy, r.CheckedByVersion))
+                    .Concat(records.SentUp.Where(r => OfThisSlice(r.TierId, r.SliceKey)).Select(r => (r.CheckedBy, r.CheckedByVersion))));
             var signals = new LiveSignals(slice.TierVersion, slice.Drifted, slice.VersionProvenNoWorse,
                 TeacherDisqualified: teacher?.Disqualified ?? false, TeacherVersionChanged: versionChanged);
             windows.Add(new SliceWindow(slice.TierId, slice.SliceKey, slice.Pool, standing, cell, teacher?.Qualified ?? true, signals, slice.Traffic)

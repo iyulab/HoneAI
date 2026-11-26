@@ -6,6 +6,10 @@ All notable changes to HoneAI are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **The window-close driver takes a sample of the sent-up decisions.** `TrustLedger.Compute` reads such a sample since 0.20.0, but `WindowClose` took only the count, so a consumer that queued settled and sent-up decisions together and closed its windows with the driver had to pass the seen ones as that count — the inflated rate the sample exists to remove. A slice now says so with `WindowSlice.SentUpSampled`; its sampled judgments come in as `WindowRecords.SentUp` (`PreviousSentUp` for the stretch before), or through the new `ISentUpRecheckStore` port (`InMemorySentUpRecheckStore`, `JsonlSentUpRecheckStore`) given to a new `WindowCloser` constructor. The declaration decides how the slice is computed, not the presence of records: a window that reached no sent-up decision is a sample that saw nothing, not a count of zero. A caught count on a declared slice, judgments recorded for a slice that does not declare a sample, and a declared slice on a closer with no store are refused. A teacher's change of version is read from its judgments of both kinds. Additive: a slice that does not declare a sample closes as before, and no existing signature changed.
+
 ## [0.20.0] - 2026-11-27
 
 ### Added

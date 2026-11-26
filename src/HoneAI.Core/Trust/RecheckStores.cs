@@ -72,6 +72,66 @@ public sealed class JsonlRecheckStore : IRecheckStore
     }
 }
 
+/// <summary>In-memory <see cref="ISentUpRecheckStore"/> — for tests, examples and a single process.</summary>
+public sealed class InMemorySentUpRecheckStore : ISentUpRecheckStore
+{
+    private readonly ConcurrentDictionary<(string DecisionId, string TierId), SentUpRecheck> _records = new();
+
+    /// <inheritdoc />
+    public ValueTask<bool> AppendAsync(SentUpRecheck record, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        return ValueTask.FromResult(_records.TryAdd((record.DecisionId, record.TierId), record));
+    }
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<SentUpRecheck> ReadAsync(
+        string tierId, string sliceKey, DateTimeOffset from, DateTimeOffset to,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        foreach (var record in _records.Values
+                     .Where(r => r.TierId == tierId && r.SliceKey == sliceKey && r.DecidedAt >= from && r.DecidedAt < to)
+                     .OrderBy(r => r.DecidedAt))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return record;
+        }
+        await Task.CompletedTask.ConfigureAwait(false);
+    }
+}
+
+/// <summary>
+/// File-backed <see cref="ISentUpRecheckStore"/>: one JSON line per judgment, append-only, once per decision and
+/// tier. A file of its own — not the one a <see cref="JsonlRecheckStore"/> writes.
+/// </summary>
+/// <remarks>
+/// One writer per file within one process is assumed (appends are serialized by an async lock;
+/// processes do not coordinate). The keys already written are read once, on the first append.
+/// </remarks>
+public sealed class JsonlSentUpRecheckStore : ISentUpRecheckStore
+{
+    private readonly JsonlKeyedLog<SentUpRecheck, (string, string)> _log;
+
+    /// <param name="path">JSONL file (created on first write, with parent directories).</param>
+    public JsonlSentUpRecheckStore(string path) => _log = new JsonlKeyedLog<SentUpRecheck, (string, string)>(path, r => (r.DecisionId, r.TierId));
+
+    /// <inheritdoc />
+    public ValueTask<bool> AppendAsync(SentUpRecheck record, CancellationToken cancellationToken = default)
+        => _log.AppendAsync(record, cancellationToken);
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<SentUpRecheck> ReadAsync(
+        string tierId, string sliceKey, DateTimeOffset from, DateTimeOffset to,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var record in _log.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (record.TierId == tierId && record.SliceKey == sliceKey && record.DecidedAt >= from && record.DecidedAt < to)
+                yield return record;
+        }
+    }
+}
+
 /// <summary>In-memory <see cref="IPlantStore"/> — for tests, examples and a single process.</summary>
 public sealed class InMemoryPlantStore : IPlantStore
 {
