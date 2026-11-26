@@ -59,9 +59,16 @@ public sealed record SessionMix
 /// Every item decided in the window has been answered, passed or has expired. Until then the reach is not known and
 /// nothing is given: an item still waiting could yet be reached.
 /// </param>
-/// <param name="Records">The rechecks, one per reached item, at π × r.</param>
-/// <param name="Reach">The reach per tier and slice.</param>
-public sealed record PoolAccount(bool Closed, IReadOnlyList<RecheckRecord> Records, IReadOnlyList<PoolReach> Reach);
+/// <param name="Records">The rechecks of settled decisions, one per reached item, at π × r.</param>
+/// <param name="Reach">The reach per tier and slice, over settled and sent-up decisions together — they share one queue.</param>
+public sealed record PoolAccount(bool Closed, IReadOnlyList<RecheckRecord> Records, IReadOnlyList<PoolReach> Reach)
+{
+    /// <summary>
+    /// The reached decisions the tier had sent up (<see cref="PoolItem.SentUp"/>), at π × r — what
+    /// <see cref="TrustLedger.Compute"/> takes beside <see cref="Records"/> when sent-up decisions are seen by sample.
+    /// </summary>
+    public IReadOnlyList<SentUpRecheck> SentUp { get; init; } = [];
+}
 
 /// <summary>
 /// The recheck pool for a judge that comes when it comes: drawn decisions wait in it (<see cref="IRecheckPoolStore"/>),
@@ -208,12 +215,19 @@ public static class RecheckPool
             return new PoolAccount(false, [], reach);
 
         var rate = reach.ToDictionary(r => (r.TierId, r.SliceKey), r => r.Rate);
-        var records = entries
+        var judged = entries
             .Where(e => e.Response is not null && e.Response.Kind != PoolResponseKind.Unsure)
             .OrderBy(e => e.Item.DecidedAt)
+            .ToList();
+        var records = judged
+            .Where(e => !e.Item.SentUp)
             .Select(e => Record(e.Item, e.Response!, rate[(e.Item.TierId, e.Item.SliceKey)]))
             .ToList();
-        return new PoolAccount(true, records, reach);
+        var sentUp = judged
+            .Where(e => e.Item.SentUp)
+            .Select(e => SentUpRecord(e.Item, e.Response!, rate[(e.Item.TierId, e.Item.SliceKey)]))
+            .ToList();
+        return new PoolAccount(true, records, reach) { SentUp = sentUp };
     }
 
     private static RecheckRecord Record(PoolItem item, PoolResponse response, double reachRate) => new()
@@ -234,6 +248,20 @@ public static class RecheckPool
         Confidence = item.Confidence,
         Risk = item.Risk,
         Weight = item.Weight,
+        CheckedBy = response.CheckedBy,
+        CheckedByVersion = response.CheckedByVersion,
+        Blind = true,
+    };
+
+    private static SentUpRecheck SentUpRecord(PoolItem item, PoolResponse response, double reachRate) => new()
+    {
+        DecisionId = item.DecisionId,
+        TierId = item.TierId,
+        SliceKey = item.SliceKey,
+        DecidedAt = item.DecidedAt,
+        Probability = item.Probability * reachRate,
+        UpperFailed = response.Kind == PoolResponseKind.Skipped,
+        UpperMustCatch = response.Kind == PoolResponseKind.Answered && response.UpperMustCatch,
         CheckedBy = response.CheckedBy,
         CheckedByVersion = response.CheckedByVersion,
         Blind = true,

@@ -51,6 +51,13 @@ public sealed record PoolItem
     /// <summary>The decision's slice.</summary>
     public required string SliceKey { get; init; }
 
+    /// <summary>
+    /// The tier sent this decision up rather than settling it. Pool both kinds in the same queue when the judge cannot see
+    /// everything sent up: the account gives them apart (<c>PoolAccount.SentUp</c>), so the ledger can estimate the caught
+    /// share from the sample. Never show it to the judge. False for a settled decision.
+    /// </summary>
+    public bool SentUp { get; init; }
+
     /// <summary>When the decision was made — windows are assigned by this.</summary>
     public required DateTimeOffset DecidedAt { get; init; }
 

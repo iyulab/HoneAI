@@ -85,6 +85,45 @@ public sealed record RecheckRecord
 }
 
 /// <summary>
+/// One decision a tier <i>sent up</i> that the tier above was asked about only by sample — what a miss rate needs when the
+/// tier above does not judge everything sent to it (one blind queue over a tier's settled and sent-up decisions alike, for a
+/// judge who comes when they can). It is not a <see cref="RecheckRecord"/>: a recheck measures what the tier settled, and
+/// a sent-up decision is not that.
+/// </summary>
+public sealed record SentUpRecheck
+{
+    /// <summary>The decision's id.</summary>
+    public required string DecisionId { get; init; }
+
+    /// <summary>The tier that sent the decision up (the one being measured).</summary>
+    public required string TierId { get; init; }
+
+    /// <summary>The input's slice.</summary>
+    public required string SliceKey { get; init; }
+
+    /// <summary>When the decision was made — windows are assigned by this.</summary>
+    public required DateTimeOffset DecidedAt { get; init; }
+
+    /// <summary>The probability π the decision was drawn with, reach included.</summary>
+    public required double Probability { get; init; }
+
+    /// <summary>The tier above gave no answer — it passed, was cut off, or timed out.</summary>
+    public bool UpperFailed { get; init; }
+
+    /// <summary>The tier above answered with a must-catch value.</summary>
+    public bool UpperMustCatch { get; init; }
+
+    /// <summary>The tier that judged.</summary>
+    public string? CheckedBy { get; init; }
+
+    /// <summary>The version of the tier that judged, when known.</summary>
+    public string? CheckedByVersion { get; init; }
+
+    /// <summary>The checker did not see that the tier sent the decision up, nor its answer. Blind by default; a sighted one is not counted.</summary>
+    public bool Blind { get; init; } = true;
+}
+
+/// <summary>
 /// Where recheck results are kept and read back. Implemented by the consumer for its operational
 /// store; HoneAI.Core has in-memory and JSONL reference implementations.
 /// </summary>
@@ -149,8 +188,20 @@ public sealed record LedgerCell
     /// <summary>Must-catch decisions the tier settled, estimated from the rechecks (Σ 1/π over the misses seen).</summary>
     public required double MissesEstimated { get; init; }
 
-    /// <summary>Must-catch decisions the tier sent up and the tier above confirmed — fully observed, not sampled.</summary>
+    /// <summary>
+    /// Must-catch decisions the tier sent up and the tier above confirmed — fully observed, not sampled. When the sent-up
+    /// decisions were seen by sample (<see cref="SentUpRechecks"/> is not null) this is their estimate, Σ 1/π over the
+    /// confirmed ones seen, rounded.
+    /// </summary>
     public required int Caught { get; init; }
+
+    /// <summary>
+    /// The sent-up decisions drawn for a sample in the window, failed ones included, when the cell was computed from such a
+    /// sample; null when <see cref="Caught"/> came in as a count. Then <see cref="MissRateUpper"/> and
+    /// <see cref="MissRateLower"/> are bounds on the window's miss share from the two samples (see the ledger's remarks), not
+    /// from a count.
+    /// </summary>
+    public int? SentUpRechecks { get; init; }
 
     /// <summary>Conditional miss rate: misses ÷ (misses + caught). Null with neither.</summary>
     public double? MissRate { get; init; }
