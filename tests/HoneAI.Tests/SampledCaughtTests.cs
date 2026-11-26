@@ -123,6 +123,65 @@ public class SampledCaughtTests
         Assert.Throws<ArgumentException>(() => Cell([], [Up(0, 0)]));
     }
 
+    // 200 agreed settled rechecks and a few confirmed sent-up decisions, one probability: the share bound is wide because the
+    // must-catch decisions seen are few, while the bound on how many were missed is the settled rechecks' own.
+    private static LedgerCell NoMissSampled(int caughtSeen)
+        => Cell(Enumerable.Range(0, 400).Select(i => Settled(i, 0.5)), Enumerable.Range(0, caughtSeen).Select(i => Up(i, 0.5)));
+
+    private static LifecyclePolicy Policy(double hiddenAllowance = 0) => new()
+    {
+        Targets = new TrustTargets
+        {
+            Agreement = 0.95,
+            DetectableDrop = 0.03,
+            MissLimit = 0.02,
+            Deadline = TimeSpan.FromDays(7),
+            HiddenMustCatchLimit = hiddenAllowance,
+        },
+        Margin = 0.01,
+        MinimumEffectiveSample = 300,
+        MinimumDwell = TimeSpan.FromDays(7),
+    };
+
+    [Fact]
+    public void TheExposureOfASampledCell_IsTheCountBoundOfTheSettledRechecks_NotTheShareTimesAnEstimate()
+    {
+        var cell = NoMissSampled(4);
+
+        Assert.Equal(TrustLedger.BinomialCountUpperBound(0, 0.5, 0.05), cell.MissesUpper!.Value, 10);
+        Assert.Equal(cell.MissesUpper, TrustController.Exposure(cell));
+        Assert.NotEqual(cell.MissRateUpper!.Value * cell.Caught / (1 - cell.MissRateUpper.Value), TrustController.Exposure(cell)!.Value, 3);
+        Assert.Null(TrustController.Exposure(Cell([], [Up(0, 0.5)])));                       // nothing settled was looked at
+    }
+
+    [Fact]
+    public void ASampledCell_IsHeldByItsShareBound_AndReleasedByTheHiddenAllowance()
+    {
+        var standing = SliceStanding.New("v1", Start.AddDays(-30));
+        var signals = new LiveSignals("v1");
+
+        var held = TrustLifecycle.Release(standing, NoMissSampled(4), teacherQualified: true, signals, Policy(), End);
+        var allowed = TrustLifecycle.Release(standing, NoMissSampled(4), teacherQualified: true, signals, Policy(hiddenAllowance: 5), End);
+
+        Assert.Equal(TrustState.Shadow, held.To);
+        Assert.Contains("miss rate upper bound", held.Reason);
+        Assert.Equal(TrustState.Active, allowed.To);
+    }
+
+    [Fact]
+    public void ASampledCellShowingMissesOverTheLimit_SendsTheSliceBackToShadow()
+    {
+        var cell = Cell(
+            Enumerable.Range(0, 400).Select(i => Settled(i, 0.5, mustCatch: i < 30, i < 30 ? RecheckOutcome.Disagreed : RecheckOutcome.Agreed)),
+            Enumerable.Range(0, 5).Select(i => Up(i, 0.5)));
+
+        var step = TrustLifecycle.Tighten(new SliceStanding(TrustState.Active, Start, "v1"), cell, new LiveSignals("v1"), Policy(), End);
+
+        Assert.True(cell.MissRateLower > 0.02);
+        Assert.Equal(TrustState.Shadow, step.To);
+        Assert.Contains("miss rate shown above", step.Reason);
+    }
+
     [Fact]
     public async Task OneQueueOverBoth_IsAccountedApart_AtOneReach()
     {

@@ -207,12 +207,19 @@ public static class TrustController
             || (next.State == current.State && string.Equals(next.TierVersion, current.TierVersion, StringComparison.Ordinal)
                 && next.PassingWindows > current.PassingWindows);
 
-    /// <summary>Upper bound on the must-catch decisions a tier may be missing per window: u·C/(1 − u); null when unmeasured.</summary>
+    /// <summary>
+    /// Upper bound on the must-catch decisions a tier may be missing per window; null when unmeasured. With the sent-up
+    /// decisions counted it is u·C/(1 − u), which is the count bound put back from the rate. With the sent-up decisions seen
+    /// by sample (<see cref="LedgerCell.SentUpRechecks"/>), C is an estimate and that product bounds nothing: the bound is
+    /// <see cref="LedgerCell.MissesUpper"/>, which comes from the settled rechecks alone.
+    /// </summary>
     public static double? Exposure(LedgerCell window)
     {
         ArgumentNullException.ThrowIfNull(window);
         if (window.MissRateUpper is not { } u)
             return null;
+        if (window.SentUpRechecks is not null)
+            return window.MissesUpper;
         // With nothing caught the rate is 1 for any miss, but the count bound is still finite: it is the exposure.
         return u >= 1 ? window.MissesUpper ?? double.PositiveInfinity : u * window.Caught / (1 - u);
     }

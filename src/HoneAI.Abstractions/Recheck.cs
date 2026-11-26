@@ -228,7 +228,9 @@ public sealed record LedgerCell
     /// Upper bound on the must-catch decisions the tier settled in the window, at the ledger's confidence — the count
     /// behind <see cref="MissRateUpper"/>, counting every failed recheck as a miss. Unlike the rate it does not
     /// depend on how many must-catch decisions were caught, so a slice where none was can still be judged against an
-    /// absolute allowance. Null for a window with no recheck.
+    /// absolute allowance. It comes from the settled rechecks alone, at the full error level, whether the sent-up
+    /// decisions came in as a count or as a sample (<see cref="SentUpRechecks"/> — the rate's bounds are then made from
+    /// both samples, not from this count). Null for a window with no settled recheck.
     /// </summary>
     public double? MissesUpper { get; init; }
 
